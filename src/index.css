@@ -60,6 +60,21 @@ body {
   font-size: 0.85rem;
 }
 
+button.nav-item {
+  font: inherit;
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-2);
+  padding: 0 0 2px;
+  cursor: pointer;
+}
+
+button.nav-item:hover {
+  color: var(--ink);
+}
+
 .nav-active {
   color: var(--accent);
   font-weight: 600;
@@ -67,8 +82,151 @@ body {
   padding-bottom: 2px;
 }
 
+button.nav-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 .nav-soon {
   color: var(--muted);
+}
+
+/* ---------- crystal structures ---------- */
+
+.crystal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .crystal-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.crystal-controls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.crystal-controls select,
+.density-box select {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.toggle-group {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.toggle {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.32rem 0.7rem;
+  border: none;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.toggle + .toggle {
+  border-left: 1px solid var(--hairline);
+}
+
+.toggle-on {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.canvas-wrap {
+  height: 460px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+@media (max-width: 620px) {
+  .canvas-wrap {
+    height: 340px;
+  }
+}
+
+.crystal-checks {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.7rem;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.crystal-checks label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.drag-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.crystal-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.density-box {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.density-box h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.density-eq {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}
+
+.density-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.err-ok {
+  color: #0ca30c;
+}
+
+.err-off {
+  color: #eda100;
 }
 
 .controls {

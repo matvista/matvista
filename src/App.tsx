@@ -5,11 +5,15 @@ import { PROPERTIES } from './types';
 import { RAMP } from './color';
 import { PeriodicTable } from './components/PeriodicTable';
 import { ElementDetail } from './components/ElementDetail';
+import { CrystalStructures } from './components/CrystalStructures';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
+type Tab = 'trends' | 'crystals';
+
 export default function App() {
+  const [tab, setTab] = useState<Tab>('trends');
   const [property, setProperty] = useState<PropertyDef>(PROPERTIES[0]);
   const [selected, setSelected] = useState<ElementData | null>(
     elements.find((e) => e.symbol === 'Fe') ?? null,
@@ -28,12 +32,26 @@ export default function App() {
       <header className="app-header">
         <h1>MatVista</h1>
         <nav className="app-nav">
-          <span className="nav-item nav-active">Periodic trends</span>
-          <span className="nav-item nav-soon">Crystal structures · soon</span>
+          <button
+            className={`nav-item ${tab === 'trends' ? 'nav-active' : ''}`}
+            onClick={() => setTab('trends')}
+          >
+            Periodic trends
+          </button>
+          <button
+            className={`nav-item ${tab === 'crystals' ? 'nav-active' : ''}`}
+            onClick={() => setTab('crystals')}
+          >
+            Crystal structures
+          </button>
           <span className="nav-item nav-soon">Phase diagrams · soon</span>
         </nav>
       </header>
 
+      {tab === 'crystals' && <CrystalStructures elements={elements} />}
+
+      {tab === 'trends' && (
+        <>
       <div className="controls">
         <label htmlFor="prop">Color by</label>
         <select
@@ -86,6 +104,8 @@ export default function App() {
         </div>
         {selected && <ElementDetail element={selected} />}
       </main>
+        </>
+      )}
     </div>
   );
 }

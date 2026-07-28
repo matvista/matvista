@@ -748,3 +748,93 @@ button.nav-active {
 .pd-reaction code {
   font-size: 0.76rem;
 }
+
+/* ---------- Ashby / material selection ---------- */
+
+.ab-guide {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 7 4;
+}
+
+.ab-guide-label {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+}
+
+.ab-point {
+  cursor: pointer;
+}
+
+.ab-point:hover {
+  opacity: 0.75;
+}
+
+.ab-legend {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.ab-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: none;
+  border: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0.15rem 0;
+}
+
+.ab-legend-item:hover {
+  color: var(--ink);
+}
+
+.ab-off {
+  opacity: 0.38;
+  text-decoration: line-through;
+}
+
+.ab-slider {
+  margin-top: 0.75rem;
+}
+
+.ab-rank {
+  margin: 0.3rem 0 0;
+  padding-left: 1.3rem;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.ab-rank li {
+  margin-bottom: 0.15rem;
+}
+
+.ab-rank-item {
+  font: inherit;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.ab-rank-item:hover {
+  color: var(--ink);
+}
+
+.ab-rank-val {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

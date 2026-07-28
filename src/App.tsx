@@ -9,11 +9,12 @@ import { CrystalStructures } from './components/CrystalStructures';
 import { DefectsDiffusion } from './components/DefectsDiffusion';
 import { StressStrain } from './components/StressStrain';
 import { PhaseDiagrams } from './components/PhaseDiagrams';
+import { AshbyChart } from './components/AshbyChart';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase';
+type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase' | 'selection';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -65,6 +66,12 @@ export default function App() {
           >
             Phase diagrams
           </button>
+          <button
+            className={`nav-item ${tab === 'selection' ? 'nav-active' : ''}`}
+            onClick={() => setTab('selection')}
+          >
+            Material selection
+          </button>
         </nav>
       </header>
 
@@ -75,6 +82,8 @@ export default function App() {
       {tab === 'mechanical' && <StressStrain />}
 
       {tab === 'phase' && <PhaseDiagrams />}
+
+      {tab === 'selection' && <AshbyChart />}
 
       {tab === 'trends' && (
         <>

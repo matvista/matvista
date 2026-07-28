@@ -13,7 +13,7 @@ MatVista gives students and material scientists visual, interactive views onto m
 | **Defects & diffusion** — point-defect visualiser, equilibrium-vacancy calculator, and a case-hardening simulator solving Fick's second law | ✅ available |
 | **Mechanical properties** — engineering stress–strain curves for 7 metals with the 0.002 offset construction, resilience, true-stress overlay, and a Hall–Petch grain-size panel | ✅ available |
 | **Phase Diagram Explorer** — interactive Cu–Ni, Pb–Sn and Fe–Fe₃C diagrams; click any point for phases, tie line, lever-rule fractions and steel microstructure | ✅ available |
-| **Ashby Charts** — log-log property scatter plots for material selection | 🔜 planned |
+| **Material Selection (Ashby)** — log–log property chart of 54 materials with movable performance-index guide lines (E/ρ, E^½/ρ, E^⅓/ρ, σ/ρ, σ^⅔/ρ) and live ranking | ✅ available |
 | **Materials Project integration** — browse 150k+ computed materials | 💡 roadmap |
 
 ## Getting started

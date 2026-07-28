@@ -7,11 +7,12 @@ import { PeriodicTable } from './components/PeriodicTable';
 import { ElementDetail } from './components/ElementDetail';
 import { CrystalStructures } from './components/CrystalStructures';
 import { DefectsDiffusion } from './components/DefectsDiffusion';
+import { StressStrain } from './components/StressStrain';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals' | 'defects';
+type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -51,6 +52,12 @@ export default function App() {
           >
             Defects &amp; diffusion
           </button>
+          <button
+            className={`nav-item ${tab === 'mechanical' ? 'nav-active' : ''}`}
+            onClick={() => setTab('mechanical')}
+          >
+            Mechanical properties
+          </button>
           <span className="nav-item nav-soon">Phase diagrams · soon</span>
         </nav>
       </header>
@@ -58,6 +65,8 @@ export default function App() {
       {tab === 'crystals' && <CrystalStructures elements={elements} />}
 
       {tab === 'defects' && <DefectsDiffusion />}
+
+      {tab === 'mechanical' && <StressStrain />}
 
       {tab === 'trends' && (
         <>

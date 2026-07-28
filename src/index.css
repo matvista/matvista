@@ -415,3 +415,139 @@ button.nav-active {
   line-height: 1.45;
   margin-bottom: 0;
 }
+
+/* ---------- defects & diffusion ---------- */
+
+.dd-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .dd-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dd-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.dd-wide {
+  grid-column: 1 / -1;
+}
+
+.dd-title {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+.dd-defect-cat {
+  margin: 0.7rem 0 0.2rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dd-slider {
+  display: block;
+  margin-bottom: 0.7rem;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.dd-slider span {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.dd-slider strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.dd-slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.dd-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 1.25rem;
+  margin: 0.8rem 0 0.4rem;
+}
+
+.badge-mech {
+  font-size: 0.72rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+}
+
+.badge-interstitial {
+  background: rgba(27, 175, 122, 0.14);
+}
+
+.badge-vacancy {
+  background: rgba(235, 104, 52, 0.14);
+}
+
+.dd-plot {
+  width: 100%;
+  height: auto;
+  margin: 0.5rem 0;
+}
+
+.dd-grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.dd-axis {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.dd-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.dd-area {
+  fill: var(--accent);
+  opacity: 0.12;
+  stroke: none;
+}
+
+.dd-marker {
+  stroke: #eb6834;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.dd-marker-label {
+  fill: #eb6834;
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+}
+
+.dd-tick {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.dd-results {
+  margin-top: 0.6rem;
+}

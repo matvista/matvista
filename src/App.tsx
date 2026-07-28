@@ -6,11 +6,12 @@ import { RAMP } from './color';
 import { PeriodicTable } from './components/PeriodicTable';
 import { ElementDetail } from './components/ElementDetail';
 import { CrystalStructures } from './components/CrystalStructures';
+import { DefectsDiffusion } from './components/DefectsDiffusion';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals';
+type Tab = 'trends' | 'crystals' | 'defects';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -44,11 +45,19 @@ export default function App() {
           >
             Crystal structures
           </button>
+          <button
+            className={`nav-item ${tab === 'defects' ? 'nav-active' : ''}`}
+            onClick={() => setTab('defects')}
+          >
+            Defects &amp; diffusion
+          </button>
           <span className="nav-item nav-soon">Phase diagrams · soon</span>
         </nav>
       </header>
 
       {tab === 'crystals' && <CrystalStructures elements={elements} />}
+
+      {tab === 'defects' && <DefectsDiffusion />}
 
       {tab === 'trends' && (
         <>

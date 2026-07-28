@@ -4,6 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { StructureDef } from '../crystal/structures';
 import { buildAtoms, buildBonds, buildCellEdges, coordinationShell, distance } from '../crystal/geometry';
+import { applyDefect, type DefectKind } from '../crystal/defects';
 
 export type ViewMode = 'ball' | 'fill';
 
@@ -13,9 +14,17 @@ interface Props {
   showCell: boolean;
   showBonds: boolean;
   showCoordination: boolean;
+  defect?: DefectKind;
 }
 
-export function CrystalScene({ structure, mode, showCell, showBonds, showCoordination }: Props) {
+export function CrystalScene({
+  structure,
+  mode,
+  showCell,
+  showBonds,
+  showCoordination,
+  defect,
+}: Props) {
   return (
     <div className="canvas-wrap">
       {/* preserveDrawingBuffer keeps the frame readable after present, so the
@@ -34,6 +43,7 @@ export function CrystalScene({ structure, mode, showCell, showBonds, showCoordin
           showCell={showCell}
           showBonds={showBonds}
           showCoordination={showCoordination}
+          defect={defect}
         />
         <OrbitControls enablePan={false} minDistance={1.6} maxDistance={7} autoRotate autoRotateSpeed={0.6} />
       </Canvas>
@@ -41,8 +51,15 @@ export function CrystalScene({ structure, mode, showCell, showBonds, showCoordin
   );
 }
 
-function Cell({ structure, mode, showCell, showBonds, showCoordination }: Props) {
-  const atoms = useMemo(() => buildAtoms(structure), [structure]);
+function Cell({ structure, mode, showCell, showBonds, showCoordination, defect }: Props) {
+  const defectResult = useMemo(
+    () => (defect && defect !== 'none' ? applyDefect(structure, defect) : null),
+    [structure, defect],
+  );
+  const atoms = useMemo(
+    () => defectResult?.atoms ?? buildAtoms(structure),
+    [structure, defectResult],
+  );
   const edges = useMemo(() => buildCellEdges(structure), [structure]);
   const bonds = useMemo(
     () => (showBonds ? buildBonds(atoms, structure.bondCutoff) : []),
@@ -88,20 +105,32 @@ function Cell({ structure, mode, showCell, showBonds, showCoordination }: Props)
 
       {atoms.map((atom, i) => {
         const sp = structure.species[atom.species];
-        const r = mode === 'fill' ? sp.fillRadius : sp.ballRadius;
+        const scale = 'radiusScale' in atom ? ((atom as { radiusScale?: number }).radiusScale ?? 1) : 1;
+        const marked = 'defect' in atom ? (atom as { defect?: string }).defect : undefined;
+        const r = (mode === 'fill' ? sp.fillRadius : sp.ballRadius) * scale;
         return (
           <mesh key={i} position={atom.pos}>
             <sphereGeometry args={[r, 32, 24]} />
             <meshStandardMaterial
-              color={sp.color}
+              color={marked ? '#eb6834' : sp.color}
               roughness={0.35}
               metalness={0.1}
+              emissive={marked ? '#eb6834' : '#000000'}
+              emissiveIntensity={marked ? 0.28 : 0}
               transparent={mode === 'fill'}
               opacity={mode === 'fill' ? 0.92 : 1}
             />
           </mesh>
         );
       })}
+
+      {/* An empty site: dashed-looking wireframe so the absence reads as deliberate. */}
+      {defectResult?.vacancySite && (
+        <mesh position={defectResult.vacancySite}>
+          <sphereGeometry args={[structure.species.M?.ballRadius ?? 0.13, 16, 12]} />
+          <meshBasicMaterial color="#e34948" wireframe />
+        </mesh>
+      )}
 
       {shell && (
         <group>

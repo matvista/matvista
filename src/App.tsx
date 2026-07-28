@@ -8,11 +8,12 @@ import { ElementDetail } from './components/ElementDetail';
 import { CrystalStructures } from './components/CrystalStructures';
 import { DefectsDiffusion } from './components/DefectsDiffusion';
 import { StressStrain } from './components/StressStrain';
+import { PhaseDiagrams } from './components/PhaseDiagrams';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical';
+type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -58,7 +59,12 @@ export default function App() {
           >
             Mechanical properties
           </button>
-          <span className="nav-item nav-soon">Phase diagrams · soon</span>
+          <button
+            className={`nav-item ${tab === 'phase' ? 'nav-active' : ''}`}
+            onClick={() => setTab('phase')}
+          >
+            Phase diagrams
+          </button>
         </nav>
       </header>
 
@@ -67,6 +73,8 @@ export default function App() {
       {tab === 'defects' && <DefectsDiffusion />}
 
       {tab === 'mechanical' && <StressStrain />}
+
+      {tab === 'phase' && <PhaseDiagrams />}
 
       {tab === 'trends' && (
         <>

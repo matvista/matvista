@@ -10,11 +10,12 @@ import { DefectsDiffusion } from './components/DefectsDiffusion';
 import { StressStrain } from './components/StressStrain';
 import { PhaseDiagrams } from './components/PhaseDiagrams';
 import { AshbyChart } from './components/AshbyChart';
+import { XrdSimulator } from './components/XrdSimulator';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase' | 'selection';
+type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase' | 'selection' | 'xrd';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -72,6 +73,12 @@ export default function App() {
           >
             Material selection
           </button>
+          <button
+            className={`nav-item ${tab === 'xrd' ? 'nav-active' : ''}`}
+            onClick={() => setTab('xrd')}
+          >
+            XRD
+          </button>
         </nav>
       </header>
 
@@ -84,6 +91,8 @@ export default function App() {
       {tab === 'phase' && <PhaseDiagrams />}
 
       {tab === 'selection' && <AshbyChart />}
+
+      {tab === 'xrd' && <XrdSimulator />}
 
       {tab === 'trends' && (
         <>

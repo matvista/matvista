@@ -838,3 +838,95 @@ button.nav-active {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- XRD ---------- */
+
+.xrd-peak {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.xrd-peak-sel {
+  stroke: #eb6834;
+  stroke-width: 4;
+}
+
+.xrd-peak-ghost {
+  stroke: var(--muted);
+  stroke-width: 2;
+  opacity: 0.45;
+}
+
+.xrd-peak-group {
+  cursor: pointer;
+}
+
+.xrd-hit {
+  fill: transparent;
+}
+
+.xrd-peak-group:hover .xrd-peak {
+  stroke: #eb6834;
+}
+
+.xrd-label {
+  fill: var(--ink-2);
+  font-size: 10px;
+  font-family: system-ui, sans-serif;
+}
+
+.xrd-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  text-align: right;
+  font-weight: 500;
+}
+
+.xrd-table thead th:first-child {
+  text-align: left;
+}
+
+.xrd-table tbody tr {
+  cursor: pointer;
+}
+
+.xrd-table tbody tr:hover {
+  color: var(--ink);
+}
+
+.xrd-row-sel {
+  background: rgba(235, 104, 52, 0.14);
+}
+
+.xrd-extinct {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0;
+}
+
+.xrd-chip {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+}
+
+.xrd-chip em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.xrd-on {
+  color: var(--ink-2);
+  background: rgba(42, 120, 214, 0.12);
+}
+
+.xrd-off {
+  color: var(--muted);
+  text-decoration: line-through;
+  opacity: 0.7;
+}

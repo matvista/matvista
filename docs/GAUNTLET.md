@@ -74,7 +74,7 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **roadmap module** (iteration 11). Next lens: **accessibility**; the
+Last shipped lens: **accessibility** (iteration 12). Next lens: **mobile/responsive**; the
 last outstanding roadmap module is semiconductors.
 
 **Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
@@ -104,6 +104,7 @@ do not invent busywork to fill it.
 | 9 | Correctness | Fe–C was missing its single-phase α field: pure iron at 800 °C read as a two-phase α+γ mixture. Found by a sweep of ~3 000 phase points |
 | 10 | Product gap | **Test runner + CI**: 281 permanent assertions (vitest) replacing the throwaway `src/__check.ts` workflow, plus a GitHub Actions check |
 | 11 | Roadmap module | **Corrosion** — galvanic couples with the area-ratio effect, EMF series with live Nernst shifts, Pourbaix diagrams for Fe/Al/Zn |
+| 12 | Accessibility | Phase diagram was mouse-only (WCAG 2.1.1 Level A); plus every text colour measured and brought to AA — the amber state colour was at 2.11:1 |
 
 ## Backlog
 
@@ -134,7 +135,8 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Consistent custom focus ring | 2 | 1 | 2.0 | Nothing suppresses outlines, so browser default rings are intact and focus **is** visible — this is polish, not a defect. Landing elements have bespoke `:focus-visible`; module controls do not. |
+| Consistent custom focus ring | 2 | 1 | 2.0 | Nothing suppresses outlines, so browser default rings are intact and focus **is** visible — polish, not a defect. |
+| Chart stroke/fill contrast sweep | 3 | 2 | 1.5 | Iteration 12 fixed every colour carrying **text** and the phase-fraction swatches, and stopped there. Roughly 20 hard-coded hexes remain in `index.css` and in `AshbyChart`/`PhaseDiagrams`/`CrystalScene` as chart strokes and 3D materials. Measured: `#1baf7a` is 2.67:1 on the light page and `#4a3aa7` is 2.27:1 on the dark page, both under the 3:1 that WCAG 1.4.11 asks of graphical objects. All of them are accompanied by text labels, so colour is not the sole carrier — which is why this is a follow-up and not a defect. Dual-theme-safe replacements are already computed in the iteration-12 notes. |
 
 ### Roadmap modules — in scope, to be built
 
@@ -410,6 +412,34 @@ densities, and the diffusion solution.
   (AshbyChart, FailureAnalysis, Corrosion). The fix is always the same — compute the scale
   inside the memo, or hoist fixed bounds to module scope. **Worth remembering when writing
   the next chart.**
+
+### From iteration 12 (accessibility, second pass)
+
+Iteration 5 covered labels, headings and toggle state. Two things it never checked were
+colour contrast and whether the drag-driven charts work without a mouse. Both had defects.
+
+- **The phase diagram was mouse-only — WCAG 2.1.1, Level A.** It was `role="img"` with
+  nothing but `onPointerDown`, so the module's primary interaction was unreachable from a
+  keyboard, and `role="img"` additionally told assistive technology it was a static
+  picture. It is now `role="application"` with `tabIndex=0` and arrow-key control (1% of
+  the axis per press, 5% with shift), the readout is an `aria-live` region so the movement
+  is announced, and two number inputs give the same state through standard widgets — which
+  is also just useful, since you can now type 0.76 exactly instead of hunting for it.
+- **Contrast was never measured, and several values failed.** In light mode: the amber
+  `.err-off` state colour at **2.11:1**, the green `.err-ok` at 3.27:1, `--muted` (every
+  axis tick label) at 3.41:1, accent-as-text at 4.19:1, and white on the primary button at
+  4.42:1. All now clear 4.5:1 against `--page`, which is the harder of the two grounds.
+- `--accent` was split into `--accent` (fills, borders), `--accent-ink` (text) and
+  `--accent-strong` (fills that carry white text). One blue cannot satisfy all three: as
+  a label it wants to be darker, and under white text darker still.
+- **A replacement over-matched and had to be undone.** `color: var(--accent);` is a
+  substring of `border-color: var(--accent);`, so a naive replace recoloured six borders.
+  Caught by grepping for the result rather than trusting the count.
+- Phase-fraction swatches now clear 3:1 on **both** themes, because they are hard-coded
+  rather than themed and so have to work on either ground.
+- **Deliberately left:** ~20 further hard-coded chart hexes. Backlogged with measurements
+  rather than swept, because the sweep changes the app's visual identity and deserves its
+  own decision. None of them is the sole carrier of meaning.
 
 ### Standing hazards (unverified, worth checking when touched)
 

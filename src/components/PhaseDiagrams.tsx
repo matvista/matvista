@@ -23,6 +23,8 @@ const PHASE_COLOR: Record<string, string> = {
   'Fe₃C': '#e34948',
 };
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 export function PhaseDiagrams() {
   const [systemId, setSystemId] = useRouteString('sys', 'fe-c');
   const system = PHASE_SYSTEMS.find((s) => s.id === systemId) ?? PHASE_SYSTEMS[2];
@@ -72,6 +74,24 @@ export function PhaseDiagrams() {
     });
   }
 
+  /**
+   * Arrow keys nudge the point of interest. One press is 1% of the axis range,
+   * shift is 5% — enough to cross a field quickly without losing the ability to
+   * land on a boundary.
+   */
+  function onPlotKeyDown(e: React.KeyboardEvent<SVGSVGElement>) {
+    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const stepFrac = e.shiftKey ? 0.05 : 0.01;
+    const dx = (system.xMax - system.xMin) * stepFrac;
+    const dT = (system.tMax - system.tMin) * stepFrac;
+    if (e.key === 'ArrowLeft') setPointX(clamp(clamped.x - dx, system.xMin, system.xMax));
+    if (e.key === 'ArrowRight') setPointX(clamp(clamped.x + dx, system.xMin, system.xMax));
+    if (e.key === 'ArrowDown') setPointT(clamp(clamped.T - dT, system.tMin, system.tMax));
+    if (e.key === 'ArrowUp') setPointT(clamp(clamped.T + dT, system.tMin, system.tMax));
+  }
+
   const steel =
     system.id === 'fe-c' && clamped.x >= FERRITE_MAX && clamped.x <= GAMMA_MAX
       ? steelMicrostructure(clamped.x)
@@ -102,15 +122,43 @@ export function PhaseDiagrams() {
               </option>
             ))}
           </select>
-          <span className="drag-hint">Click or drag anywhere on the diagram</span>
+          <label className="pd-field">
+            <span>{system.xLabel}</span>
+            <input
+              type="number"
+              value={Number(clamped.x.toFixed(2))}
+              min={system.xMin}
+              max={system.xMax}
+              step={0.01}
+              onChange={(e) => setPointX(Number(e.target.value))}
+            />
+          </label>
+          <label className="pd-field">
+            <span>°C</span>
+            <input
+              type="number"
+              value={Math.round(clamped.T)}
+              min={system.tMin}
+              max={system.tMax}
+              step={1}
+              onChange={(e) => setPointT(Number(e.target.value))}
+            />
+          </label>
+          <span className="drag-hint">Drag the diagram, or use the boxes and arrow keys</span>
         </div>
 
         <svg
           ref={svgRef}
           className="ss-plot pd-plot"
           viewBox={`0 0 ${W} ${H}`}
-          role="img"
-          aria-label={`${system.name} phase diagram`}
+          /* Not role="img": this is the module's primary control, and an image
+             role tells assistive technology it is a static picture. It is
+             focusable and arrow-driven so it can be operated without a mouse,
+             and the number boxes above give the same state a standard widget. */
+          role="application"
+          tabIndex={0}
+          aria-label={`${system.name} phase diagram. Arrow keys move the point of interest; hold shift for larger steps.`}
+          onKeyDown={onPlotKeyDown}
           onPointerDown={(e) => {
             setDragging(true);
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -205,7 +253,7 @@ export function PhaseDiagrams() {
         </p>
       </section>
 
-      <aside className="detail">
+      <aside className="detail" aria-live="polite">
         <h2 className="crystal-title">{result.region}</h2>
         <p className="detail-meta">
           {clamped.x.toFixed(2)} {system.xLabel} · {clamped.T.toFixed(0)} °C

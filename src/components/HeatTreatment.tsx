@@ -35,11 +35,19 @@ const JW = 720;
 const JH = 300;
 const JPAD = { l: 62, r: 24, t: 16, b: 48 };
 
+/**
+ * Product colours, chosen to clear 3:1 against **both** the light and the dark
+ * page (WCAG 1.4.11, non-text contrast). These are hard-coded rather than
+ * themed, so each has to work on either ground: the old fine-pearlite violet
+ * sat at 2.27:1 on dark and the old bainite green at 2.67:1 on light.
+ * The product name is always printed beside the swatch as well, so colour is
+ * never the only thing carrying the meaning.
+ */
 const PRODUCT_COLOR: Record<string, string> = {
-  'coarse pearlite': '#2a78d6',
-  'fine pearlite': '#4a3aa7',
-  bainite: '#1baf7a',
-  martensite: '#e34948',
+  'coarse pearlite': '#2976d2', // light 4.32, dark 4.27
+  'fine pearlite': '#776bbd', // light 4.31, dark 4.28
+  bainite: '#15875e', // light 4.28, dark 4.31
+  martensite: '#d34443', // light 4.26, dark 4.33
 };
 
 const AUSTENITISE = 850;

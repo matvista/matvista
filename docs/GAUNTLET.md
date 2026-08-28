@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **mobile/responsive** (iteration 6). Next lens: **docs-and-claims
-truth**, which completes one full rotation.
+Last shipped lens: **docs-and-claims truth** (iteration 7) — one full rotation complete.
+Next lens: **correctness**, and the next build is the fatigue/creep/fracture module.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -89,6 +89,7 @@ do not invent busywork to fill it.
 | 4 | Product gap | Landing page: promotional entry point with hero, stats, nine illustrated module cards, provenance and audience sections — all inline SVG, and first paint down again to **67.45 kB gzip** |
 | 5 | Accessibility | Every route now has exactly one `<h1>`, no unlabelled controls, `aria-pressed` on all five state toggles, and reduced-motion honoured |
 | 6 | Mobile/responsive | No horizontal overflow on any of the ten routes at 320, 375, 768 or 1280 px — was overflowing on 10/10 routes at 320 px and on Miller at 375 px |
+| 7 | Docs-and-claims truth | ROADMAP's bundle section rewritten against a real build; all 20 documented counts asserted against the data |
 
 ## Backlog
 
@@ -286,6 +287,21 @@ cleared — the *deepest* element that fixes it is the culprit, not the widest.
   the hidden-pane harness trap (`visibilityState` was `hidden`, so r3f's ResizeObserver
   never ran), so the rule is defensive — it did clear the measured overflow, but a real
   browser would very likely have sized the canvas before paint anyway.
+
+### From iteration 7 (docs truth)
+
+- The **README was accurate**; every stale claim was in `ROADMAP.md`, which still described
+  a single-bundle app ("Vite currently emits one JS bundle") and listed lazy-loading
+  three.js as a pending win three iterations after it shipped. Docs describing
+  *infrastructure* went stale; docs describing *data* did not.
+- All 20 documented counts are now asserted against the source data, not eyeballed — 118
+  elements, 8 structures, 12 FCC / 48 BCC slip systems, 7 mechanical metals, 54 Ashby
+  materials, 5 indices, 4 X-ray sources, 3 phase systems, 3 steels, 13 Jominy points, 9
+  modules — plus the geometric check that every generated slip direction actually lies in
+  its plane. **Re-run that script whenever a dataset changes**; it is the cheapest guard
+  against a README that quietly starts lying.
+- A module of the existing kind costs **3.5–5.6 kB gzipped** (nine total 35.5 kB), not the
+  ~7 kB the roadmap estimated. Use the real figure when sizing the remaining three.
 
 ### Standing hazards (unverified, worth checking when touched)
 

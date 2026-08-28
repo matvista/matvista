@@ -17,14 +17,17 @@ is next.
 | 5 | **Corrosion & the galvanic series** | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1) and (2) shipped; (3) is next up.
+Ranked by value per unit of effort. (1) and (2) shipped; (3), (4) and (5) are
+committed work, tracked alongside the product-level backlog in
+[docs/GAUNTLET.md](docs/GAUNTLET.md).
 
 ---
 
 ## 1. Miller indices & slip systems — shipped
 
 Built in `crystal/miller.ts`, `components/MillerScene.tsx` and
-`components/MillerIndices.tsx`; costs 5.3 kB gzipped. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
+`components/MillerIndices.tsx`; costs 5.0 kB gzipped, plus a 2.3 kB chunk of index
+arithmetic shared with the XRD module. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
 with intercepts drawn and the reciprocal arithmetic shown step by step. Adds the
 12 FCC / 48 BCC slip systems, Schmid factor for a chosen loading axis, and
 resolved shear stress.
@@ -135,19 +138,23 @@ Deployment target is Cloudflare Pages as pure static assets — no Workers, no
 Pages Functions. Every module above respects that: hand-rolled SVG or DOM plus a
 small hand-entered dataset, no network calls at runtime.
 
-Measured budget, from a production build:
+Measured budget, from a production build (`npm run build`):
 
-| Chunk | Raw | Gzip |
-|---|---|---|
-| three.js + drei + fiber | 910 kB | 244 kB |
-| React + all seven shipped modules + all data | 325 kB | 97 kB |
+| Chunk | Raw | Gzip | When it loads |
+|---|---|---|---|
+| `index` — React, shell, landing page | 213 kB | 67.5 kB | always |
+| stylesheet | 22.7 kB | 4.9 kB | always |
+| `geometry` — three.js + drei + fiber | 904 kB | 241.5 kB | only on a 3D module |
+| `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
+| nine per-module chunks | — | 35.5 kB total | one per module opened |
 
-A module of the existing kind costs roughly 7 kB gzipped, so all five above add
-about 35 kB — negligible beside the 3D library. The binding limit is not
-Cloudflare's file count but the 25 MiB cap on a single asset, and Vite currently
-emits one JS bundle.
+The app is code-split by route, so first paint is the `index` chunk plus the
+stylesheet — about 72 kB gzipped, measured at 70 kB over the wire. three.js is
+reachable from only three modules and is no longer part of first paint.
 
-**Known win, unrelated to content:** `components/CrystalStructures.tsx` and
-`components/DefectsDiffusion.tsx` both import `CrystalScene` eagerly, so three.js
-sits in the main chunk. Lazy-loading *both* drops first paint from 343 kB to
-97 kB gzipped for the five non-3D tabs. Lazy-loading only one changes nothing.
+A module of the existing kind costs **3.5–5.6 kB gzipped** (nine of them total
+35.5 kB), so the three remaining modules add roughly 12–15 kB — negligible beside
+the 3D library, and none of it in first paint since each arrives in its own chunk.
+
+The binding limit is the 25 MiB cap on a single asset. The largest asset is the
+three.js chunk at 904 kB raw, so there is a wide margin.

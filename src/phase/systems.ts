@@ -277,6 +277,16 @@ const FEC_TMIN = 400;
 const A3_PURE = 912;
 
 const a3X = (T: number) => lerp(T, A3_PURE, 0, EUTECTOID_T, EUTECTOID_X);
+/**
+ * The α/(α+γ) boundary between the eutectoid and pure iron's A₃.
+ *
+ * Ferrite's carbon solubility runs from 0.022 wt% at 727 °C to nothing at
+ * 912 °C, so there is a narrow single-phase α field hard against the left axis
+ * in that temperature band. It is easy to leave out — the field is a sliver —
+ * but leaving it out means pure iron at 800 °C is reported as a two-phase
+ * α + γ mixture, when α is the only phase present up to 912 °C.
+ */
+const alphaGammaX = (T: number) => lerp(T, A3_PURE, 0, EUTECTOID_T, FERRITE_MAX);
 const acmX = (T: number) => lerp(T, EUTECTOID_T, EUTECTOID_X, FE_EUT_T, GAMMA_MAX);
 const ferriteSolvusX = (T: number) => lerp(T, FEC_TMIN, FERRITE_RT, EUTECTOID_T, FERRITE_MAX);
 const feLiquidus = (x: number) =>
@@ -305,6 +315,7 @@ export const FE_C: PhaseSystem = {
     },
     { label: 'γ solidus', points: [[0, FE_MP], [GAMMA_MAX, FE_EUT_T]], kind: 'solidus' },
     { label: 'A₃', points: [[0, A3_PURE], [EUTECTOID_X, EUTECTOID_T]], kind: 'solvus' },
+    { label: 'α/(α+γ)', points: [[0, A3_PURE], [FERRITE_MAX, EUTECTOID_T]], kind: 'solvus' },
     { label: 'A_cm', points: [[EUTECTOID_X, EUTECTOID_T], [GAMMA_MAX, FE_EUT_T]], kind: 'solvus' },
     { label: 'α solvus', points: [[FERRITE_MAX, EUTECTOID_T], [FERRITE_RT, FEC_TMIN]], kind: 'solvus' },
     {
@@ -338,6 +349,7 @@ export const FE_C: PhaseSystem = {
     { text: 'L', x: 2.2, T: 1520 },
     { text: 'γ (austenite)', x: 1.1, T: 1000 },
     { text: 'γ + Fe₃C', x: 3.4, T: 900 },
+    { text: 'α + γ', x: 0.28, T: 800 },
     { text: 'α + Fe₃C', x: 3.4, T: 600 },
     { text: 'γ + L', x: 3.0, T: 1250 },
   ],
@@ -371,10 +383,16 @@ export const FE_C: PhaseSystem = {
 
     if (T > EUTECTOID_T) {
       // Between the eutectoid and eutectic isotherms.
+      const alphaEdge = alphaGammaX(T);
+      // Left of ferrite's solubility limit there is no austenite to mix with:
+      // this is the single-phase α sliver that reaches pure iron at 912 °C.
+      if (x <= alphaEdge) return singlePhase('α', x);
       if (x < a3X(T)) {
         return twoPhase(
           'α + γ',
-          { name: 'α', composition: ferriteSolvusX(EUTECTOID_T) },
+          // The α end of the tie line is the solubility limit *at this
+          // temperature*, not the 0.022 wt% value fixed at the eutectoid.
+          { name: 'α', composition: alphaEdge },
           { name: 'γ', composition: a3X(T) },
           x,
         );

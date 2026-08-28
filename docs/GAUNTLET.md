@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **roadmap module** (iteration 8). Next lens: **correctness**, then
-continue the rotation; the next builds are semiconductors and corrosion.
+Last shipped lens: **correctness** (iteration 9). Next lens: **product gap**; the next
+builds are semiconductors and corrosion.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -91,6 +91,7 @@ do not invent busywork to fill it.
 | 6 | Mobile/responsive | No horizontal overflow on any of the ten routes at 320, 375, 768 or 1280 px — was overflowing on 10/10 routes at 320 px and on Miller at 375 px |
 | 7 | Docs-and-claims truth | ROADMAP's bundle section rewritten against a real build; all 20 documented counts asserted against the data |
 | 8 | Roadmap module | **Failure analysis** — fracture toughness, S–N fatigue, Paris crack growth, Larson–Miller creep. Verified against two published worked examples |
+| 9 | Correctness | Fe–C was missing its single-phase α field: pure iron at 800 °C read as a two-phase α+γ mixture. Found by a sweep of ~3 000 phase points |
 
 ## Backlog
 
@@ -115,7 +116,7 @@ subject to the lens rotation.
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
 | Lazy-load three.js | 4 | 2 | 2.0 | three.js is ~73% of the bundle (910 kB raw / 244 kB gzip of ~354 kB). `CrystalStructures.tsx` **and** `DefectsDiffusion.tsx` both import `CrystalScene` eagerly — lazy-loading only one changes nothing. Both together cut first paint to ~97 kB gzip for the seven non-3D modules. **Unmeasured since ship 1; re-measure before quoting.** |
-| `AshbyChart.tsx` exhaustive-deps ×4 | 3 | 1 | 3.0 | Lines 65/73/79/81 — the only lint warnings in the repo (baseline: 4). A memo keyed on `yProp` reads `yOf`; check whether it can go stale. Correctness risk, not just tidiness. |
+| `AshbyChart.tsx` exhaustive-deps ×4 | 2 | 1 | 2.0 | The only lint warnings in the repo (baseline 4). **Investigated in iteration 9: it cannot go stale.** `yProp` is in the deps, and `visible` is rebuilt every render so the memos recompute every render regardless — they are dead memos, not a correctness risk. Downgraded from a correctness item to tidying: memoise `visible`, lift the accessor out of the closure, and the baseline drops to 0. |
 | Shared `<Canvas>` shell | 2 | 2 | 1.0 | `MillerScene.tsx` duplicates `CrystalScene.tsx`'s camera/dpr/lights/OrbitControls bounds and re-derives the cylinder-orientation helper. |
 
 ### Audits (unscoped until sampled)
@@ -327,6 +328,34 @@ cleared — the *deepest* element that fixes it is the culprit, not the widest.
   describe. Fixed by computing the scale *inside* the memo. **Do not close over a scale
   function from a memo keyed on the value that scale depends on.**
 - The module is 8.6 kB gzipped in its own chunk, so it costs nothing until opened.
+
+### From iteration 9 (correctness sweep)
+
+Swept every module not yet verified, against published worked examples where they exist
+and against internal invariants everywhere else — ~3 000 phase-diagram points, all seven
+stress–strain curves at 200 000 samples each, all five Ashby indices, all sixteen metals'
+densities, and the diffusion solution.
+
+- **Real bug found and fixed: the Fe–C diagram had no single-phase α field.** Between the
+  eutectoid (727 °C) and pure iron's A₃ (912 °C), everything left of the A₃ line was
+  reported as two-phase α + γ — so **pure iron at 800 °C read as a mixture** when α is the
+  only phase present up to 912 °C. The α end of the tie line was also pinned at 0.022 wt%,
+  the solubility at the eutectoid, instead of tracking temperature. Caught by an invariant
+  ("the overall composition must lie between the tie-line ends"), not by inspection: the
+  lever-rule fractions were clamped to [0, 1], so the readout looked entirely plausible.
+  **Clamping a fraction hides the evidence that it was computed outside its domain.**
+- Three of the four "failures" in the first run were **my test's bugs, not the code's**:
+  sampling the elastic modulus at a point already past the proportional limit, and reading
+  the 0.2%-offset stress off a curve sampled too coarsely. Worth the reminder that a
+  failing assertion is a hypothesis, not a verdict.
+- Titanium's predicted density is 6.3% high and that is **not** a defect: Callister's
+  R = 0.1445 nm gives a = 2R = 0.289 nm against a real 0.2951 nm, and density goes as a⁻³.
+  The module already shows the error rather than hiding it. It is the worst of the sixteen.
+- Verified against published answers: Callister's 0.35 wt% C steel (44% pearlite, 56%
+  proeutectoid ferrite), the Cu–Ni tie line at 35 wt% Ni and 1250 °C (0.68 / 0.32), and the
+  carburising example (0.80 wt% C at 0.5 mm after 7 h).
+- The Ashby guide line provably selects exactly the top-N by index value, for all five
+  indices — the log-space test and the ranking agree because slope = 1/exponent.
 
 ### Standing hazards (unverified, worth checking when touched)
 

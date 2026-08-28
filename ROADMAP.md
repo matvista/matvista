@@ -1,10 +1,12 @@
 # MatVista roadmap
 
-Planned modules, in build order. Each entry records what it teaches, what data it
-needs, what it reuses, and whether it holds under static hosting.
+Modules in build order. Each entry records what it teaches, what data it needs,
+what it reuses, and whether it holds under static hosting.
 
-Shipped modules are listed in the [README](README.md). This file only covers what
-is next.
+Entries stay here after they ship, rewritten to say what was actually built and
+where it departed from the plan — the departures are the useful part, and they
+are usually where the physics forced a different shape. The [README](README.md)
+lists what exists from a reader's point of view; this file is the build record.
 
 ## Order of work
 
@@ -12,19 +14,23 @@ is next.
 |---|---|---|---|---|
 | ~~1~~ | ~~**Miller indices & slip systems**~~ — shipped | high | low | ✅ |
 | ~~2~~ | ~~**TTT / CCT diagrams & heat treatment**~~ — shipped | very high | medium | ✅ |
-| 3 | **Fatigue, creep & fracture** | high | medium | ✅ |
-| 4 | **Semiconductors & band structure** | high | medium | ✅ |
-| 5 | **Corrosion & the galvanic series** | medium | low | ✅ |
+| ~~3~~ | ~~**Fatigue, creep & fracture**~~ — shipped | high | medium | ✅ |
+| ~~4~~ | ~~**Semiconductors & band structure**~~ — shipped | high | medium | ✅ |
+| ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1) and (2) shipped; (3) is next up.
+Ranked by value per unit of effort. **All five have shipped.** What remains is
+the deferred Materials Project integration below, which does not hold under
+static hosting. Product-level work is tracked in
+[docs/GAUNTLET.md](docs/GAUNTLET.md).
 
 ---
 
 ## 1. Miller indices & slip systems — shipped
 
 Built in `crystal/miller.ts`, `components/MillerScene.tsx` and
-`components/MillerIndices.tsx`; costs 5.3 kB gzipped. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
+`components/MillerIndices.tsx`; costs 5.0 kB gzipped, plus a 2.3 kB chunk of index
+arithmetic shared with the XRD module. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
 with intercepts drawn and the reciprocal arithmetic shown step by step. Adds the
 12 FCC / 48 BCC slip systems, Schmid factor for a chosen loading axis, and
 resolved shear stress.
@@ -66,23 +72,62 @@ get a material", which is the actual engineering skill.
   `components/PhaseDiagrams.tsx`; the existing Fe–Fe₃C system for context.
 - **New:** `src/heattreat/` for curve data and microstructure/hardness lookup.
 
-## 3. Fatigue, creep & fracture
+## 3. Fatigue, creep & fracture — shipped
 
-The mechanical module covers monotonic loading only, leaving out the entire
-failure half of the subject. Adds S–N curves with endurance limits, Paris-law
-crack growth, a Griffith / K_IC critical-crack-size calculator, and Larson–Miller
-creep parameters.
+Built in `failure/model.ts`, `failure/materials.ts` and
+`components/FailureAnalysis.tsx`; costs 8.6 kB gzipped. Four panels: critical
+crack size from K_IC, estimated S–N curves, Paris-law crack growth, and
+Larson–Miller creep rupture.
 
-Most real components fail by fatigue rather than yielding, so this is the highest
-practical relevance on the list.
+One departure from the plan below, and it matters. The plan was to extend the
+seven entries in `mechanical/materials.ts` with `K_IC` and Paris constants. That
+would have been wrong: plane-strain fracture toughness is a property of a
+specific alloy in a specific heat treatment, not of "aluminium", and Paris
+constants are published per *class* of steel and are not transferable to other
+metals. Bolting either onto the annealed pure metals would have produced
+confident numbers with no basis. So the module carries three separate datasets
+with separate domains — `FRACTURE_ALLOYS` (Callister table 8.1, K_IC paired with
+the yield strength it was measured against), `GROWTH_CLASSES` (Barsom & Rolfe,
+steels only), and `BRITTLE_SOLIDS` (for Griffith) — and only the S–N panel reuses
+`MECH_MATERIALS`, where tensile strength genuinely is the right input.
 
-- **Data:** extend the seven entries in `mechanical/materials.ts` with `K_IC`,
-  endurance limit, and Paris constants `C` and `m`.
-- **Reuses:** `MECH_MATERIALS`, the curve-building and SVG axis code in
-  `mechanical/materials.ts` and `components/StressStrain.tsx`.
-- **New:** log–log S–N and da/dN plots; critical crack size solver.
+- **Data:** as built — five alloys with K_IC and yield strength, three brittle
+  solids with E and surface energy, three Barsom crack-growth classes, per-alloy
+  fatigue behaviour keyed to `MECH_MATERIALS`, and a digitised S-590
+  Larson–Miller master curve.
+- **Reuses:** `MECH_MATERIALS` for the S–N panel; the SVG axis and detail-panel
+  patterns from `components/HeatTreatment.tsx`.
+- **Verified:** Griffith reproduces Callister's 8.2 µm flaw in soda-lime glass at
+  40 MPa; Larson–Miller reproduces his S-590 worked example (800 °C, 140 MPa →
+  231 h against a published ~233 h); the closed-form Paris integration matches a
+  400 000-step numerical integration to better than 0.05%.
 
-## 4. Semiconductors & band structure
+## 4. Semiconductors & band structure — shipped
+
+Built in `electronic/model.ts`, `electronic/materials.ts` and
+`components/Semiconductors.tsx`; costs 6.8 kB gzipped. Three panels: band gaps
+against the visible spectrum, doping and conductivity across the extrinsic and
+intrinsic regimes, and p–n junction band bending.
+
+Two departures from the plan below. First, n_i is anchored on published 300 K
+values and scaled with temperature, rather than computed from effective masses:
+DOS effective masses are quoted inconsistently across sources, and the resulting
+n_i moves by a factor of two depending on which set you pick. Second, only four
+of the seven materials carry carrier data. Band gap and mobility are tabulated
+for all seven, a dependable n_i is not, and inventing one for the wide-gap
+compounds so that every panel could offer every material would have put a
+confident number where there is no source — so those three appear in the
+band-gap comparison and nowhere else.
+
+- **Data:** as built — seven materials with band gap, mobilities and gap kind
+  from Callister table 18.3; n_i and relative permittivity for Si, Ge, GaAs and
+  InSb only.
+- **Verified:** kT = 0.0259 eV at 300 K; V_bi = 0.83 V and W = 0.15 µm for
+  silicon doped 10¹⁷/10¹⁷; the mass-action law and charge neutrality hold across
+  the whole doping range; the Arrhenius slope of n_i carries both the −Eg/2k term
+  and the T^{3/2} prefactor.
+
+## 4b. Original plan
 
 Band gap explorer across Si, Ge, GaAs and the compound semiconductors: Fermi
 level as a function of doping and temperature, carrier concentration,
@@ -99,7 +144,28 @@ module.
   scaffolding.
 - **New:** `src/electronic/` for the dataset and carrier-statistics maths.
 
-## 5. Corrosion & the galvanic series
+## 5. Corrosion & the galvanic series — shipped
+
+Built in `corrosion/model.ts`, `corrosion/data.ts` and `components/Corrosion.tsx`;
+costs 6.6 kB gzipped. Three panels: galvanic couple with the area-ratio effect,
+the EMF series with live Nernst shifts, and Pourbaix diagrams for Fe, Al and Zn.
+
+Departure from the plan below: the galvanic series and the EMF series are kept as
+**two separate datasets**, not merged into one ordered list. They disagree — passive
+316 stainless sits above copper in seawater while chromium and iron are both far
+below copper in the EMF series — because passivity is an oxide film and not a
+standard potential. Blending them would have produced a single authoritative-looking
+ranking that is wrong for whichever question you were asking.
+
+- **Data:** as built — 25 alloys with typical seawater potentials (the *ordering*
+  is the established part and the UI says so), the 20-entry EMF series from
+  Callister table 17.1, and three simplified Pourbaix region maps.
+- **Verified:** the Daniell cell at 1.103 V; the Nernst slope at 0.0592 V/decade;
+  the water stability lines at −0.414 V and 0.815 V at pH 7; zinc anodic to steel
+  and steel anodic to copper; aluminium and zinc corroding at both pH extremes
+  while iron passivates in alkali.
+
+## 5b. Original plan
 
 Pick two metals and get the galvanic couple prediction: which one corrodes, the
 driving voltage, and the area-ratio effect that makes a small anode
@@ -135,19 +201,28 @@ Deployment target is Cloudflare Pages as pure static assets — no Workers, no
 Pages Functions. Every module above respects that: hand-rolled SVG or DOM plus a
 small hand-entered dataset, no network calls at runtime.
 
-Measured budget, from a production build:
+Measured budget, from a production build (`npm run build`):
 
-| Chunk | Raw | Gzip |
-|---|---|---|
-| three.js + drei + fiber | 910 kB | 244 kB |
-| React + all seven shipped modules + all data | 325 kB | 97 kB |
+| Chunk | Raw | Gzip | When it loads |
+|---|---|---|---|
+| `index` — React, shell, landing page | 215 kB | 68.2 kB | always |
+| stylesheet | 24.5 kB | 5.2 kB | always |
+| `geometry` — three.js + drei + fiber | 904 kB | 241.5 kB | only on a 3D module |
+| `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
+| eleven per-module chunks | — | 49.8 kB total | one per module opened |
+| shared helpers (`miller`, `metals`, `materials`, `color`, `CrystalScene`) | — | 7.1 kB total | with whichever module needs them |
 
-A module of the existing kind costs roughly 7 kB gzipped, so all five above add
-about 35 kB — negligible beside the 3D library. The binding limit is not
-Cloudflare's file count but the 25 MiB cap on a single asset, and Vite currently
-emits one JS bundle.
+The app is code-split by route, so first paint is the `index` chunk plus the
+stylesheet — 73.4 kB gzipped, measured at **72 kB over the wire**. three.js is
+reachable from only three modules and is no longer part of first paint.
 
-**Known win, unrelated to content:** `components/CrystalStructures.tsx` and
-`components/DefectsDiffusion.tsx` both import `CrystalScene` eagerly, so three.js
-sits in the main chunk. Lazy-loading *both* drops first paint from 343 kB to
-97 kB gzipped for the five non-3D tabs. Lazy-loading only one changes nothing.
+A module of the existing kind costs **1.8–8.6 kB gzipped** (eleven of them total
+49.8 kB), so the one remaining module adds roughly 5 kB — negligible beside the
+3D library, and none of it in first paint since each arrives in its own chunk.
+
+The binding limit is the 25 MiB cap on a single asset. The largest asset is the
+three.js chunk at 904 kB raw, so there is a wide margin.
+
+These figures come from `npm run build` and from `performance.getEntriesByType`
+against `npm run preview`. The dev server does not chunk the same way, so never
+quote sizes from it.

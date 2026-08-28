@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { getStructure } from '../crystal/structures';
 import { DEFECTS, getDefect, type DefectKind } from '../crystal/defects';
+
+/** The kinds a URL may name, derived from the data so the two cannot drift. */
+const DEFECT_KINDS: DefectKind[] = DEFECTS.map((d) => d.kind);
 import {
   DIFFUSION_SYSTEMS,
   concentrationAt,
@@ -14,10 +18,10 @@ import { CrystalScene } from './CrystalScene';
 const K = 273.15;
 
 export function DefectsDiffusion() {
-  const [structureId, setStructureId] = useState('fcc');
-  const [defect, setDefect] = useState<DefectKind>('vacancy');
-  const [vacancyT, setVacancyT] = useState(1000);
-  const [Qv, setQv] = useState(0.9);
+  const [structureId, setStructureId] = useRouteString('s', 'fcc');
+  const [defect, setDefect] = useRouteEnum<DefectKind>('d', 'vacancy', DEFECT_KINDS);
+  const [vacancyT, setVacancyT] = useRouteNumber('vacT', 1000, 20, 1080);
+  const [Qv, setQv] = useRouteNumber('Qv', 0.9, 0.5, 2);
 
   const structure = getStructure(structureId);
   const defectDef = getDefect(defect);
@@ -33,12 +37,20 @@ export function DefectsDiffusion() {
       <section className="dd-block">
         <h2 className="dd-title">Point defects</h2>
         <div className="crystal-controls">
-          <select value={structureId} onChange={(e) => setStructureId(e.target.value)}>
+          <select
+            value={structureId}
+            onChange={(e) => setStructureId(e.target.value)}
+            aria-label="Crystal structure"
+          >
             <option value="fcc">Face-centred cubic</option>
             <option value="bcc">Body-centred cubic</option>
             <option value="sc">Simple cubic</option>
           </select>
-          <select value={defect} onChange={(e) => setDefect(e.target.value as DefectKind)}>
+          <select
+            value={defect}
+            onChange={(e) => setDefect(e.target.value as DefectKind)}
+            aria-label="Defect type"
+          >
             {DEFECTS.map((d) => (
               <option key={d.kind} value={d.kind}>
                 {d.label}
@@ -130,11 +142,13 @@ export function DefectsDiffusion() {
 }
 
 function DiffusionPanel() {
-  const [sysId, setSysId] = useState('c-fe-fcc');
-  const [tempC, setTempC] = useState(950);
-  const [hours, setHours] = useState(5);
-  const [Cs, setCs] = useState(1.2);
-  const [C0, setC0] = useState(0.2);
+  // Distinct keys from the vacancy panel above: both live in this one module,
+  // so they share a query string.
+  const [sysId, setSysId] = useRouteString('sys', 'c-fe-fcc');
+  const [tempC, setTempC] = useRouteNumber('difT', 950, 400, 1200);
+  const [hours, setHours] = useRouteNumber('h', 5, 0.5, 40);
+  const [Cs, setCs] = useRouteNumber('Cs', 1.2, 0.4, 1.6);
+  const [C0, setC0] = useRouteNumber('C0', 0.2, 0, 0.4);
 
   const sys = DIFFUSION_SYSTEMS.find((s) => s.id === sysId) ?? DIFFUSION_SYSTEMS[1];
   const T = tempC + K;
@@ -175,7 +189,7 @@ function DiffusionPanel() {
       </p>
 
       <div className="crystal-controls">
-        <select value={sysId} onChange={(e) => setSysId(e.target.value)}>
+        <select value={sysId} onChange={(e) => setSysId(e.target.value)} aria-label="Diffusion system">
           {DIFFUSION_SYSTEMS.map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}

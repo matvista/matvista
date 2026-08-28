@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import {
   JOMINY_DISTANCES,
   JOMINY_RATES,
@@ -11,6 +12,8 @@ import {
   coolingPath,
   criticalCoolingRate,
   predict,
+  tangentCoolingRate,
+  TRACE_FRACTION,
   type CurvePoint,
 } from '../heattreat/model';
 
@@ -32,18 +35,28 @@ const JW = 720;
 const JH = 300;
 const JPAD = { l: 62, r: 24, t: 16, b: 48 };
 
+/**
+ * Product colours, chosen to clear 3:1 against **both** the light and the dark
+ * page (WCAG 1.4.11, non-text contrast). These are hard-coded rather than
+ * themed, so each has to work on either ground: the old fine-pearlite violet
+ * sat at 2.27:1 on dark and the old bainite green at 2.67:1 on light.
+ * The product name is always printed beside the swatch as well, so colour is
+ * never the only thing carrying the meaning.
+ */
 const PRODUCT_COLOR: Record<string, string> = {
-  'coarse pearlite': '#2a78d6',
-  'fine pearlite': '#4a3aa7',
-  bainite: '#1baf7a',
-  martensite: '#e34948',
+  'coarse pearlite': '#2976d2', // light 4.32, dark 4.27
+  'fine pearlite': '#776bbd', // light 4.31, dark 4.28
+  bainite: '#15875e', // light 4.28, dark 4.31
+  martensite: '#d34443', // light 4.26, dark 4.33
 };
 
 const AUSTENITISE = 850;
 
 export function HeatTreatment() {
-  const [steelId, setSteelId] = useState('1080');
-  const [rate, setRate] = useState(50);
+  // The steel and the cooling rate are the scenario; the Jominy panel is just
+  // whether a section is expanded, so it stays out of the URL.
+  const [steelId, setSteelId] = useRouteString('steel', '1080');
+  const [rate, setRate] = useRouteNumber('rate', 50, 0.01, 5000);
   const [showJominy, setShowJominy] = useState(true);
 
   const steel = getSteel(steelId);
@@ -52,7 +65,11 @@ export function HeatTreatment() {
     () => predict(steel, ttt, AUSTENITISE, rate),
     [steel, ttt, rate],
   );
-  const critical = criticalCoolingRate(steel, AUSTENITISE);
+  const critical = useMemo(
+    () => criticalCoolingRate(steel, ttt, AUSTENITISE),
+    [steel, ttt],
+  );
+  const tangent = tangentCoolingRate(steel, AUSTENITISE);
   const path = useMemo(
     () => coolingPath(AUSTENITISE, rate, T_MIN, T_MAX),
     [rate],
@@ -223,7 +240,7 @@ export function HeatTreatment() {
 
         <div className="ht-bar" role="img" aria-label="Predicted phase fractions">
           {outcome.fractions
-            .filter((f) => f.fraction > 0.001)
+            .filter((f) => f.fraction >= TRACE_FRACTION)
             .map((f) => (
               <div
                 key={f.product}
@@ -238,7 +255,7 @@ export function HeatTreatment() {
         </div>
         <ul className="ht-frac-list">
           {outcome.fractions
-            .filter((f) => f.fraction > 0.001)
+            .filter((f) => f.fraction >= TRACE_FRACTION)
             .map((f) => (
               <li key={f.product}>
                 <i style={{ background: PRODUCT_COLOR[f.product] }} />
@@ -264,7 +281,7 @@ export function HeatTreatment() {
             </tr>
             <tr>
               <th scope="row">Critical rate</th>
-              <td>{fmtRate(critical)} °C/s</td>
+              <td>{critical == null ? 'faster than this model resolves' : `${fmtRate(critical)} °C/s`}</td>
             </tr>
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
@@ -291,14 +308,25 @@ export function HeatTreatment() {
         <div className="density-box">
           <h3>Hardenability</h3>
           <p className="density-note">
-            The critical rate is the slowest quench that still misses the nose entirely. Below it
-            you get martensite; above it you start trading martensite for pearlite. It is a
-            property of the <em>steel</em>, and it is the number alloying is bought to change —
-            note that 4340 needs a quench roughly a hundred times gentler than 1080, while its
-            martensite is no harder.
+            The critical rate is the slowest quench that still misses the nose entirely. Quench{' '}
+            <em>faster</em> and you keep fully martensitic structure; quench <em>slower</em> and you
+            start trading martensite away for pearlite and bainite. It is a property of the{' '}
+            <em>steel</em>, and it is the number alloying is bought to change — note that 4340
+            needs a quench roughly a hundred times gentler than 1080, while its martensite is
+            actually a little softer.
+          </p>
+          <p className="density-note">
+            Drawing a cooling line straight through the nose — the usual by-hand construction —
+            gives {fmtRate(tangent)} °C/s for this steel
+            {critical != null && `, against the ${fmtRate(critical)} °C/s quoted above`}. Merely
+            touching the nose is not enough: the path has to linger near it long enough to
+            accumulate a full incubation, which is what the diagram above actually integrates.
+            Set the slider just below the quoted rate and the first trace of bainite appears —
+            transformation beginning barely above Mˢ, on the lower limb of the C.
           </p>
           <button
             className={`toggle ${showJominy ? 'toggle-on' : ''}`}
+            aria-pressed={showJominy}
             onClick={() => setShowJominy((v) => !v)}
           >
             {showJominy ? 'Hide' : 'Show'} Jominy comparison

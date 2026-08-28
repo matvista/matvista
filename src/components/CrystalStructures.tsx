@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
+import elementsRaw from '../data/elements.json';
+import { useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
 import { CrystalScene, type ViewMode } from './CrystalScene';
 import type { ElementData } from '../types';
 
-export function CrystalStructures({ elements }: { elements: ElementData[] }) {
-  const [id, setId] = useState('fcc');
+// Imported here rather than passed down: `App` no longer holds the dataset, and
+// this module is lazy, so the data rides in a chunk the reader has asked for.
+const elements = elementsRaw as ElementData[];
+
+export function CrystalStructures() {
+  const [id, setId] = useRouteString('s', 'fcc');
   const [mode, setMode] = useState<ViewMode>('ball');
   const [showCell, setShowCell] = useState(true);
   const [showBonds, setShowBonds] = useState(false);
   const [showCoordination, setShowCoordination] = useState(false);
-  const [metalSymbol, setMetalSymbol] = useState('Cu');
+  const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
 
   const structure = getStructure(id);
   const metal = METALS.find((m) => m.symbol === metalSymbol) ?? METALS[4];
@@ -23,7 +29,7 @@ export function CrystalStructures({ elements }: { elements: ElementData[] }) {
       if (held?.structure === id) return current;
       return METALS.find((m) => m.structure === id)?.symbol ?? current;
     });
-  }, [id]);
+  }, [id, setMetalSymbol]);
 
   // The density calculator only applies to the elemental metal structures.
   const densityStructure = getStructure(metal.structure);
@@ -42,7 +48,7 @@ export function CrystalStructures({ elements }: { elements: ElementData[] }) {
       volumeOverA3,
     );
     return { ...result, measured: el.density, mass: el.atomic_mass };
-  }, [elements, metal, densityStructure]);
+  }, [metal, densityStructure]);
 
   const error =
     density?.measured != null
@@ -63,12 +69,14 @@ export function CrystalStructures({ elements }: { elements: ElementData[] }) {
           <div className="toggle-group" role="group" aria-label="Display mode">
             <button
               className={`toggle ${mode === 'ball' ? 'toggle-on' : ''}`}
+              aria-pressed={mode === 'ball'}
               onClick={() => setMode('ball')}
             >
               Ball & stick
             </button>
             <button
               className={`toggle ${mode === 'fill' ? 'toggle-on' : ''}`}
+              aria-pressed={mode === 'fill'}
               onClick={() => setMode('fill')}
             >
               Space-filling

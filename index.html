@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MatVista</title>
+    <script>
+      // Applied before first paint, so a reader who has chosen light does not
+      // get a flash of dark (or the reverse) while the bundle loads. Kept inline
+      // and tiny for that reason — a separate file would arrive too late.
+      // Mirrors src/theme.ts; storage access is guarded because it throws
+      // outright in private mode and when site data is blocked.
+      try {
+        var t = localStorage.getItem('matvista-theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

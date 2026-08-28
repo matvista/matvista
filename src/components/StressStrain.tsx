@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import {
   MECH_MATERIALS,
   buildCurve,
@@ -18,7 +19,7 @@ const plotH = H - PAD.t - PAD.b;
 const OFFSET = 0.002;
 
 export function StressStrain() {
-  const [id, setId] = useState('steel1020');
+  const [id, setId] = useRouteString('m', 'steel1020');
   const [compare, setCompare] = useState(false);
   const [showTrue, setShowTrue] = useState(false);
   const [showResilience, setShowResilience] = useState(true);
@@ -300,9 +301,9 @@ function MaterialReadout({
 }
 
 function HallPetchPanel() {
-  const [d, setD] = useState(0.05);
-  const [sigma0, setSigma0] = useState(70);
-  const [ky, setKy] = useState(23.4);
+  const [d, setD] = useRouteNumber('d', 0.05, 0.005, 0.2);
+  const [sigma0, setSigma0] = useRouteNumber('s0', 70, 20, 200);
+  const [ky, setKy] = useRouteNumber('ky', 23.4, 5, 40);
 
   const sy = hallPetch(d, sigma0, ky);
 

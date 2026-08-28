@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { METALS } from '../crystal/metals';
 import {
@@ -36,25 +37,35 @@ const CUBIC_METALS = METALS.filter((m) => m.structure !== 'hcp');
 const PLANE_PRESETS = ['111', '110', '100', '1̄11', '112', '123'];
 const DIRECTION_PRESETS = ['111', '110', '100', '1̄10', '112', '123'];
 
+/** Read once at render; the setting is not one people flip mid-session. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof matchMedia !== 'undefined' &&
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 export function MillerIndices() {
-  const [structureId, setStructureId] = useState('fcc');
-  const [planeText, setPlaneText] = useState('111');
-  const [directionText, setDirectionText] = useState('1̄10');
+  const [structureId, setStructureId] = useRouteString('s', 'fcc');
+  const [planeText, setPlaneText] = useRouteString('plane', '111');
+  const [directionText, setDirectionText] = useRouteString('dir', '1̄10');
   const [showPlane, setShowPlane] = useState(true);
   const [showDirection, setShowDirection] = useState(true);
   const [showAtoms, setShowAtoms] = useState(true);
   const [showIntercepts, setShowIntercepts] = useState(true);
-  const [autoRotate, setAutoRotate] = useState(true);
-  const [metalSymbol, setMetalSymbol] = useState('Cu');
-  const [slipModeId, setSlipModeId] = useState('fcc');
-  const [axisText, setAxisText] = useState('123');
-  const [sigma, setSigma] = useState(50);
+  // A cell that spins on its own is exactly what "reduce motion" is asking us
+  // not to do. There is a checkbox either way, so this only sets the default.
+  const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
+  const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
+  const [slipModeId, setSlipModeId] = useRouteString('slip', 'fcc');
+  const [axisText, setAxisText] = useRouteString('axis', '123');
+  const [sigma, setSigma] = useRouteNumber('sigma', 50, 0, 300);
 
   // Keep the slip panel in step with the cell on screen, the way the crystal
   // module keeps its density example in step with its structure selector.
   useEffect(() => {
     if (structureId === 'fcc' || structureId === 'bcc') setSlipModeId(structureId);
-  }, [structureId]);
+  }, [structureId, setSlipModeId]);
 
   const structure = getStructure(structureId);
   const plane = useMemo(() => parseIndices(planeText), [planeText]);
@@ -389,6 +400,11 @@ export function MillerIndices() {
               </div>
             </div>
 
+            {/* The slip table is wider than a phone; let it scroll on its own
+                rather than forcing the whole page sideways. Focusable and
+                labelled, because a scroll region a mouse can reach must be
+                reachable from a keyboard too. */}
+            <div className="table-scroll" role="region" aria-label="Slip systems, ranked" tabIndex={0}>
             <table className="mi-table">
               <thead>
                 <tr>
@@ -423,6 +439,7 @@ export function MillerIndices() {
                 ))}
               </tbody>
             </table>
+            </div>
             {ranked.length > 12 && (
               <p className="mi-dim">Showing the 12 highest of {ranked.length} systems.</p>
             )}

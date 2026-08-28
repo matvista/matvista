@@ -1,117 +1,99 @@
-import { useState } from 'react';
-import elementsRaw from './data/elements.json';
-import type { ElementData, PropertyDef } from './types';
-import { PROPERTIES } from './types';
-import { RAMP } from './color';
-import { PeriodicTable } from './components/PeriodicTable';
-import { ElementDetail } from './components/ElementDetail';
-import { CrystalStructures } from './components/CrystalStructures';
-import { MillerIndices } from './components/MillerIndices';
-import { DefectsDiffusion } from './components/DefectsDiffusion';
-import { StressStrain } from './components/StressStrain';
-import { PhaseDiagrams } from './components/PhaseDiagrams';
-import { HeatTreatment } from './components/HeatTreatment';
-import { AshbyChart } from './components/AshbyChart';
-import { XrdSimulator } from './components/XrdSimulator';
+import { Suspense, lazy } from 'react';
 import { AppNav } from './components/AppNav';
-import type { Tab } from './nav';
+import { ThemeToggle } from './components/ThemeToggle';
+import { findItemOrNull } from './nav';
+import { Landing } from './components/Landing';
+import { useTab } from './useRoute';
 import './index.css';
 
-const elements = elementsRaw as ElementData[];
+/**
+ * Modules load on demand.
+ *
+ * Deployment is Cloudflare Pages: static assets, hashed and immutably cached at
+ * the edge, so a split chunk costs one extra request on first open and nothing
+ * after. What that buys is first paint — three.js is far and away the largest
+ * dependency here and it is reachable from only three modules, so shipping it
+ * to a reader who opened the periodic table was most of the payload wasted.
+ *
+ * The landing page is the one eager view, because it is what a visitor sees
+ * first; everything behind it, the periodic table included, is a chunk away.
+ */
+const PeriodicTrends = lazy(() =>
+  import('./components/PeriodicTrends').then((m) => ({ default: m.PeriodicTrends })),
+);
+const CrystalStructures = lazy(() =>
+  import('./components/CrystalStructures').then((m) => ({ default: m.CrystalStructures })),
+);
+const MillerIndices = lazy(() =>
+  import('./components/MillerIndices').then((m) => ({ default: m.MillerIndices })),
+);
+const DefectsDiffusion = lazy(() =>
+  import('./components/DefectsDiffusion').then((m) => ({ default: m.DefectsDiffusion })),
+);
+const StressStrain = lazy(() =>
+  import('./components/StressStrain').then((m) => ({ default: m.StressStrain })),
+);
+const FailureAnalysis = lazy(() =>
+  import('./components/FailureAnalysis').then((m) => ({ default: m.FailureAnalysis })),
+);
+const PhaseDiagrams = lazy(() =>
+  import('./components/PhaseDiagrams').then((m) => ({ default: m.PhaseDiagrams })),
+);
+const HeatTreatment = lazy(() =>
+  import('./components/HeatTreatment').then((m) => ({ default: m.HeatTreatment })),
+);
+const AshbyChart = lazy(() =>
+  import('./components/AshbyChart').then((m) => ({ default: m.AshbyChart })),
+);
+const Semiconductors = lazy(() =>
+  import('./components/Semiconductors').then((m) => ({ default: m.Semiconductors })),
+);
+const Corrosion = lazy(() =>
+  import('./components/Corrosion').then((m) => ({ default: m.Corrosion })),
+);
+const XrdSimulator = lazy(() =>
+  import('./components/XrdSimulator').then((m) => ({ default: m.XrdSimulator })),
+);
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('trends');
-  const [property, setProperty] = useState<PropertyDef>(PROPERTIES[0]);
-  const [selected, setSelected] = useState<ElementData | null>(
-    elements.find((e) => e.symbol === 'Fe') ?? null,
-  );
-  const [hovered, setHovered] = useState<ElementData | null>(null);
-
-  const values = elements
-    .map((e) => e[property.key] as number | null)
-    .filter((v): v is number => v != null && v > 0);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const hoverValue = hovered ? (hovered[property.key] as number | null) : null;
+  const [tab, setTab] = useTab();
 
   return (
-    <div className="app">
+    <div className={`app ${tab === 'home' ? 'app-home' : ''}`}>
       <header className="app-header">
-        <h1>MatVista</h1>
+        <button className="app-brand" onClick={() => setTab('home')} aria-label="MatVista home">
+          MatVista
+        </button>
         <AppNav tab={tab} onSelect={setTab} />
+        {/* Every module page needs a heading of its own; the landing page brings
+            its own <h1>, so this one only appears behind it. It stays in the DOM
+            at narrow widths where it is visually hidden, or small screens would
+            have no <h1> at all. */}
+        {tab !== 'home' && (
+          <h1 className="nav-current" aria-live="polite">
+            {findItemOrNull(tab)?.label ?? ''}
+          </h1>
+        )}
+        <ThemeToggle />
       </header>
 
-      {tab === 'crystals' && <CrystalStructures elements={elements} />}
+      {tab === 'home' && <Landing />}
 
-      {tab === 'miller' && <MillerIndices />}
-
-      {tab === 'defects' && <DefectsDiffusion />}
-
-      {tab === 'mechanical' && <StressStrain />}
-
-      {tab === 'phase' && <PhaseDiagrams />}
-
-      {tab === 'heattreat' && <HeatTreatment />}
-
-      {tab === 'selection' && <AshbyChart />}
-
-      {tab === 'xrd' && <XrdSimulator />}
-
-      {tab === 'trends' && (
-        <>
-      <div className="controls">
-        <label htmlFor="prop">Color by</label>
-        <select
-          id="prop"
-          value={property.key}
-          onChange={(e) =>
-            setProperty(PROPERTIES.find((p) => p.key === e.target.value) ?? PROPERTIES[0])
-          }
-        >
-          {PROPERTIES.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <div className="legend" aria-hidden="true">
-          <span className="legend-label">
-            {min.toLocaleString()} {property.unit}
-          </span>
-          <div
-            className="legend-bar"
-            style={{ background: `linear-gradient(to right, ${RAMP.join(',')})` }}
-          />
-          <span className="legend-label">
-            {max.toLocaleString()} {property.unit}
-            {property.log ? ' (log)' : ''}
-          </span>
-        </div>
-        <div className="hover-readout" role="status">
-          {hovered
-            ? `${hovered.name}: ${
-                hoverValue != null ? `${hoverValue} ${property.unit}` : 'no data'
-              }`
-            : 'Hover an element'}
-        </div>
-      </div>
-
-      <main className="layout">
-        <div>
-          <PeriodicTable
-            elements={elements}
-            property={property}
-            selected={selected}
-            onSelect={setSelected}
-            onHover={setHovered}
-          />
-          <p className="trend-note">
-            <strong>Trend to spot:</strong> {property.trendNote}
-          </p>
-        </div>
-        {selected && <ElementDetail element={selected} />}
-      </main>
-        </>
+      {tab !== 'home' && (
+        <Suspense fallback={<p className="mod-loading">Loading module…</p>}>
+          {tab === 'trends' && <PeriodicTrends />}
+          {tab === 'crystals' && <CrystalStructures />}
+          {tab === 'miller' && <MillerIndices />}
+          {tab === 'defects' && <DefectsDiffusion />}
+          {tab === 'mechanical' && <StressStrain />}
+          {tab === 'failure' && <FailureAnalysis />}
+          {tab === 'semiconductors' && <Semiconductors />}
+          {tab === 'phase' && <PhaseDiagrams />}
+          {tab === 'heattreat' && <HeatTreatment />}
+          {tab === 'selection' && <AshbyChart />}
+          {tab === 'corrosion' && <Corrosion />}
+          {tab === 'xrd' && <XrdSimulator />}
+        </Suspense>
       )}
     </div>
   );

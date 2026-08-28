@@ -147,6 +147,15 @@ function scheil(
 
 export type Product = 'coarse pearlite' | 'fine pearlite' | 'bainite' | 'martensite';
 
+/**
+ * Below this fraction a diffusional product is reported as a trace rather than
+ * as a phase in its own right. Shared with the UI so the bar chart and the
+ * prose can never disagree about whether there is anything there: without it,
+ * a path just under the critical rate renders a zero-width segment captioned
+ * "0%" beside a sentence claiming that much product formed.
+ */
+export const TRACE_FRACTION = 0.005;
+
 export interface Outcome {
   /** Product fractions, summing to 1. */
   fractions: { product: Product; fraction: number }[];
@@ -203,7 +212,18 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
 
   // Ran out of temperature before the finish curve was satisfied: whatever had
   // transformed stays, and the remaining austenite goes martensitic at Mˢ.
-  const fraction = Math.min(1, Math.max(0, finishRun.sum));
+  //
+  // `finishRun.sum` is additivity progress accumulated from the austenitising
+  // temperature, so it is already non-zero at the instant transformation
+  // begins — the path has been banking fractions of the *finish* incubation
+  // all the way down. Reporting it raw made the readout jump straight to
+  // 7–10% product the moment the path touched the start curve, which
+  // contradicts the legend's own definition of that curve as 1% transformed.
+  // Re-zeroing at the start event makes the fraction run continuously from 0
+  // there to 1 where the finish curve is satisfied.
+  const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
+  const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
+  const fraction = Math.min(1, Math.max(0, progress));
   return {
     fractions: [
       { product, fraction },
@@ -213,7 +233,10 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       hardnessOf(steel, product) * fraction + steel.hardness.martensite * (1 - fraction),
     startTemp: hitStart.T,
     complete: false,
-    summary: `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${product} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
+    summary:
+      fraction < TRACE_FRACTION
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${product} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
   };
 }
 
@@ -231,10 +254,61 @@ function hardnessOf(steel: Steel, product: Product): number {
 }
 
 /**
+ * The by-hand construction: the straight cooling line drawn through the nose,
+ * (T₀ − T_nose) / t_nose. This is what a student reads off the diagram with a
+ * ruler, and it is deliberately kept alongside `criticalCoolingRate` rather
+ * than replaced by it — the gap between the two is the teaching point, not an
+ * error. A path that merely touches the nose has not lingered near it long
+ * enough to accumulate a full incubation, so additivity permits a slower
+ * quench than the ruler does.
+ */
+export function tangentCoolingRate(steel: Steel, startTemp: number): number {
+  return (startTemp - steel.nose.temp) / steel.nose.time;
+}
+
+/** Bracket the critical-rate search runs over, °C/s. */
+const RATE_MIN = 0.001;
+const RATE_MAX = 1e5;
+
+/** True when the path outruns the nose entirely, by `predict`'s own criterion. */
+function missesNose(steel: Steel, ttt: TttModel, startTemp: number, rate: number): boolean {
+  return predict(steel, ttt, startTemp, rate).startTemp === null;
+}
+
+/**
  * The cooling rate that just misses the nose — the slowest quench that still
  * gives fully martensitic structure. This single number is what "hardenability"
  * names, and it is why the alloy grades exist.
+ *
+ * Found by bisecting `predict` rather than by the textbook construction of a
+ * cooling line drawn through the nose. The two disagree, and the disagreement
+ * is the honest part: the tangent construction gives 310 °C/s for 1080 where
+ * additivity gives 233, because a path that merely *touches* the nose has not
+ * spent enough time near it to accumulate a full incubation. Deriving the
+ * number from the same model that draws the outcome means the table and the
+ * slider can never contradict each other — set the slider just below this rate
+ * and the first pearlite appears.
+ *
+ * `predict` is monotone in rate (faster cooling never yields less martensite),
+ * which is what licenses the bisection.
+ *
+ * Returns null when even `RATE_MAX` cannot outrun the nose.
  */
-export function criticalCoolingRate(steel: Steel, startTemp: number): number {
-  return (startTemp - steel.nose.temp) / steel.nose.time;
+export function criticalCoolingRate(
+  steel: Steel,
+  ttt: TttModel,
+  startTemp: number,
+): number | null {
+  if (!missesNose(steel, ttt, startTemp, RATE_MAX)) return null;
+  if (missesNose(steel, ttt, startTemp, RATE_MIN)) return RATE_MIN;
+
+  let lo = RATE_MIN; // hits the nose
+  let hi = RATE_MAX; // misses it
+  // 50 bisections in log space resolve the bracket far finer than the data warrants.
+  for (let i = 0; i < 50; i++) {
+    const mid = Math.sqrt(lo * hi);
+    if (missesNose(steel, ttt, startTemp, mid)) hi = mid;
+    else lo = mid;
+  }
+  return hi;
 }

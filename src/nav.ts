@@ -16,7 +16,10 @@ export type Tab =
   | 'phase'
   | 'heattreat'
   | 'mechanical'
+  | 'failure'
+  | 'semiconductors'
   | 'selection'
+  | 'corrosion'
   | 'xrd';
 
 export interface NavItem {
@@ -84,6 +87,16 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Mechanical properties',
         blurb: 'Stress–strain curves and Hall–Petch',
       },
+      {
+        id: 'failure',
+        label: 'Failure analysis',
+        blurb: 'Fracture, fatigue, crack growth, creep',
+      },
+      {
+        id: 'semiconductors',
+        label: 'Semiconductors',
+        blurb: 'Band gaps, doping, the p–n junction',
+      },
     ],
   },
   {
@@ -100,6 +113,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Material selection',
         blurb: 'Ashby charts and performance indices',
       },
+      {
+        id: 'corrosion',
+        label: 'Corrosion',
+        blurb: 'Galvanic couples, Nernst, Pourbaix',
+      },
     ],
   },
 ];
@@ -107,7 +125,15 @@ export const NAV_GROUPS: NavGroup[] = [
 const ITEMS = NAV_GROUPS.flatMap((g) => g.items.map((item) => ({ ...item, group: g })));
 
 export function findItem(tab: Tab): NavItem & { group: NavGroup } {
-  const hit = ITEMS.find((i) => i.id === tab);
+  const hit = findItemOrNull(tab);
   if (!hit) throw new Error(`No nav entry for tab "${tab}"`);
   return hit;
+}
+
+/**
+ * Lookup for routes that may legitimately not be a module — the landing page is
+ * a route with no nav entry, so the header must be able to ask without throwing.
+ */
+export function findItemOrNull(tab: string): (NavItem & { group: NavGroup }) | null {
+  return ITEMS.find((i) => i.id === tab) ?? null;
 }

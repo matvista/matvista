@@ -122,10 +122,24 @@ subject to the lens rotation.
 |------|-------|--------|-----|-------|
 | Consistent custom focus ring | 2 | 1 | 2.0 | Nothing suppresses outlines, so browser default rings are intact and focus **is** visible — this is polish, not a defect. Landing elements have bespoke `:focus-visible`; module controls do not. |
 
-### Roadmap modules
+### Roadmap modules — in scope, to be built
 
-`ROADMAP.md` holds fatigue/creep/fracture, semiconductors, corrosion. Backlog candidates,
-not a queue — a product gap that improves all nine existing modules generally beats a tenth.
+`ROADMAP.md`'s remaining modules are **committed deliverables**, not optional candidates:
+
+| Module | Value | Effort | V/E | Notes |
+|------|-------|--------|-----|-------|
+| Fatigue, creep & fracture | 5 | 3 | 1.7 | The mechanical module covers monotonic loading only, leaving out the entire failure half of the subject. Most real components fail by fatigue rather than yielding. S–N curves, Paris-law crack growth, Griffith/K_IC critical crack size, Larson–Miller creep. |
+| Semiconductors & band structure | 4 | 3 | 1.3 | The biggest audience expansion available — brings in electrical engineering and physics, not only materials. No overlap with any existing module. |
+| Corrosion & the galvanic series | 4 | 2 | 2.0 | Cheapest of the three and concrete: which metal corrodes, the driving voltage, the area-ratio effect, simplified Pourbaix diagrams. |
+
+Materials Project integration stays **deferred** — it cannot hold under static hosting
+without a key-bearing proxy, which the deployment model rules out. See `ROADMAP.md`.
+
+Sequencing note: a product gap that improves all nine existing modules can still take
+precedence over a tenth module in any given iteration, but the three above are to be built,
+not merely considered. Each must clear the same gates — physics verified against published
+values by assertion **before** any UI, and every option in a selector checked to be inside
+its formula's domain.
 
 ## Rejected
 

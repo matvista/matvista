@@ -12,19 +12,11 @@ import { StressStrain } from './components/StressStrain';
 import { PhaseDiagrams } from './components/PhaseDiagrams';
 import { AshbyChart } from './components/AshbyChart';
 import { XrdSimulator } from './components/XrdSimulator';
+import { AppNav } from './components/AppNav';
+import type { Tab } from './nav';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
-
-type Tab =
-  | 'trends'
-  | 'crystals'
-  | 'miller'
-  | 'defects'
-  | 'mechanical'
-  | 'phase'
-  | 'selection'
-  | 'xrd';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -45,56 +37,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>MatVista</h1>
-        <nav className="app-nav">
-          <button
-            className={`nav-item ${tab === 'trends' ? 'nav-active' : ''}`}
-            onClick={() => setTab('trends')}
-          >
-            Periodic trends
-          </button>
-          <button
-            className={`nav-item ${tab === 'crystals' ? 'nav-active' : ''}`}
-            onClick={() => setTab('crystals')}
-          >
-            Crystal structures
-          </button>
-          <button
-            className={`nav-item ${tab === 'miller' ? 'nav-active' : ''}`}
-            onClick={() => setTab('miller')}
-          >
-            Miller indices
-          </button>
-          <button
-            className={`nav-item ${tab === 'defects' ? 'nav-active' : ''}`}
-            onClick={() => setTab('defects')}
-          >
-            Defects &amp; diffusion
-          </button>
-          <button
-            className={`nav-item ${tab === 'mechanical' ? 'nav-active' : ''}`}
-            onClick={() => setTab('mechanical')}
-          >
-            Mechanical properties
-          </button>
-          <button
-            className={`nav-item ${tab === 'phase' ? 'nav-active' : ''}`}
-            onClick={() => setTab('phase')}
-          >
-            Phase diagrams
-          </button>
-          <button
-            className={`nav-item ${tab === 'selection' ? 'nav-active' : ''}`}
-            onClick={() => setTab('selection')}
-          >
-            Material selection
-          </button>
-          <button
-            className={`nav-item ${tab === 'xrd' ? 'nav-active' : ''}`}
-            onClick={() => setTab('xrd')}
-          >
-            XRD
-          </button>
-        </nav>
+        <AppNav tab={tab} onSelect={setTab} />
       </header>
 
       {tab === 'crystals' && <CrystalStructures elements={elements} />}

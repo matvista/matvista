@@ -56,8 +56,92 @@ body {
 
 .app-nav {
   display: flex;
+  align-items: center;
   gap: 1rem;
   font-size: 0.85rem;
+}
+
+.nav-group {
+  position: relative;
+}
+
+.nav-group-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nav-caret {
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+
+/* The module in view, since a closed menu cannot show it. */
+.nav-current {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding-left: 1rem;
+  border-left: 1px solid var(--hairline);
+}
+
+.nav-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 20;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+button.nav-menu-item {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+button.nav-menu-item:hover,
+button.nav-menu-item:focus-visible {
+  background: var(--page);
+  color: var(--ink);
+}
+
+.nav-menu-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.nav-menu-blurb {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.nav-menu-current .nav-menu-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .nav-current {
+    display: none;
+  }
+
+  .app-nav {
+    gap: 0.75rem;
+  }
 }
 
 button.nav-item {

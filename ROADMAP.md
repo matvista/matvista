@@ -1,10 +1,12 @@
 # MatVista roadmap
 
-Planned modules, in build order. Each entry records what it teaches, what data it
-needs, what it reuses, and whether it holds under static hosting.
+Modules in build order. Each entry records what it teaches, what data it needs,
+what it reuses, and whether it holds under static hosting.
 
-Shipped modules are listed in the [README](README.md). This file only covers what
-is next.
+Entries stay here after they ship, rewritten to say what was actually built and
+where it departed from the plan — the departures are the useful part, and they
+are usually where the physics forced a different shape. The [README](README.md)
+lists what exists from a reader's point of view; this file is the build record.
 
 ## Order of work
 
@@ -177,19 +179,24 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 213 kB | 67.5 kB | always |
-| stylesheet | 22.7 kB | 4.9 kB | always |
+| `index` — React, shell, landing page | 215 kB | 68.2 kB | always |
+| stylesheet | 24.5 kB | 5.2 kB | always |
 | `geometry` — three.js + drei + fiber | 904 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| nine per-module chunks | — | 35.5 kB total | one per module opened |
+| eleven per-module chunks | — | 49.8 kB total | one per module opened |
+| shared helpers (`miller`, `metals`, `materials`, `color`, `CrystalScene`) | — | 7.1 kB total | with whichever module needs them |
 
 The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — about 72 kB gzipped, measured at 70 kB over the wire. three.js is
+stylesheet — 73.4 kB gzipped, measured at **72 kB over the wire**. three.js is
 reachable from only three modules and is no longer part of first paint.
 
-A module of the existing kind costs **3.5–5.6 kB gzipped** (nine of them total
-35.5 kB), so the three remaining modules add roughly 12–15 kB — negligible beside
-the 3D library, and none of it in first paint since each arrives in its own chunk.
+A module of the existing kind costs **1.8–8.6 kB gzipped** (eleven of them total
+49.8 kB), so the one remaining module adds roughly 5 kB — negligible beside the
+3D library, and none of it in first paint since each arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the
 three.js chunk at 904 kB raw, so there is a wide margin.
+
+These figures come from `npm run build` and from `performance.getEntriesByType`
+against `npm run preview`. The dev server does not chunk the same way, so never
+quote sizes from it.

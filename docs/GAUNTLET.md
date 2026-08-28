@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **mobile/responsive** (iteration 13). Next lens: **docs-and-claims
-truth**; the last outstanding roadmap module is semiconductors.
+Last shipped lens: **docs-and-claims truth** (iteration 14) — two full rotations complete.
+Next lens: **correctness**; the last outstanding roadmap module is semiconductors.
 
 **Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
 modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
@@ -106,6 +106,7 @@ do not invent busywork to fill it.
 | 11 | Roadmap module | **Corrosion** — galvanic couples with the area-ratio effect, EMF series with live Nernst shifts, Pourbaix diagrams for Fe/Al/Zn |
 | 12 | Accessibility | Phase diagram was mouse-only (WCAG 2.1.1 Level A); plus every text colour measured and brought to AA — the amber state colour was at 2.11:1 |
 | 13 | Mobile/responsive | Touch targets: 60+ controls were under the 24×24 minimum on every route. All now pass except the periodic table, which is an Essential exception |
+| 14 | Docs-and-claims truth | Bundle table and test count re-measured; ROADMAP's description of itself corrected; a cross-module URL param leak found while verifying the README's own examples |
 
 ## Backlog
 
@@ -470,6 +471,29 @@ failed:
   *is* the information. That is exactly the "Essential" exception 2.5.8 provides for, and
   the table is legible at 375 px. **Do not "fix" this later without re-reading that
   exception.**
+
+### From iteration 14 (docs truth, second pass)
+
+- **The stale number was one I wrote myself.** The README said "281 assertions" — true when
+  iteration 10 shipped, false two modules later at 319. Rephrased to "over 300", which can
+  only become more true as the suite grows. **Do not write an exact count into prose that
+  nothing asserts.** Counts that matter belong in `docs.test.ts`.
+- ROADMAP's bundle table had drifted with two modules added: index 213 → 215 kB raw
+  (67.5 → 68.2 gzip), stylesheet 22.7 → 24.5 kB, "nine per-module chunks totalling 35.5 kB"
+  → eleven totalling 49.8 kB, and a per-module range of 3.5–5.6 kB → **1.8–8.6 kB**. First
+  paint is now 73.4 kB gzip, 72 kB over the wire. A new shared-helpers row was added.
+- ROADMAP claimed "this file only covers what is next" while containing four shipped
+  write-ups. Reframed as the build record, which is what it had become.
+- **Verifying the README's four example links found a real bug.** After visiting Miller and
+  then jumping to the phase module, the URL came back as
+  `#/phase?T=200&slip=bcc&sys=pb-sn&x=40` — a Miller param leaking into another module's
+  link. It did **not** reproduce on the two follow-up attempts, so it is timing-dependent;
+  the pane was `hidden` at the time, which throttles timers and widens the debounce window.
+- Rather than chase an unreproducible symptom, the *class* was closed: the setters resolve
+  `current.tab` at call time, so a stale effect from a module just left would write into
+  the new module's query. They now drop writes from a module that is no longer current.
+  Hammered at nine delays from 0–400 ms across the module boundary: **no leak at any**, and
+  derived state, sliders and selects still write normally within a module.
 
 ### Standing hazards (unverified, worth checking when touched)
 

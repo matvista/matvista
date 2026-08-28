@@ -157,15 +157,23 @@ export function useRouteString(
   fallback: string,
 ): [string, Setter<string>] {
   const route = useRoute();
+  const tab = route.tab;
   const set = useCallback<Setter<string>>(
     (value) => {
+      // A component belonging to the module we have just left can still fire an
+      // effect after the route has moved on — the modules that keep derived
+      // state in step (the slip mode, the density metal) do exactly that. The
+      // setter resolves `current.tab` at call time, so such a write would land
+      // in the *new* module's query string and leak a foreign param into a
+      // shared link. Writes from a module that is no longer current are dropped.
+      if (current.tab !== tab) return;
       const params = { ...current.params };
       const next = resolve(value, current.params[key] ?? fallback);
       if (next === fallback) delete params[key];
       else params[key] = next;
       setRoute({ tab: current.tab, params }, 'replace');
     },
-    [key, fallback],
+    [key, fallback, tab],
   );
   return [route.params[key] ?? fallback, set];
 }
@@ -187,9 +195,11 @@ export function useRouteNumber(
   max = Infinity,
 ): [number, Setter<number>] {
   const route = useRoute();
+  const tab = route.tab;
   const clamp = (n: number) => Math.min(max, Math.max(min, n));
   const set = useCallback<Setter<number>>(
     (value) => {
+      if (current.tab !== tab) return; // see the note in useRouteString
       const params = { ...current.params };
       const raw = resolve(value, parseNumber(current.params[key], fallback));
       const next = Math.min(max, Math.max(min, raw));
@@ -200,7 +210,7 @@ export function useRouteNumber(
       else params[key] = text;
       setRoute({ tab: current.tab, params }, 'replace');
     },
-    [key, fallback, min, max],
+    [key, fallback, min, max, tab],
   );
   return [clamp(parseNumber(route.params[key], fallback)), set];
 }

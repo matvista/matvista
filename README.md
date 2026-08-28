@@ -59,7 +59,7 @@ Then open http://localhost:5173.
 npm test
 ```
 
-281 assertions over the physics, the data and the routing. They are not smoke tests: the
+Over 300 assertions over the physics, the data and the routing. They are not smoke tests: the
 ones that matter check computed values against published worked examples — Callister's
 8.2 µm Griffith flaw in soda-lime glass, his S-590 creep rupture at 800 °C and 140 MPa,
 the 0.35 wt% carbon steel that comes out 44% pearlite, the carburising problem that takes

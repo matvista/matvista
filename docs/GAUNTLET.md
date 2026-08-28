@@ -20,6 +20,29 @@ What does *not* change when running unattended:
   is reverted or reduced — never shipped with the gate waived and a note.
 - **One concern per iteration.** Autonomy is not licence to widen scope.
 
+### Deployment: Cloudflare Pages
+
+Every change is judged against this. It is not a footnote — it constrains what can be
+built at all.
+
+- **Pure static assets.** No Workers, no Pages Functions, no server, no runtime network
+  calls. Anything needing a backend is out of scope, not a later iteration. This is why
+  routing is hash-based: there is no server to rewrite unknown paths onto `index.html`.
+- **Per-file limit 25 MiB**, and the whole site is served from CDN edge cache.
+- **Optimise for it, every time.** Concretely, that means:
+  - Keep the *initial* payload small. Assets are hashed and immutably cached, so
+    code-splitting is close to free on repeat visits and pure win on first paint. Anything
+    a reader does not need before their first interaction should be a dynamic `import()`.
+  - Do the work at build time, never at request time. Precompute, inline, and ship data
+    as part of the bundle rather than fetching it.
+  - Embed or self-host assets. No third-party CDN, font host, or analytics call — each is
+    a runtime network dependency the deployment model does not want, and a privacy and
+    latency cost on every visit.
+  - Prefer SVG and CSS over raster images; when a raster is unavoidable, size it for its
+    largest real display size and keep it well under the file limit.
+- **Record the measurement.** Any claim about bundle size, first paint or payload must
+  come from an actual `npm run build`, quoted with the number, not estimated.
+
 ### Deciding without asking
 
 Where a choice is genuinely the user's, the default is the reversible option, recorded as
@@ -71,7 +94,7 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Landing / onboarding | 4 | 2 | 2.0 | App opens onto the periodic table with no statement of what MatVista is. |
+| **Landing page (in scope, committed)** | 5 | 3 | 1.7 | **Explicitly in scope.** A visually rich, content-rich promotional front page: what MatVista is, who it is for, and what each of the nine modules does, with enough visual substance to sell the tool rather than a paragraph of text. It becomes the site's entry point, so it is also the first thing every visitor downloads — build it *after* the bundle is split, and hold it to the Cloudflare Pages rules above (inline SVG over images, no external fonts or CDNs, no runtime fetches). Must deep-link into modules using the routing from iteration 2. |
 | Deep-link the remaining view state | 2 | 2 | 1.0 | Iteration 2 deliberately kept view chrome (bond display, auto-rotate, elastic zoom, Jominy panel, Ashby class filter and selected material) out of the URL. Revisit only if readers actually ask to share those. |
 | Copy-link button per module | 3 | 1 | 3.0 | Routing now makes this trivial and it is how most readers would discover that links are shareable — they will not think to copy the address bar. Strong follow-on from iteration 2. |
 | Export (SVG/PNG charts, CSV tables) | 4 | 3 | 1.3 | Wanted for reports and slides. Downloads work in a normal web app. |

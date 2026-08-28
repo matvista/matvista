@@ -25,3 +25,12 @@ export function normalize(
   }
   return (value - min) / (max - min);
 }
+
+/**
+ * Crystallographic overlay colours, shared between the 3D scene and the DOM
+ * legends that label it. Kept here rather than in a component file so both
+ * sides import the same values without breaking fast refresh.
+ */
+export const AXIS_COLORS = { a: '#e34948', b: '#1baf7a', c: '#3987e5' } as const;
+export const PLANE_COLOR = '#eb6834';
+export const DIRECTION_COLOR = '#eda100';

@@ -6,6 +6,7 @@ import { RAMP } from './color';
 import { PeriodicTable } from './components/PeriodicTable';
 import { ElementDetail } from './components/ElementDetail';
 import { CrystalStructures } from './components/CrystalStructures';
+import { MillerIndices } from './components/MillerIndices';
 import { DefectsDiffusion } from './components/DefectsDiffusion';
 import { StressStrain } from './components/StressStrain';
 import { PhaseDiagrams } from './components/PhaseDiagrams';
@@ -15,7 +16,15 @@ import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
-type Tab = 'trends' | 'crystals' | 'defects' | 'mechanical' | 'phase' | 'selection' | 'xrd';
+type Tab =
+  | 'trends'
+  | 'crystals'
+  | 'miller'
+  | 'defects'
+  | 'mechanical'
+  | 'phase'
+  | 'selection'
+  | 'xrd';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('trends');
@@ -48,6 +57,12 @@ export default function App() {
             onClick={() => setTab('crystals')}
           >
             Crystal structures
+          </button>
+          <button
+            className={`nav-item ${tab === 'miller' ? 'nav-active' : ''}`}
+            onClick={() => setTab('miller')}
+          >
+            Miller indices
           </button>
           <button
             className={`nav-item ${tab === 'defects' ? 'nav-active' : ''}`}
@@ -83,6 +98,8 @@ export default function App() {
       </header>
 
       {tab === 'crystals' && <CrystalStructures elements={elements} />}
+
+      {tab === 'miller' && <MillerIndices />}
 
       {tab === 'defects' && <DefectsDiffusion />}
 

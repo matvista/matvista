@@ -74,8 +74,7 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **product gap / landing page** (iteration 4). Next lens:
-**accessibility**, resuming the rotation.
+Last shipped lens: **accessibility** (iteration 5). Next lens: **mobile/responsive**.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -87,6 +86,7 @@ do not invent busywork to fill it.
 | 2 | Product gap | Hash routing: every module and its result-affecting state is linkable and shareable, with back/forward, clamped values and graceful fallback |
 | 3 | Performance | Route-level code splitting: first paint 355.68 → **84.18 kB gzip** (−76%); three.js no longer ships to readers who never open a 3D module |
 | 4 | Product gap | Landing page: promotional entry point with hero, stats, nine illustrated module cards, provenance and audience sections — all inline SVG, and first paint down again to **67.45 kB gzip** |
+| 5 | Accessibility | Every route now has exactly one `<h1>`, no unlabelled controls, `aria-pressed` on all five state toggles, and reduced-motion honoured |
 
 ## Backlog
 
@@ -118,7 +118,7 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Accessibility of pre-Miller modules | 4 | 3 | 1.3 | Newer modules set `aria-invalid`/`aria-describedby`; older ones may signal state by colour alone. Unaudited. |
+| Consistent custom focus ring | 2 | 1 | 2.0 | Nothing suppresses outlines, so browser default rings are intact and focus **is** visible — this is polish, not a defect. Landing elements have bespoke `:focus-visible`; module controls do not. |
 | Mobile across all nine modules | 4 | 3 | 1.3 | Canvases fixed at 460 px; wide SVGs and tables have no horizontal scroll containers. Untested. |
 
 ### Roadmap modules
@@ -219,6 +219,33 @@ the dev server does not chunk the same way, so never quote sizes from it.
   **Any number written into landing copy must be checked against `src/data` first.**
   Verified as true: 118 elements, 54 Ashby materials, 5 performance indices, 8 structures,
   7 mechanical metals, 3 steels, 3 phase systems, 4 lattices × 4 X-ray sources, MIT licence.
+
+### From iteration 5 (accessibility)
+
+Audited all ten routes programmatically (accessible-name resolution over every
+`input`/`select`/`textarea`, heading counts, SVG naming, buttons without text) rather than
+spot-checking, and re-ran the same audit after fixing.
+
+- **No module route had an `<h1>`** — the landing page held the only one and modules
+  started at `<h2>`. The header's current-module label was a `<span>` inside `<nav>`; it is
+  now the page's `<h1>`, which also removed a duplicate announcement.
+- That label was `display: none` under 620px, which would have left every module page on a
+  phone with no `<h1>` at all. It is now visually hidden instead of removed.
+- Three selects in `DefectsDiffusion` had **no accessible name** (structure, defect type,
+  diffusion system). The audit caught these; reading the file would not have, because they
+  looked like every other select.
+- Five `button.toggle` controls signalled state **by background colour alone** — no
+  `aria-pressed` existed anywhere in the codebase. Now all five expose it. `aria-pressed`
+  was chosen over a radiogroup for the two segmented pairs deliberately: radio semantics
+  would need roving tabindex and arrow-key handling, and a half-built radio pattern is
+  worse than a correct toggle one.
+- The `err-ok`/`err-off` cells were checked and are **not** colour-only — each carries text
+  ("yes — a possible slip system" / "no"), so colour is supplementary. No change needed.
+- Nothing in the CSS suppresses outlines, so focus remains visible on module controls via
+  browser defaults. A consistent custom ring is backlogged as polish, not a defect.
+- `prefers-reduced-motion` is now honoured globally, and the 3D cell's auto-rotate defaults
+  off under it. There was already a checkbox to stop it, so WCAG 2.2.2 was met before;
+  this is the stronger form.
 
 ### Standing hazards (unverified, worth checking when touched)
 

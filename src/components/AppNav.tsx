@@ -60,11 +60,6 @@ export function AppNav({ tab, onSelect }: Props) {
           onChoose={choose}
         />
       ))}
-      {/* Which module is open is otherwise only visible inside a closed menu.
-          On the landing page there is no module, so there is nothing to name. */}
-      <span className="nav-current" aria-live="polite">
-        {current?.label ?? ''}
-      </span>
     </nav>
   );
 }

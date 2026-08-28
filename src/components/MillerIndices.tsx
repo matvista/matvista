@@ -37,6 +37,14 @@ const CUBIC_METALS = METALS.filter((m) => m.structure !== 'hcp');
 const PLANE_PRESETS = ['111', '110', '100', '1̄11', '112', '123'];
 const DIRECTION_PRESETS = ['111', '110', '100', '1̄10', '112', '123'];
 
+/** Read once at render; the setting is not one people flip mid-session. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof matchMedia !== 'undefined' &&
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 export function MillerIndices() {
   const [structureId, setStructureId] = useRouteString('s', 'fcc');
   const [planeText, setPlaneText] = useRouteString('plane', '111');
@@ -45,7 +53,9 @@ export function MillerIndices() {
   const [showDirection, setShowDirection] = useState(true);
   const [showAtoms, setShowAtoms] = useState(true);
   const [showIntercepts, setShowIntercepts] = useState(true);
-  const [autoRotate, setAutoRotate] = useState(true);
+  // A cell that spins on its own is exactly what "reduce motion" is asking us
+  // not to do. There is a checkbox either way, so this only sets the default.
+  const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
   const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
   const [slipModeId, setSlipModeId] = useRouteString('slip', 'fcc');
   const [axisText, setAxisText] = useRouteString('axis', '123');

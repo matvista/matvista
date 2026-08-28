@@ -69,12 +69,14 @@ export function CrystalStructures() {
           <div className="toggle-group" role="group" aria-label="Display mode">
             <button
               className={`toggle ${mode === 'ball' ? 'toggle-on' : ''}`}
+              aria-pressed={mode === 'ball'}
               onClick={() => setMode('ball')}
             >
               Ball & stick
             </button>
             <button
               className={`toggle ${mode === 'fill' ? 'toggle-on' : ''}`}
+              aria-pressed={mode === 'fill'}
               onClick={() => setMode('fill')}
             >
               Space-filling

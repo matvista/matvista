@@ -318,6 +318,7 @@ export function HeatTreatment() {
           </p>
           <button
             className={`toggle ${showJominy ? 'toggle-on' : ''}`}
+            aria-pressed={showJominy}
             onClick={() => setShowJominy((v) => !v)}
           >
             {showJominy ? 'Hide' : 'Show'} Jominy comparison

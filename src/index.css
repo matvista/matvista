@@ -49,10 +49,9 @@ body {
   margin-bottom: 1rem;
 }
 
-.app-header h1 {
-  font-size: 1.35rem;
-  margin: 0;
-}
+/* The brand is a button now (it navigates home); the current-module heading is
+   the only <h1> in the header, and it is deliberately small — it labels the
+   page rather than shouting at it. */
 
 .app-nav {
   display: flex;
@@ -79,6 +78,8 @@ body {
 /* The module in view, since a closed menu cannot show it. */
 .nav-current {
   font-size: 0.78rem;
+  font-weight: 400;
+  margin: 0;
   color: var(--muted);
   padding-left: 1rem;
   border-left: 1px solid var(--hairline);
@@ -135,8 +136,18 @@ button.nav-menu-item:focus-visible {
 }
 
 @media (max-width: 620px) {
+  /* Hidden from view, kept for assistive technology: `display: none` would
+     leave narrow screens with no <h1> on any module page. */
   .nav-current {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   .app-nav {
@@ -1737,4 +1748,18 @@ button.nav-active {
   .ld-hero-art { order: -1; }
   .ld-hero-svg { max-height: 220px; }
   .ld-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; }
+}
+
+/* Readers who ask for less motion get it: the landing cards stop lifting, and
+   anything else that transitions settles immediately. The 3D cell's auto-rotate
+   is defaulted off separately, in MillerIndices. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

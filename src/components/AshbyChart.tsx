@@ -99,6 +99,7 @@ export function AshbyChart() {
           <div className="toggle-group" role="group" aria-label="Vertical axis">
             <button
               className={`toggle ${yProp === 'modulus' ? 'toggle-on' : ''}`}
+              aria-pressed={yProp === 'modulus'}
               onClick={() => {
                 setYProp('modulus');
                 setIndexId('e12-rho');
@@ -108,6 +109,7 @@ export function AshbyChart() {
             </button>
             <button
               className={`toggle ${yProp === 'strength' ? 'toggle-on' : ''}`}
+              aria-pressed={yProp === 'strength'}
               onClick={() => {
                 setYProp('strength');
                 setIndexId('s-rho');

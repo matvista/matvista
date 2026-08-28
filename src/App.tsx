@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { AppNav } from './components/AppNav';
+import { findItemOrNull } from './nav';
 import { Landing } from './components/Landing';
 import { useTab } from './useRoute';
 import './index.css';
@@ -54,6 +55,15 @@ export default function App() {
           MatVista
         </button>
         <AppNav tab={tab} onSelect={setTab} />
+        {/* Every module page needs a heading of its own; the landing page brings
+            its own <h1>, so this one only appears behind it. It stays in the DOM
+            at narrow widths where it is visually hidden, or small screens would
+            have no <h1> at all. */}
+        {tab !== 'home' && (
+          <h1 className="nav-current" aria-live="polite">
+            {findItemOrNull(tab)?.label ?? ''}
+          </h1>
+        )}
       </header>
 
       {tab === 'home' && <Landing />}

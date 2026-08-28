@@ -74,7 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **accessibility** (iteration 5). Next lens: **mobile/responsive**.
+Last shipped lens: **mobile/responsive** (iteration 6). Next lens: **docs-and-claims
+truth**, which completes one full rotation.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -87,6 +88,7 @@ do not invent busywork to fill it.
 | 3 | Performance | Route-level code splitting: first paint 355.68 → **84.18 kB gzip** (−76%); three.js no longer ships to readers who never open a 3D module |
 | 4 | Product gap | Landing page: promotional entry point with hero, stats, nine illustrated module cards, provenance and audience sections — all inline SVG, and first paint down again to **67.45 kB gzip** |
 | 5 | Accessibility | Every route now has exactly one `<h1>`, no unlabelled controls, `aria-pressed` on all five state toggles, and reduced-motion honoured |
+| 6 | Mobile/responsive | No horizontal overflow on any of the ten routes at 320, 375, 768 or 1280 px — was overflowing on 10/10 routes at 320 px and on Miller at 375 px |
 
 ## Backlog
 
@@ -119,7 +121,6 @@ subject to the lens rotation.
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
 | Consistent custom focus ring | 2 | 1 | 2.0 | Nothing suppresses outlines, so browser default rings are intact and focus **is** visible — this is polish, not a defect. Landing elements have bespoke `:focus-visible`; module controls do not. |
-| Mobile across all nine modules | 4 | 3 | 1.3 | Canvases fixed at 460 px; wide SVGs and tables have no horizontal scroll containers. Untested. |
 
 ### Roadmap modules
 
@@ -246,6 +247,31 @@ spot-checking, and re-ran the same audit after fixing.
 - `prefers-reduced-motion` is now honoured globally, and the 3D cell's auto-rotate defaults
   off under it. There was already a checkbox to stop it, so WCAG 2.2.2 was met before;
   this is the stronger form.
+
+### From iteration 6 (mobile)
+
+Measured `documentElement.scrollWidth > clientWidth` on all ten routes at 320, 375, 768 and
+1280 px, and located each cause by hiding elements one at a time until the overflow
+cleared — the *deepest* element that fixes it is the culprit, not the widest.
+
+- **The backlog's stated causes were wrong.** Canvases are not "fixed at 460 px" — that was
+  already responsive. The real causes were: a slip table with no scroll container, four nav
+  group buttons that would not wrap, and a landing grid with a hard 300 px minimum track.
+- **A scroll container alone was not enough.** Wrapping the slip table in `overflow-x: auto`
+  left the page still overflowing, because `.mi-slip` is a grid item and grid items default
+  to `min-width: auto` — they refuse to shrink below their content. `.mi-layout > * {
+  min-width: 0 }` is what lets the scroll container do its job. **Both halves are needed;
+  either alone does nothing.**
+- `repeat(auto-fit|auto-fill, minmax(Npx, 1fr))` floors the track at N and pushes the page
+  sideways below that width. `minmax(min(Npx, 100%), 1fr)` is the fix. Note this bit the
+  landing grid but **not** `.mi-inputs`, where I guessed the same cause and was wrong —
+  testing the candidate fix live before editing is what caught that.
+- A `<canvas>` carries an intrinsic 300×150 until the renderer measures its container.
+  `.canvas-wrap canvas { max-width: 100% }` guarantees in CSS what r3f only guarantees
+  after its first measurement. **Honest caveat:** the 300 px reading that exposed this was
+  the hidden-pane harness trap (`visibilityState` was `hidden`, so r3f's ResizeObserver
+  never ran), so the rule is defensive — it did clear the measured overflow, but a real
+  browser would very likely have sized the canvas before paint anyway.
 
 ### Standing hazards (unverified, worth checking when touched)
 

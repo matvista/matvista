@@ -56,6 +56,9 @@ body {
 .app-nav {
   display: flex;
   align-items: center;
+  /* Four group buttons do not fit beside the brand on the narrowest phones;
+     let them wrap rather than pushing the page sideways. */
+  flex-wrap: wrap;
   gap: 1rem;
   font-size: 0.85rem;
 }
@@ -1041,6 +1044,14 @@ button.nav-active {
   }
 }
 
+/* Grid items default to `min-width: auto`, which means they refuse to shrink
+   below their content's minimum — so the wide slip table pushed the whole page
+   sideways even once it had its own scroll container. Allowing the items to
+   shrink is what lets `.table-scroll` actually do its job. */
+.mi-layout > * {
+  min-width: 0;
+}
+
 .mi-inputs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1680,8 +1691,10 @@ button.nav-active {
 /* ------------------------------------------------------------ module grid */
 .ld-grid {
   display: grid;
-  /* 300px keeps nine cards to a tidy 3x3 at full width rather than 4+4+1. */
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* 300px keeps nine cards to a tidy 3x3 at full width rather than 4+4+1.
+     The min() is what lets the track shrink below 300px on a 320px phone —
+     a bare minmax(300px, 1fr) floors the track and pushes the page sideways. */
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 1rem;
 }
 .ld-card {
@@ -1762,4 +1775,22 @@ button.nav-active {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* A table that cannot fit a narrow screen scrolls inside its own box; without
+   this the whole page scrolls sideways, which loses the header and the nav. */
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A <canvas> carries an intrinsic 300x150 until the 3D renderer measures its
+   container and resizes it. On a narrow phone that default is wider than the
+   column, so guarantee in CSS what the renderer only guarantees after its first
+   measurement. Defensive: the observer normally fires before paint. */
+.canvas-wrap canvas {
+  max-width: 100%;
 }

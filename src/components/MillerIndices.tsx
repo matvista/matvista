@@ -400,6 +400,11 @@ export function MillerIndices() {
               </div>
             </div>
 
+            {/* The slip table is wider than a phone; let it scroll on its own
+                rather than forcing the whole page sideways. Focusable and
+                labelled, because a scroll region a mouse can reach must be
+                reachable from a keyboard too. */}
+            <div className="table-scroll" role="region" aria-label="Slip systems, ranked" tabIndex={0}>
             <table className="mi-table">
               <thead>
                 <tr>
@@ -434,6 +439,7 @@ export function MillerIndices() {
                 ))}
               </tbody>
             </table>
+            </div>
             {ranked.length > 12 && (
               <p className="mi-dim">Showing the 12 highest of {ranked.length} systems.</p>
             )}

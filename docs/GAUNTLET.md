@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **docs-and-claims truth** (iteration 14) — two full rotations complete.
-Next lens: **correctness**; the last outstanding roadmap module is semiconductors.
+Last shipped lens: **correctness** (iteration 15). Next: **semiconductors**, the last
+outstanding roadmap module, then the rotation resumes at product gap.
 
 **Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
 modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
@@ -107,6 +107,7 @@ do not invent busywork to fill it.
 | 12 | Accessibility | Phase diagram was mouse-only (WCAG 2.1.1 Level A); plus every text colour measured and brought to AA — the amber state colour was at 2.11:1 |
 | 13 | Mobile/responsive | Touch targets: 60+ controls were under the 24×24 minimum on every route. All now pass except the periodic table, which is an Essential exception |
 | 14 | Docs-and-claims truth | Bundle table and test count re-measured; ROADMAP's description of itself corrected; a cross-module URL param leak found while verifying the README's own examples |
+| 15 | Correctness | Audited `crystal/structures` and `crystal/geometry`, the last unaudited physics. **No defects found** — 45 guards added, including a direct check of the "CN = 12" label |
 
 ## Backlog
 
@@ -494,6 +495,31 @@ failed:
   the new module's query. They now drop writes from a module that is no longer current.
   Hammered at nine delays from 0–400 ms across the module boundary: **no leak at any**, and
   derived state, sliders and selects still write normally within a module.
+
+### From iteration 15 (crystal geometry audit)
+
+`crystal/structures.ts` and `crystal/geometry.ts` were the last physics never audited.
+**The audit found no defects.** That is the finding, and it is worth recording as one:
+
+- APF is not independent data — it follows from N, the a↔R relation and the cell volume.
+  Every stated value matches the geometry it is derived from, to two decimals.
+- `coordinationShell()` returns exactly `CN` neighbours for every structure, so the
+  checkbox labelled "Coordination shell (CN = 12)" shows twelve atoms. **That label is now
+  asserted**, not assumed.
+- `fillRadius` is exactly half the nearest approach for every elemental structure, which is
+  what makes the space-filling view touch rather than overlap or gap.
+- Every `bondCutoff` sits between the first and second neighbour shell.
+- HCP is built as the conventional prism: 12 shared corners, 2 basal centres, 3 interior,
+  giving 12/6 + 2/2 + 3 = 6, with the midplane atoms at exactly a/√3 from the axis.
+- **The one red assertion was my test's bug again — the fourth time.** `buildBonds` takes
+  `(atoms, cutoff)`; I passed it the structure, so `atoms.length` was `undefined` and every
+  count came back zero, which read exactly like "the Bonds toggle does nothing". `tsc`
+  would have caught it, but I ran the test before the build. **Run `npm run build` before
+  believing a new test's failure** — the tests are type-checked and the compiler is faster
+  at spotting this than I am.
+- Both 3D toggles were confirmed in the browser for the first time: bonds render as
+  cylinders and the coordination shell highlights. Needed the tab fronted — hidden panes
+  do not run `requestAnimationFrame`, so the canvas screenshots blank.
 
 ### Standing hazards (unverified, worth checking when touched)
 

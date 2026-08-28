@@ -332,7 +332,7 @@ export function Landing() {
           ['12', 'interactive modules'],
           ['118', 'elements in the table'],
           ['54', 'materials in the Ashby chart'],
-          ['0', 'sign-ups or downloads'],
+          ['8', 'crystal structures in 3D'],
         ].map(([n, label]) => (
           <div key={label} className="ld-stat">
             <strong>{n}</strong>

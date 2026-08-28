@@ -25,8 +25,21 @@
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
+/*
+ * Dark tokens are declared twice, deliberately.
+ *
+ * The media block is the default: follow the operating system. It is guarded
+ * against `[data-theme="light"]` so a reader who has explicitly chosen light
+ * is not overridden by their OS being dark. The attribute block below then
+ * lets an explicit dark choice win on a light system. Without both, the toggle
+ * only works in one direction — which is the usual way this gets shipped
+ * half-broken.
+ *
+ * No token gets its only definition inside either block: `:root` above holds
+ * the complete light palette, and these only redefine.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     color-scheme: dark;
     --surface: #1a1a19;
     --page: #0d0d0d;
@@ -42,6 +55,23 @@
     --bad-ink: #e44d4c; /* 5.06:1 */
   }
 }
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --page: #0d0d0d;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781; /* 5.41:1 on the dark page — already compliant */
+  --hairline: #2c2c2a;
+  --border: rgba(255, 255, 255, 0.1);
+  --accent: #3987e5;
+  --accent-ink: #3987e5; /* 5.34:1 */
+  --accent-strong: #3277ca; /* white text on this reaches 4.54:1 */
+  --ok-ink: #1baf7a; /* 6.90:1 */
+  --bad-ink: #e44d4c; /* 5.06:1 */
+}
+
 
 * {
   box-sizing: border-box;
@@ -1968,3 +1998,39 @@ input[type='range'] {
 .sc-band { fill: none; stroke: var(--accent); stroke-width: 2; }
 .sc-fermi { stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 5 4; }
 .sc-depletion { fill: var(--muted); opacity: 0.14; }
+
+/* ------------------------------------------------------------ theme toggle -- */
+/* Pushed to the end of the header row so it sits apart from the navigation,
+   which is about where you are rather than how it looks. */
+.theme-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.theme-option {
+  font: inherit;
+  font-size: 0.72rem;
+  min-height: 24px;
+  padding: 0.15rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.theme-option:hover {
+  color: var(--ink);
+}
+.theme-option-on {
+  background: var(--accent-strong);
+  color: #fff;
+}
+.theme-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

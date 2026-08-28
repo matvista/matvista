@@ -86,3 +86,16 @@ describe('navigation model', () => {
     }
   });
 });
+
+/**
+ * The landing page prints four counts in its stats strip. They are the most
+ * visible numbers in the product, so they are asserted like any other.
+ */
+describe('landing page stats strip', () => {
+  it('12 modules, 118 elements, 54 Ashby materials, 8 crystal structures', () => {
+    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
+    expect((elementsRaw as unknown[]).length).toBe(118);
+    expect(SELECTION_MATERIALS).toHaveLength(54);
+    expect(STRUCTURES).toHaveLength(8);
+  });
+});

@@ -74,7 +74,7 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **roadmap module** (iteration 16). Next lens: **product gap**.
+Last shipped lens: **product gap** (iteration 17). Next lens: **performance**.
 
 **The roadmap is complete.** All five planned modules have shipped; only the deferred
 Materials Project integration remains, and it cannot hold under static hosting. Future
@@ -112,6 +112,7 @@ do not invent busywork to fill it.
 | 14 | Docs-and-claims truth | Bundle table and test count re-measured; ROADMAP's description of itself corrected; a cross-module URL param leak found while verifying the README's own examples |
 | 15 | Correctness | Audited `crystal/structures` and `crystal/geometry`, the last unaudited physics. **No defects found** — 45 guards added, including a direct check of the "CN = 12" label |
 | 16 | Roadmap module | **Semiconductors** — band gaps, doping and conductivity, the p–n junction. The last roadmap module; ROADMAP is now complete |
+| 17 | Product gap | Light/dark/auto theme toggle, and a landing stat that read as a metric rather than a feature |
 
 ## Backlog
 
@@ -127,7 +128,6 @@ subject to the lens rotation.
 | Deep-link the remaining view state | 2 | 2 | 1.0 | Iteration 2 deliberately kept view chrome (bond display, auto-rotate, elastic zoom, Jominy panel, Ashby class filter and selected material) out of the URL. Revisit only if readers actually ask to share those. |
 | Copy-link button per module | 3 | 1 | 3.0 | Routing now makes this trivial and it is how most readers would discover that links are shareable — they will not think to copy the address bar. Strong follow-on from iteration 2. |
 | Export (SVG/PNG charts, CSV tables) | 4 | 3 | 1.3 | Wanted for reports and slides. Downloads work in a normal web app. |
-| Dark-theme toggle | 2 | 2 | 1.0 | Currently `prefers-color-scheme` only. |
 | Print stylesheet | 2 | 2 | 1.0 | |
 
 ### Technical debt
@@ -555,6 +555,33 @@ found three more in the UI. Worth recording because none was visible by reading 
   doped side; mass action and charge neutrality across the whole doping range.
 - **Fourth occurrence** of the memo-closing-over-a-scale lint warning. Fixed the same way:
   hoist fixed bounds to module scope. The pattern is now noted in the file itself.
+
+### From iteration 17 (theme toggle)
+
+Both items came from the user, and both were fair.
+
+- **A theme toggle needs the dark tokens declared twice**, or it only works in one
+  direction. The media query has to be guarded (`:root:not([data-theme="light"])`) so an
+  explicit light choice survives a dark OS, and a separate `:root[data-theme="dark"]` block
+  is what lets an explicit dark choice win on a light OS. Shipping only the first is the
+  usual half-broken version. **Both directions were tested**, by emulating each OS
+  preference and picking the opposite.
+- **Three states, not two.** "Auto" has to exist, or the control cannot express "follow my
+  system" — and that is the default most readers want. It is a `radiogroup` with roving
+  tabindex rather than three `aria-pressed` buttons, because exactly one is always in
+  effect, which is what radio semantics mean.
+- The preference lives in `localStorage`, **not the URL**: a link shared with a class
+  should open in the reader's own theme, not the sender's. Every storage access is guarded —
+  it throws outright in private mode and where site data is blocked.
+- A small inline script in `index.html` applies the stored value **before first paint**,
+  otherwise a reader who chose light gets a flash of dark while the bundle loads. It
+  duplicates a few lines of `theme.ts` on purpose; a separate file would arrive too late.
+- **"0 sign-ups or downloads" was the wrong shape for a stat.** In a strip of counts of
+  things the product *has*, a zero reads as a metric rather than a feature — and it
+  duplicated the line immediately below it ("Free and open source · runs entirely in your
+  browser · nothing to install"), which already makes the point in the right voice.
+  Replaced with "8 crystal structures in 3D", and all four strip values are now asserted in
+  `docs.test.ts`.
 
 ### Standing hazards (unverified, worth checking when touched)
 

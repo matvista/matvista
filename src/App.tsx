@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { AppNav } from './components/AppNav';
+import { ThemeToggle } from './components/ThemeToggle';
 import { findItemOrNull } from './nav';
 import { Landing } from './components/Landing';
 import { useTab } from './useRoute';
@@ -73,6 +74,7 @@ export default function App() {
             {findItemOrNull(tab)?.label ?? ''}
           </h1>
         )}
+        <ThemeToggle />
       </header>
 
       {tab === 'home' && <Landing />}

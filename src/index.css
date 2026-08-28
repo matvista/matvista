@@ -1907,3 +1907,49 @@ button.nav-active {
   background: var(--surface);
   color: var(--ink);
 }
+
+/* ------------------------------------------------------- touch targets ---- */
+/*
+ * WCAG 2.5.8 asks for 24x24 CSS px. Measured at 375 px, most interactive
+ * controls came in under that on height: the nav group buttons at 20, the
+ * index preset chips at 22, the checkbox labels at 19, the Ashby legend and
+ * ranking rows at 20 and 16, and the family-member links at 16.
+ *
+ * These set a floor without changing type size or the visual rhythm — the
+ * extra height is padding, so nothing reflows on a desktop.
+ *
+ * The periodic table is the deliberate exception. Its cells are 16 px wide at
+ * 375 px, and widening them to 24 would push the table past the viewport and
+ * force horizontal scrolling. A periodic table read one column at a time is no
+ * longer a periodic table: the spatial arrangement *is* the information, which
+ * is exactly the "Essential" exception 2.5.8 provides for.
+ */
+button.nav-item,
+.mi-chip,
+.mi-link,
+.ab-legend-item,
+.ab-rank-item,
+.ss-check,
+.crystal-checks label,
+.mi-checks label {
+  min-height: 24px;
+}
+
+/* Flex children need the alignment too, or the extra height sits under the text. */
+.mi-chip,
+.mi-link,
+.ab-legend-item,
+.ab-rank-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ab-rank-item,
+.ab-legend-item {
+  display: flex;
+}
+
+/* A 16 px-tall range input is hard to grab with a thumb. */
+input[type='range'] {
+  min-height: 24px;
+}

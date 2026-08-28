@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **accessibility** (iteration 12). Next lens: **mobile/responsive**; the
-last outstanding roadmap module is semiconductors.
+Last shipped lens: **mobile/responsive** (iteration 13). Next lens: **docs-and-claims
+truth**; the last outstanding roadmap module is semiconductors.
 
 **Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
 modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
@@ -105,6 +105,7 @@ do not invent busywork to fill it.
 | 10 | Product gap | **Test runner + CI**: 281 permanent assertions (vitest) replacing the throwaway `src/__check.ts` workflow, plus a GitHub Actions check |
 | 11 | Roadmap module | **Corrosion** — galvanic couples with the area-ratio effect, EMF series with live Nernst shifts, Pourbaix diagrams for Fe/Al/Zn |
 | 12 | Accessibility | Phase diagram was mouse-only (WCAG 2.1.1 Level A); plus every text colour measured and brought to AA — the amber state colour was at 2.11:1 |
+| 13 | Mobile/responsive | Touch targets: 60+ controls were under the 24×24 minimum on every route. All now pass except the periodic table, which is an Essential exception |
 
 ## Backlog
 
@@ -440,6 +441,35 @@ colour contrast and whether the drag-driven charts work without a mouse. Both ha
 - **Deliberately left:** ~20 further hard-coded chart hexes. Backlogged with measurements
   rather than swept, because the sweep changes the app's visual identity and deserves its
   own decision. None of them is the sole carrier of meaning.
+
+### From iteration 13 (touch targets)
+
+Iteration 6 fixed horizontal overflow. What it never checked was whether anything is big
+enough to tap. Measured at 375 px against WCAG 2.5.8's 24×24 minimum, most of the app
+failed:
+
+| Control | Was | Where |
+|---|---|---|
+| `button.nav-item` ×4 | 68×**20** | every route |
+| `button.mi-chip` ×16 | 49×**22** | Miller presets, heat treatment |
+| `label.ss-check` ×4 | 99×**19** | mechanical toggles |
+| `button.ab-rank-item` ×10 | 272×**16** | Ashby ranking rows |
+| `button.mi-link` ×24 | 35×**16** | Miller family members |
+| `input[type=range]` | ×**16** | every slider |
+
+- **Measure the *effective* target, not the element.** The first pass flagged bare
+  checkboxes as failures; they sit inside `<label>`s, so the label is the tap area and they
+  were fine. Re-measuring through the label removed the false positives and left a much
+  smaller, real list.
+- Fixed with `min-height: 24px` plus `align-items: center` — padding only, so type size and
+  desktop rhythm are unchanged and nothing reflows. Re-verified: **every route passes at
+  375 px** and no route regained horizontal overflow at 320 px.
+- **The periodic table's 118 cells stay at 16 px wide, deliberately.** Widening them to 24
+  would push 18 columns past the viewport and force horizontal scrolling, and a periodic
+  table read one column at a time is no longer a periodic table — the spatial arrangement
+  *is* the information. That is exactly the "Essential" exception 2.5.8 provides for, and
+  the table is legible at 375 px. **Do not "fix" this later without re-reading that
+  exception.**
 
 ### Standing hazards (unverified, worth checking when touched)
 

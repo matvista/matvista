@@ -74,8 +74,11 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **correctness** (iteration 15). Next: **semiconductors**, the last
-outstanding roadmap module, then the rotation resumes at product gap.
+Last shipped lens: **roadmap module** (iteration 16). Next lens: **product gap**.
+
+**The roadmap is complete.** All five planned modules have shipped; only the deferred
+Materials Project integration remains, and it cannot hold under static hosting. Future
+iterations come from the product/debt backlog below, not from `ROADMAP.md`.
 
 **Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
 modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
@@ -108,6 +111,7 @@ do not invent busywork to fill it.
 | 13 | Mobile/responsive | Touch targets: 60+ controls were under the 24×24 minimum on every route. All now pass except the periodic table, which is an Essential exception |
 | 14 | Docs-and-claims truth | Bundle table and test count re-measured; ROADMAP's description of itself corrected; a cross-module URL param leak found while verifying the README's own examples |
 | 15 | Correctness | Audited `crystal/structures` and `crystal/geometry`, the last unaudited physics. **No defects found** — 45 guards added, including a direct check of the "CN = 12" label |
+| 16 | Roadmap module | **Semiconductors** — band gaps, doping and conductivity, the p–n junction. The last roadmap module; ROADMAP is now complete |
 
 ## Backlog
 
@@ -147,7 +151,6 @@ subject to the lens rotation.
 
 | Module | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Semiconductors & band structure | 4 | 3 | 1.3 | The biggest audience expansion available — brings in electrical engineering and physics, not only materials. No overlap with any existing module. |
 
 Materials Project integration stays **deferred** — it cannot hold under static hosting
 without a key-bearing proxy, which the deployment model rules out. See `ROADMAP.md`.
@@ -520,6 +523,38 @@ failed:
 - Both 3D toggles were confirmed in the browser for the first time: bonds render as
   cylinders and the coordination shell highlights. Needed the tab fronted — hidden panes
   do not run `requestAnimationFrame`, so the canvas screenshots blank.
+
+### From iteration 16 (semiconductors)
+
+The tests found **two real bugs in my own model** before any UI existed, and the browser
+found three more in the UI. Worth recording because none was visible by reading the code.
+
+- **Catastrophic cancellation in the minority carrier.** `carriers()` solved the quadratic
+  as `p = (root − net)/2`. When doping dwarfs n_i, `root ≈ net`, so that subtraction throws
+  away almost every significant digit — the mass-action check failed in the fourth decimal
+  and worse beyond. Now the majority carrier comes from the addition (which never cancels)
+  and the minority from `n_i²/n`. A comment claiming the form avoided cancellation was
+  sitting directly above the form that caused it.
+- **A fixed degeneracy threshold is silicon's number and travels badly.** `isDegenerate`
+  compared doping against 10¹⁹ cm⁻³. Indium antimonide has a 0.17 eV gap, so its entire
+  non-degenerate window at 300 K is about 7 meV wide: it is degenerate at 10¹⁸, where the
+  flat rule called it fine and the built-in potential came out *larger than the band gap* —
+  impossible, since the Fermi levels cannot separate by more than the gap. Now tested
+  physically, as |E_F − E_i| ≥ Eg/2 − 3kT, which is material- and temperature-aware.
+- **A caveat that could never fire.** The freeze-out warning triggers below 100 K and the
+  temperature slider's floor *was* 100 K. Dead branch. The slider now reaches 50 K.
+- `fmtExp` printed 10⁴ as "10.0×10³": the mantissa came back as 9.999999, which is
+  legitimately below ten until `toFixed(1)` rounds it up. **Test the overflow after
+  rounding, not before.**
+- The depletion-region shading ran off the left edge of the axes for a strongly asymmetric
+  junction, because each side was scaled against a half-width that the 91/9 split exceeded.
+  Scaling the *total* drawn width to half the plot keeps it framed. Found by looking at a
+  screenshot, not by any assertion.
+- Verified against published values: kT = 0.0259 eV at 300 K; V_bi = **0.833 V** and
+  W = **147 nm** for silicon doped 10¹⁷/10¹⁷; the depletion region 10× wider on the lightly
+  doped side; mass action and charge neutrality across the whole doping range.
+- **Fourth occurrence** of the memo-closing-over-a-scale lint warning. Fixed the same way:
+  hoist fixed bounds to module scope. The pattern is now noted in the file itself.
 
 ### Standing hazards (unverified, worth checking when touched)
 

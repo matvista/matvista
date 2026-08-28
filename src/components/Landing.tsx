@@ -180,6 +180,16 @@ const artCorrosion = (
   </svg>
 );
 
+const artSemi = (
+  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
+    {/* bands bending across a junction, with the flat Fermi level */}
+    <path d="M10 20h30q8 0 12 -9h34" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
+    <path d="M10 46h30q8 0 12 -9h34" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
+    <path d="M10 33h76" fill="none" stroke="var(--ld-accent)" strokeWidth="1.3" strokeDasharray="4 3" />
+    <rect x="38" y="8" width="18" height="44" fill="var(--ld-accent)" opacity="0.16" />
+  </svg>
+);
+
 const CARDS: ModuleCard[] = [
   {
     id: 'trends',
@@ -246,6 +256,14 @@ const CARDS: ModuleCard[] = [
     art: artFailure,
   },
   {
+    id: 'semiconductors',
+    title: 'Semiconductors',
+    href: '#/semiconductors',
+    blurb: 'Band gaps, doping and the p–n junction.',
+    detail: 'Compare band gaps against the visible spectrum, dope a crystal and watch conductivity cross from extrinsic to intrinsic as it heats, then bend the bands across a junction and read off the built-in potential.',
+    art: artSemi,
+  },
+  {
     id: 'corrosion',
     title: 'Corrosion',
     href: '#/corrosion',
@@ -287,7 +305,7 @@ export function Landing() {
             behave the way they do.
           </h1>
           <p className="ld-lede">
-            MatVista turns the core of an undergraduate materials course into eleven things you
+            MatVista turns the core of an undergraduate materials course into twelve things you
             can actually drive: rotate a unit cell, drag a cooling rate across a TTT diagram,
             move a tie line and watch the phase fractions follow. Every number is computed
             from the published relations, not drawn to look right.
@@ -297,7 +315,7 @@ export function Landing() {
               Start with the periodic table
             </a>
             <a className="ld-btn" href="#modules">
-              Browse all eleven modules
+              Browse all twelve modules
             </a>
           </div>
           <p className="ld-note">
@@ -311,7 +329,7 @@ export function Landing() {
 
       <section className="ld-strip">
         {[
-          ['11', 'interactive modules'],
+          ['12', 'interactive modules'],
           ['118', 'elements in the table'],
           ['54', 'materials in the Ashby chart'],
           ['0', 'sign-ups or downloads'],
@@ -324,7 +342,7 @@ export function Landing() {
       </section>
 
       <section className="ld-section" id="modules">
-        <h2 className="ld-h2">The eleven modules</h2>
+        <h2 className="ld-h2">The twelve modules</h2>
         <p className="ld-sub">
           Grouped the way a course is: what the material <em>is</em>, what is going on inside
           it, how it <em>behaves</em>, and how you measure or choose it.

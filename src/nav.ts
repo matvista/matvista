@@ -17,6 +17,7 @@ export type Tab =
   | 'heattreat'
   | 'mechanical'
   | 'failure'
+  | 'semiconductors'
   | 'selection'
   | 'corrosion'
   | 'xrd';
@@ -90,6 +91,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'failure',
         label: 'Failure analysis',
         blurb: 'Fracture, fatigue, crack growth, creep',
+      },
+      {
+        id: 'semiconductors',
+        label: 'Semiconductors',
+        blurb: 'Band gaps, doping, the p–n junction',
       },
     ],
   },

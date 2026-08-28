@@ -15,13 +15,14 @@ lists what exists from a reader's point of view; this file is the build record.
 | ~~1~~ | ~~**Miller indices & slip systems**~~ — shipped | high | low | ✅ |
 | ~~2~~ | ~~**TTT / CCT diagrams & heat treatment**~~ — shipped | very high | medium | ✅ |
 | ~~3~~ | ~~**Fatigue, creep & fracture**~~ — shipped | high | medium | ✅ |
-| 4 | **Semiconductors & band structure** | high | medium | ✅ |
+| ~~4~~ | ~~**Semiconductors & band structure**~~ — shipped | high | medium | ✅ |
 | ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1), (2), (3) and (5) shipped; (4),
-semiconductors, is the last one outstanding. Tracked alongside the
-product-level backlog in [docs/GAUNTLET.md](docs/GAUNTLET.md).
+Ranked by value per unit of effort. **All five have shipped.** What remains is
+the deferred Materials Project integration below, which does not hold under
+static hosting. Product-level work is tracked in
+[docs/GAUNTLET.md](docs/GAUNTLET.md).
 
 ---
 
@@ -101,7 +102,32 @@ steels only), and `BRITTLE_SOLIDS` (for Griffith) — and only the S–N panel r
   231 h against a published ~233 h); the closed-form Paris integration matches a
   400 000-step numerical integration to better than 0.05%.
 
-## 4. Semiconductors & band structure
+## 4. Semiconductors & band structure — shipped
+
+Built in `electronic/model.ts`, `electronic/materials.ts` and
+`components/Semiconductors.tsx`; costs 6.8 kB gzipped. Three panels: band gaps
+against the visible spectrum, doping and conductivity across the extrinsic and
+intrinsic regimes, and p–n junction band bending.
+
+Two departures from the plan below. First, n_i is anchored on published 300 K
+values and scaled with temperature, rather than computed from effective masses:
+DOS effective masses are quoted inconsistently across sources, and the resulting
+n_i moves by a factor of two depending on which set you pick. Second, only four
+of the seven materials carry carrier data. Band gap and mobility are tabulated
+for all seven, a dependable n_i is not, and inventing one for the wide-gap
+compounds so that every panel could offer every material would have put a
+confident number where there is no source — so those three appear in the
+band-gap comparison and nowhere else.
+
+- **Data:** as built — seven materials with band gap, mobilities and gap kind
+  from Callister table 18.3; n_i and relative permittivity for Si, Ge, GaAs and
+  InSb only.
+- **Verified:** kT = 0.0259 eV at 300 K; V_bi = 0.83 V and W = 0.15 µm for
+  silicon doped 10¹⁷/10¹⁷; the mass-action law and charge neutrality hold across
+  the whole doping range; the Arrhenius slope of n_i carries both the −Eg/2k term
+  and the T^{3/2} prefactor.
+
+## 4b. Original plan
 
 Band gap explorer across Si, Ge, GaAs and the compound semiconductors: Fermi
 level as a function of doping and temperature, carrier concentration,

@@ -10,6 +10,7 @@ import { JOMINY_DISTANCES, JOMINY_RATES, STEELS } from './heattreat/steels';
 import { DIFFUSION_SYSTEMS } from './diffusion/model';
 import { BRITTLE_SOLIDS, FATIGUE_BEHAVIOUR, FRACTURE_ALLOYS, GROWTH_CLASSES } from './failure/materials';
 import { EMF_SERIES, GALVANIC_SERIES, POURBAIX } from './corrosion/data';
+import { DOPABLE, SEMICONDUCTORS } from './electronic/materials';
 import elementsRaw from './data/elements.json';
 
 /**
@@ -19,7 +20,7 @@ import elementsRaw from './data/elements.json';
  */
 describe('documented counts', () => {
   it('118 elements', () => expect((elementsRaw as unknown[]).length).toBe(118));
-  it('eleven modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(11));
+  it('twelve modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12));
   it('8 crystal structures', () => expect(STRUCTURES).toHaveLength(8));
   it('12 FCC slip systems', () =>
     expect(slipSystems(SLIP_MODES.find((m) => m.id === 'fcc')!)).toHaveLength(12));
@@ -51,6 +52,11 @@ describe('documented counts', () => {
     expect(GALVANIC_SERIES).toHaveLength(25);
     expect(POURBAIX).toHaveLength(3);
     expect(POURBAIX.map((p) => p.id)).toEqual(['fe', 'al', 'zn']);
+  });
+  it('7 semiconductors, 4 of them with full carrier data', () => {
+    expect(SEMICONDUCTORS).toHaveLength(7);
+    expect(DOPABLE).toHaveLength(4);
+    expect(DOPABLE.map((s) => s.id).sort()).toEqual(['gaas', 'ge', 'insb', 'si']);
   });
   it('fatigue behaviour is defined for every mechanical metal', () => {
     expect(FATIGUE_BEHAVIOUR).toHaveLength(MECH_MATERIALS.length);

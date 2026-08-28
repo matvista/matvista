@@ -1953,3 +1953,18 @@ button.nav-item,
 input[type='range'] {
   min-height: 24px;
 }
+
+/* --------------------------------------------------------- semiconductors -- */
+/* Direct and indirect gaps are the distinction the panel is built around, so
+   they get different fills rather than a legend the reader has to consult. */
+.sc-direct { fill: var(--accent); opacity: 0.85; }
+.sc-indirect { fill: var(--muted); opacity: 0.7; }
+.sc-bar-label { font-size: 11px; fill: var(--ink-2); }
+.sc-visible { fill: #d34443; opacity: 0.1; }
+
+/* Regions the model does not cover are marked, not silently drawn. */
+.sc-invalid { fill: var(--muted); opacity: 0.13; }
+
+.sc-band { fill: none; stroke: var(--accent); stroke-width: 2; }
+.sc-fermi { stroke: var(--ink-2); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.sc-depletion { fill: var(--muted); opacity: 0.14; }

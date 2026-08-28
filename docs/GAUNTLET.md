@@ -4,6 +4,57 @@ One improvement per iteration, verified to a standard defensible in review.
 Lens rotation: correctness → product gap → performance → accessibility →
 mobile/responsive → docs-and-claims truth → repeat.
 
+## Operating protocol
+
+Iterations run **unattended**. Do not stop between them to ask whether to continue, and do
+not end a turn by offering the next iteration for approval — pick the next item and build
+it. The report at the end of each iteration is a record, not a request.
+
+What does *not* change when running unattended:
+
+- **Never push, never open a PR.** Publishing stays the user's call. Work accumulates as
+  one commit per iteration on the `gauntlet` branch and is reported as ready.
+- **Every gate still blocks.** Build clean, no new lint warnings, physics verified against
+  published values by assertion before any UI, browser-verified in the state changed,
+  adversarial self-review before committing. A gate that cannot be cleared means the work
+  is reverted or reduced — never shipped with the gate waived and a note.
+- **One concern per iteration.** Autonomy is not licence to widen scope.
+
+### Deciding without asking
+
+Where a choice is genuinely the user's, the default is the reversible option, recorded as
+an explicit assumption in this file rather than raised as a question. Prefer the choice
+that is cheapest to undo and that keeps existing behaviour working.
+
+**Stop and ask** only for these — they are not reversible by a later iteration:
+
+- Adding a runtime dependency, or changing build/deploy config in a way that affects the
+  Cloudflare Pages static-asset constraint (no Workers, no Functions, no runtime network
+  calls, 25 MiB per file).
+- Deleting or rewriting a module wholesale, or removing published behaviour someone may
+  be linking to.
+- Anything that changes what the deployed site says to its readers about being wrong —
+  i.e. discovering that a shipped number has been teaching something false and the fix
+  implies more than a code change.
+- A product-direction question where two readings lead to materially different products
+  and neither is clearly better.
+
+### Stopping the loop
+
+Halt and say so plainly when the backlog holds nothing worth more than the cost of doing
+it. Padding with low-value work is the failure mode this loop exists to avoid; a short
+honest "nothing left worth doing" is a valid final report. Also halt on a gate that
+resists three genuine attempts — report the blockage rather than lowering the bar.
+
+### Lens rotation state
+
+correctness → **product gap** → performance → accessibility → mobile/responsive →
+docs-and-claims truth → repeat.
+
+Last shipped lens: **correctness** (iteration 1). Next lens: **product gap**.
+If the current lens has nothing worth doing, say so explicitly and take the next lens —
+do not invent busywork to fill it.
+
 ## Shipped
 
 | # | Lens | Change |

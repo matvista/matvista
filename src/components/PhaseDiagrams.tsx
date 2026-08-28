@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import {
   EUTECTOID_X,
   FERRITE_MAX,
@@ -23,11 +24,20 @@ const PHASE_COLOR: Record<string, string> = {
 };
 
 export function PhaseDiagrams() {
-  const [systemId, setSystemId] = useState('fe-c');
+  const [systemId, setSystemId] = useRouteString('sys', 'fe-c');
   const system = PHASE_SYSTEMS.find((s) => s.id === systemId) ?? PHASE_SYSTEMS[2];
 
   // Point of interest, in diagram units. Defaults to a hypoeutectoid steel.
-  const [point, setPoint] = useState<{ x: number; T: number }>({ x: 0.4, T: 650 });
+  // Carried as two params rather than one, so a shared link reads as
+  // `?x=0.4&T=650` — the composition and temperature a reader would quote.
+  const [pointX, setPointX] = useRouteNumber('x', 0.4);
+  const [pointT, setPointT] = useRouteNumber('T', 650);
+  const point = { x: pointX, T: pointT };
+  // The store updates synchronously, so the second write sees the first.
+  const setPoint = (p: { x: number; T: number }) => {
+    setPointX(p.x);
+    setPointT(p.T);
+  };
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState(false);
 

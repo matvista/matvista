@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { METALS } from '../crystal/metals';
 import {
@@ -37,24 +38,24 @@ const PLANE_PRESETS = ['111', '110', '100', '1̄11', '112', '123'];
 const DIRECTION_PRESETS = ['111', '110', '100', '1̄10', '112', '123'];
 
 export function MillerIndices() {
-  const [structureId, setStructureId] = useState('fcc');
-  const [planeText, setPlaneText] = useState('111');
-  const [directionText, setDirectionText] = useState('1̄10');
+  const [structureId, setStructureId] = useRouteString('s', 'fcc');
+  const [planeText, setPlaneText] = useRouteString('plane', '111');
+  const [directionText, setDirectionText] = useRouteString('dir', '1̄10');
   const [showPlane, setShowPlane] = useState(true);
   const [showDirection, setShowDirection] = useState(true);
   const [showAtoms, setShowAtoms] = useState(true);
   const [showIntercepts, setShowIntercepts] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [metalSymbol, setMetalSymbol] = useState('Cu');
-  const [slipModeId, setSlipModeId] = useState('fcc');
-  const [axisText, setAxisText] = useState('123');
-  const [sigma, setSigma] = useState(50);
+  const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
+  const [slipModeId, setSlipModeId] = useRouteString('slip', 'fcc');
+  const [axisText, setAxisText] = useRouteString('axis', '123');
+  const [sigma, setSigma] = useRouteNumber('sigma', 50, 0, 300);
 
   // Keep the slip panel in step with the cell on screen, the way the crystal
   // module keeps its density example in step with its structure selector.
   useEffect(() => {
     if (structureId === 'fcc' || structureId === 'bcc') setSlipModeId(structureId);
-  }, [structureId]);
+  }, [structureId, setSlipModeId]);
 
   const structure = getStructure(structureId);
   const plane = useMemo(() => parseIndices(planeText), [planeText]);

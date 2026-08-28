@@ -14,18 +14,24 @@ import { HeatTreatment } from './components/HeatTreatment';
 import { AshbyChart } from './components/AshbyChart';
 import { XrdSimulator } from './components/XrdSimulator';
 import { AppNav } from './components/AppNav';
-import type { Tab } from './nav';
+import { useRouteString, useTab } from './useRoute';
 import './index.css';
 
 const elements = elementsRaw as ElementData[];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('trends');
-  const [property, setProperty] = useState<PropertyDef>(PROPERTIES[0]);
-  const [selected, setSelected] = useState<ElementData | null>(
-    elements.find((e) => e.symbol === 'Fe') ?? null,
-  );
+  const [tab, setTab] = useTab();
+  // Which property colours the table, and which element the panel describes, are
+  // both part of "what am I looking at" — so both travel in the URL. Hover is
+  // not: it is a pointer position, gone the moment the reader moves the mouse.
+  const [propertyKey, setPropertyKey] = useRouteString('prop', PROPERTIES[0].key);
+  const [selectedSymbol, setSelectedSymbol] = useRouteString('el', 'Fe');
   const [hovered, setHovered] = useState<ElementData | null>(null);
+
+  const property: PropertyDef =
+    PROPERTIES.find((p) => p.key === propertyKey) ?? PROPERTIES[0];
+  const selected: ElementData | null =
+    elements.find((e) => e.symbol === selectedSymbol) ?? null;
 
   const values = elements
     .map((e) => e[property.key] as number | null)
@@ -64,9 +70,7 @@ export default function App() {
         <select
           id="prop"
           value={property.key}
-          onChange={(e) =>
-            setProperty(PROPERTIES.find((p) => p.key === e.target.value) ?? PROPERTIES[0])
-          }
+          onChange={(e) => setPropertyKey(e.target.value)}
         >
           {PROPERTIES.map((p) => (
             <option key={p.key} value={p.key}>
@@ -102,7 +106,7 @@ export default function App() {
             elements={elements}
             property={property}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(el) => setSelectedSymbol(el.symbol)}
             onHover={setHovered}
           />
           <p className="trend-note">

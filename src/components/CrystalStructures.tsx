@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
 import { CrystalScene, type ViewMode } from './CrystalScene';
 import type { ElementData } from '../types';
 
 export function CrystalStructures({ elements }: { elements: ElementData[] }) {
-  const [id, setId] = useState('fcc');
+  const [id, setId] = useRouteString('s', 'fcc');
   const [mode, setMode] = useState<ViewMode>('ball');
   const [showCell, setShowCell] = useState(true);
   const [showBonds, setShowBonds] = useState(false);
   const [showCoordination, setShowCoordination] = useState(false);
-  const [metalSymbol, setMetalSymbol] = useState('Cu');
+  const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
 
   const structure = getStructure(id);
   const metal = METALS.find((m) => m.symbol === metalSymbol) ?? METALS[4];
@@ -23,7 +24,7 @@ export function CrystalStructures({ elements }: { elements: ElementData[] }) {
       if (held?.structure === id) return current;
       return METALS.find((m) => m.structure === id)?.symbol ?? current;
     });
-  }, [id]);
+  }, [id, setMetalSymbol]);
 
   // The density calculator only applies to the elemental metal structures.
   const densityStructure = getStructure(metal.structure);

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import {
   CLASS_LABEL,
   INDICES,
@@ -30,13 +31,15 @@ const CLASS_STYLE: Record<MaterialClass, { color: string; shape: 'circle' | 'squ
 
 type YProp = 'modulus' | 'strength';
 
+const Y_PROPS: YProp[] = ['modulus', 'strength'];
+
 export function AshbyChart() {
-  const [yProp, setYProp] = useState<YProp>('modulus');
-  const [indexId, setIndexId] = useState('e12-rho');
+  const [yProp, setYProp] = useRouteEnum<YProp>('y', 'modulus', Y_PROPS);
+  const [indexId, setIndexId] = useRouteString('index', 'e12-rho');
   const [hidden, setHidden] = useState<Set<MaterialClass>>(new Set());
   const [selected, setSelected] = useState<SelectionMaterial | null>(null);
   /** Guide-line position, as a fraction of the index range. */
-  const [guide, setGuide] = useState(0.82);
+  const [guide, setGuide] = useRouteNumber('guide', 0.82, 0, 1);
 
   const applicable = INDICES.filter((i) => i.property === yProp);
   const index = applicable.find((i) => i.id === indexId) ?? applicable[0];

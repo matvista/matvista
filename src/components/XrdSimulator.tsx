@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouteString } from '../useRoute';
 import {
   XRD_SAMPLES,
   XRD_SOURCES,
@@ -18,10 +19,10 @@ const plotH = H - PAD.t - PAD.b;
 const MAX_2THETA = 140;
 
 export function XrdSimulator() {
-  const [sampleId, setSampleId] = useState('cu');
-  const [sourceId, setSourceId] = useState('cu');
+  const [sampleId, setSampleId] = useRouteString('sample', 'cu');
+  const [sourceId, setSourceId] = useRouteString('source', 'cu');
   const [selected, setSelected] = useState<string | null>(null);
-  const [compareId, setCompareId] = useState<string>('none');
+  const [compareId, setCompareId] = useRouteString('compare', 'none');
 
   const sample = XRD_SAMPLES.find((s) => s.id === sampleId) ?? XRD_SAMPLES[0];
   const source = XRD_SOURCES.find((s) => s.id === sourceId) ?? XRD_SOURCES[0];

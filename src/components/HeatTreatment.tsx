@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useRouteNumber, useRouteString } from '../useRoute';
 import {
   JOMINY_DISTANCES,
   JOMINY_RATES,
@@ -44,8 +45,10 @@ const PRODUCT_COLOR: Record<string, string> = {
 const AUSTENITISE = 850;
 
 export function HeatTreatment() {
-  const [steelId, setSteelId] = useState('1080');
-  const [rate, setRate] = useState(50);
+  // The steel and the cooling rate are the scenario; the Jominy panel is just
+  // whether a section is expanded, so it stays out of the URL.
+  const [steelId, setSteelId] = useRouteString('steel', '1080');
+  const [rate, setRate] = useRouteNumber('rate', 50, 0.01, 5000);
   const [showJominy, setShowJominy] = useState(true);
 
   const steel = getSteel(steelId);

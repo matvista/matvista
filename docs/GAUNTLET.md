@@ -51,7 +51,7 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **correctness** (iteration 1). Next lens: **product gap**.
+Last shipped lens: **product gap** (iteration 2). Next lens: **performance**.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -60,6 +60,7 @@ do not invent busywork to fill it.
 | # | Lens | Change |
 |---|------|--------|
 | 1 | Correctness | Hardenability readout: critical cooling rate now derived from the module's own Scheil model, transformed-fraction discontinuity removed, backwards UI sentence corrected |
+| 2 | Product gap | Hash routing: every module and its result-affecting state is linkable and shareable, with back/forward, clamped values and graceful fallback |
 
 ## Backlog
 
@@ -70,8 +71,9 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| URL routing (hash-based) | 5 | 2 | 2.5 | Tab state is `useState`; nothing is linkable or shareable. An instructor cannot send a link to a specific plane/steel/cooling rate. Biggest single product gap. Hash routing stays static-safe on Cloudflare Pages. |
 | Landing / onboarding | 4 | 2 | 2.0 | App opens onto the periodic table with no statement of what MatVista is. |
+| Deep-link the remaining view state | 2 | 2 | 1.0 | Iteration 2 deliberately kept view chrome (bond display, auto-rotate, elastic zoom, Jominy panel, Ashby class filter and selected material) out of the URL. Revisit only if readers actually ask to share those. |
+| Copy-link button per module | 3 | 1 | 3.0 | Routing now makes this trivial and it is how most readers would discover that links are shareable — they will not think to copy the address bar. Strong follow-on from iteration 2. |
 | Export (SVG/PNG charts, CSV tables) | 4 | 3 | 1.3 | Wanted for reports and slides. Downloads work in a normal web app. |
 | Dark-theme toggle | 2 | 2 | 1.0 | Currently `prefers-color-scheme` only. |
 | Print stylesheet | 2 | 2 | 1.0 | |
@@ -119,6 +121,33 @@ not a queue — a product gap that improves all nine existing modules generally 
   captioned "0%" reappears beside prose claiming that product formed.
 - Prose that hardcodes a computed number goes stale silently. The tangent-vs-additivity
   comparison is now derived per steel via `tangentCoolingRate`, not written into the copy.
+
+### From iteration 2 (routing)
+
+- **A debounced URL write and a `hashchange` listener will fight each other.** While a
+  write is pending, the in-memory route is deliberately *ahead* of the address bar, so
+  "URL differs from state" does not mean the reader navigated. Comparing against the last
+  hash actually written (`urlHash`) is what separates the two. Before that guard, any
+  hashchange inside the 200 ms window silently reverted the reader's last change — caught
+  by instrumenting `setRoute`/`adopt`, not by reading the code.
+- **A range input pins its displayed thumb to its own min/max but the state behind it is
+  whatever you set.** `?vacT=1200` against a slider capped at 1080 showed 1080 while the
+  model computed with 1200. `useRouteNumber` now takes `min`/`max` and clamps on read.
+  **Any new numeric param must pass its bounds** or the same contradiction returns.
+- 50 slider ticks produce **1** `history.replaceState` call and **0** new history entries.
+  The trailing debounce (200 ms) exists because Safari throws at roughly 100 history
+  writes per 30 s; a throttle rather than a debounce would have fired ~7/s and breached it.
+- URL keys are **sorted**, not insertion-ordered, so one visible state is always one URL
+  regardless of which control the reader touched first.
+- Out-of-range values are clamped in state but **left as-is in the URL** — the address bar
+  can read `?vacT=1200` while everything on screen and in the model uses 1080. Every
+  viewer of that link sees the same clamped state, so it is consistent; it simply does not
+  round-trip to itself.
+- Effects that sync derived state (`CrystalStructures` metal, `MillerIndices` slip mode)
+  now write to the URL on mount. Their setters must stay in the dependency arrays or lint
+  regresses past the 4-warning baseline.
+- Several range inputs in `DefectsDiffusion` report `aria-label` as null. Not touched here
+  — **material for the accessibility lens**.
 
 ### Standing hazards (unverified, worth checking when touched)
 

@@ -14,6 +14,7 @@ export type Tab =
   | 'miller'
   | 'defects'
   | 'phase'
+  | 'heattreat'
   | 'mechanical'
   | 'selection'
   | 'xrd';
@@ -66,6 +67,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'phase',
         label: 'Phase diagrams',
         blurb: 'Tie lines, lever rule, steel microstructure',
+      },
+      {
+        id: 'heattreat',
+        label: 'Heat treatment',
+        blurb: 'TTT curves, quenching, hardenability',
       },
     ],
   },

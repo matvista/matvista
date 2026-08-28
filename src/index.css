@@ -1338,3 +1338,208 @@ button.nav-active {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+/* ------------------------------------------------------- Heat treatment module */
+
+.ht-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .ht-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ht-plot {
+  width: 100%;
+  height: auto;
+  margin: 0.5rem 0;
+}
+
+.ht-rate {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.ht-rate strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ht-rate input[type='range'] {
+  width: 190px;
+  accent-color: var(--accent);
+}
+
+.ht-start,
+.ht-finish,
+.ht-path {
+  fill: none;
+  stroke-width: 2;
+}
+
+.ht-start {
+  stroke: #2a78d6;
+}
+
+.ht-finish {
+  stroke: #4a3aa7;
+  stroke-dasharray: 5 3;
+}
+
+.ht-path {
+  stroke: #eb6834;
+  stroke-width: 2.5;
+}
+
+.ht-a1 {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.ht-ms {
+  stroke: #e34948;
+  stroke-width: 2;
+}
+
+.ht-mfrac {
+  stroke: #e34948;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
+.ht-hit {
+  fill: #eb6834;
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.ht-edge-label,
+.ht-curve-label {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.ht-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  margin-bottom: 0.5rem;
+}
+
+.ht-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ht-legend i {
+  width: 1rem;
+  height: 0.16rem;
+  border-radius: 2px;
+}
+
+.ht-key-start {
+  background: #2a78d6;
+}
+
+.ht-key-finish {
+  background: #4a3aa7;
+}
+
+.ht-key-path {
+  background: #eb6834;
+}
+
+.ht-caveat {
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  border-left: 3px solid var(--hairline);
+  padding-left: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.ht-bar {
+  display: flex;
+  height: 0.85rem;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.6rem 0 0.5rem;
+  background: var(--hairline);
+}
+
+.ht-bar-seg {
+  height: 100%;
+}
+
+.ht-frac-list {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.ht-frac-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.12rem 0;
+}
+
+.ht-frac-list i {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+}
+
+.ht-frac-list strong {
+  margin-left: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ht-jominy {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.ht-jominy h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.ht-jominy-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.45;
+}
+
+.ht-jominy-active {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.ht-jominy-key {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+}

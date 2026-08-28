@@ -10,6 +10,7 @@ import { MillerIndices } from './components/MillerIndices';
 import { DefectsDiffusion } from './components/DefectsDiffusion';
 import { StressStrain } from './components/StressStrain';
 import { PhaseDiagrams } from './components/PhaseDiagrams';
+import { HeatTreatment } from './components/HeatTreatment';
 import { AshbyChart } from './components/AshbyChart';
 import { XrdSimulator } from './components/XrdSimulator';
 import { AppNav } from './components/AppNav';
@@ -49,6 +50,8 @@ export default function App() {
       {tab === 'mechanical' && <StressStrain />}
 
       {tab === 'phase' && <PhaseDiagrams />}
+
+      {tab === 'heattreat' && <HeatTreatment />}
 
       {tab === 'selection' && <AshbyChart />}
 

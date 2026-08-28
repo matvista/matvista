@@ -11,14 +11,13 @@ is next.
 | # | Module | Value | Effort | Static-safe |
 |---|---|---|---|---|
 | ~~1~~ | ~~**Miller indices & slip systems**~~ — shipped | high | low | ✅ |
-| 2 | **TTT / CCT diagrams & heat treatment** | very high | medium | ✅ |
+| ~~2~~ | ~~**TTT / CCT diagrams & heat treatment**~~ — shipped | very high | medium | ✅ |
 | 3 | **Fatigue, creep & fracture** | high | medium | ✅ |
 | 4 | **Semiconductors & band structure** | high | medium | ✅ |
 | 5 | **Corrosion & the galvanic series** | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1) shipped; (2) carries the most teaching
-value but needs the most data entry, and is next up.
+Ranked by value per unit of effort. (1) and (2) shipped; (3) is next up.
 
 ---
 
@@ -43,9 +42,16 @@ computes.
   shared scene component.
 - **New:** plane-vs-cell intersection polygon, Schmid factor maths.
 
-## 2. TTT / CCT diagrams & heat treatment
+## 2. TTT / CCT diagrams & heat treatment — shipped
 
-`phase/systems.ts` stops at equilibrium, which is where real steel processing
+Built in `heattreat/steels.ts`, `heattreat/model.ts` and
+`components/HeatTreatment.tsx`. Departures from the plan below, both
+deliberate: the TTT curves are generated from a two-term nucleation/diffusion
+model anchored on a digitised nose rather than from digitised full curves,
+which keeps every member of the family physical when the nose moves; and the
+cooling path is read against them by Scheil's additivity rule rather than by a
+single crossing, which is what makes the pearlite/martensite split come out
+right. `phase/systems.ts` stops at equilibrium, which is where real steel processing
 begins. Overlay a draggable cooling curve on a TTT plot and report the resulting
 microstructure — pearlite, bainite, martensite — with predicted hardness. Adds a
 Jominy end-quench bar showing hardness against distance from the quenched end.
@@ -53,9 +59,9 @@ Jominy end-quench bar showing hardness against distance from the quenched end.
 This converts the phase module from "read a diagram" into "choose a process and
 get a material", which is the actual engineering skill.
 
-- **Data:** digitised TTT/CCT curves for 1080, 4340 and 5140 steels — a few
-  hundred coordinate pairs, hand-entered. Jominy hardenability curves for the
-  same grades.
+- **Data:** as built — nose position and a finish-curve time factor per steel,
+  plus nominal compositions and 13-point Jominy curves for 1080, 5140 and 4340.
+  Mˢ is computed from composition by Andrews' equation rather than stored.
 - **Reuses:** the SVG plotting and click-to-inspect patterns in
   `components/PhaseDiagrams.tsx`; the existing Fe–Fe₃C system for context.
 - **New:** `src/heattreat/` for curve data and microstructure/hardness lookup.

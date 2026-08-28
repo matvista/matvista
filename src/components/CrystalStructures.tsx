@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import elementsRaw from '../data/elements.json';
 import { useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
 import { CrystalScene, type ViewMode } from './CrystalScene';
 import type { ElementData } from '../types';
 
-export function CrystalStructures({ elements }: { elements: ElementData[] }) {
+// Imported here rather than passed down: `App` no longer holds the dataset, and
+// this module is lazy, so the data rides in a chunk the reader has asked for.
+const elements = elementsRaw as ElementData[];
+
+export function CrystalStructures() {
   const [id, setId] = useRouteString('s', 'fcc');
   const [mode, setMode] = useState<ViewMode>('ball');
   const [showCell, setShowCell] = useState(true);
@@ -43,7 +48,7 @@ export function CrystalStructures({ elements }: { elements: ElementData[] }) {
       volumeOverA3,
     );
     return { ...result, measured: el.density, mass: el.atomic_mass };
-  }, [elements, metal, densityStructure]);
+  }, [metal, densityStructure]);
 
   const error =
     density?.measured != null

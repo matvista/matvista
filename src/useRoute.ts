@@ -21,8 +21,8 @@ import {
   parseHash,
   parseNumber,
   type Route,
+  type RouteId,
 } from './router';
-import type { Tab } from './nav';
 
 /** Trailing debounce for history writes, ms. */
 const WRITE_DELAY = 200;
@@ -134,9 +134,9 @@ export function useRoute(): Route {
  * The active module. Changing it clears the query, because params are
  * module-scoped — otherwise `#/miller?steel=4340` would be reachable.
  */
-export function useTab(): [Tab, (tab: Tab) => void] {
+export function useTab(): [RouteId, (tab: RouteId) => void] {
   const route = useRoute();
-  const setTab = useCallback((tab: Tab) => setRoute({ tab, params: {} }, 'push'), []);
+  const setTab = useCallback((tab: RouteId) => setRoute({ tab, params: {} }, 'push'), []);
   return [route.tab, setTab];
 }
 

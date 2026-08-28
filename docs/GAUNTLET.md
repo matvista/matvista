@@ -74,9 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **performance** (iteration 3). Next lens: **accessibility** — but the
-landing page is a committed deliverable and takes the next slot; resume the rotation after
-it.
+Last shipped lens: **product gap / landing page** (iteration 4). Next lens:
+**accessibility**, resuming the rotation.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -87,6 +86,7 @@ do not invent busywork to fill it.
 | 1 | Correctness | Hardenability readout: critical cooling rate now derived from the module's own Scheil model, transformed-fraction discontinuity removed, backwards UI sentence corrected |
 | 2 | Product gap | Hash routing: every module and its result-affecting state is linkable and shareable, with back/forward, clamped values and graceful fallback |
 | 3 | Performance | Route-level code splitting: first paint 355.68 → **84.18 kB gzip** (−76%); three.js no longer ships to readers who never open a 3D module |
+| 4 | Product gap | Landing page: promotional entry point with hero, stats, nine illustrated module cards, provenance and audience sections — all inline SVG, and first paint down again to **67.45 kB gzip** |
 
 ## Backlog
 
@@ -97,7 +97,8 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| **Landing page (in scope, committed)** | 5 | 3 | 1.7 | **Explicitly in scope.** A visually rich, content-rich promotional front page: what MatVista is, who it is for, and what each of the nine modules does, with enough visual substance to sell the tool rather than a paragraph of text. It becomes the site's entry point, so it is also the first thing every visitor downloads — build it *after* the bundle is split, and hold it to the Cloudflare Pages rules above (inline SVG over images, no external fonts or CDNs, no runtime fetches). Must deep-link into modules using the routing from iteration 2. |
+| Landing page: screenshots / live previews | 3 | 3 | 1.0 | The cards use abstract SVG signatures. Real module thumbnails would sell harder, but a raster per card conflicts with the payload budget — an option is a tiny live-rendered SVG per card reusing each module's own drawing code. |
+| Open-graph / social preview card | 3 | 2 | 1.5 | Now that there is a landing page worth linking to, a static OG image and meta tags would make shared links render. Must be a build-time asset, not a runtime service. |
 | Deep-link the remaining view state | 2 | 2 | 1.0 | Iteration 2 deliberately kept view chrome (bond display, auto-rotate, elastic zoom, Jominy panel, Ashby class filter and selected material) out of the URL. Revisit only if readers actually ask to share those. |
 | Copy-link button per module | 3 | 1 | 3.0 | Routing now makes this trivial and it is how most readers would discover that links are shareable — they will not think to copy the address bar. Strong follow-on from iteration 2. |
 | Export (SVG/PNG charts, CSV tables) | 4 | 3 | 1.3 | Wanted for reports and slides. Downloads work in a normal web app. |
@@ -194,6 +195,30 @@ the dev server does not chunk the same way, so never quote sizes from it.
 - The `chunkSizeWarningLimit` warning from Vite now refers to the three.js chunk alone,
   which is expected and deliberate. It is not a regression signal any more.
 - Suspense fallback is `.mod-loading`, which reserves 60vh so the header does not jump.
+
+### From iteration 4 (landing page)
+
+- The landing page is the **only** eager view. Anything imported into `Landing.tsx` lands
+  in first paint — check the build output before adding an import there.
+- Making the landing page the entry point forced the periodic table out of `App` into
+  `PeriodicTrends.tsx`, which took the 76 kB `elements.json` with it (now its own 18.22 kB
+  gzip chunk, shared with `CrystalStructures`). First paint fell 84.18 → **67.45 kB gzip**;
+  the landing page renders in **70 kB total over the wire**, CSS included.
+- `#modules` is an in-page anchor on a hash-routed app. It works only because
+  `parseHash('#modules')` falls back to the default route and `adopt()` then sees no
+  change, so the browser scrolls without a re-render. **Any in-page anchor must not
+  collide with a module id.**
+- The header brand is a `<button>` back to home, not an `<h1>`. The landing page carries
+  the page's only `<h1>`; module views currently have none — **material for the
+  accessibility lens.**
+- Card links are real `<a href="#/...">`, not buttons, so middle-click and "open in new
+  tab" work. Keep them anchors.
+- Copy audited against the data before shipping: "118 elements, fully tabulated" was
+  false (18 elements have no electronegativity, 11 no melting point) and the density
+  claim needed the cubic caveat, since HCP at the ideal c/a is ~15% out for Zn and Cd.
+  **Any number written into landing copy must be checked against `src/data` first.**
+  Verified as true: 118 elements, 54 Ashby materials, 5 performance indices, 8 structures,
+  7 mechanical metals, 3 steels, 3 phase systems, 4 lattices × 4 X-ray sources, MIT licence.
 
 ### Standing hazards (unverified, worth checking when touched)
 

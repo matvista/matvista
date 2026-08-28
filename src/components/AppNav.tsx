@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { NAV_GROUPS, findItem, type NavGroup, type Tab } from '../nav';
+import { NAV_GROUPS, findItemOrNull, type NavGroup, type Tab } from '../nav';
+import type { RouteId } from '../router';
 
 interface Props {
-  tab: Tab;
-  onSelect: (tab: Tab) => void;
+  /** May be the landing page, which is a route with no nav entry. */
+  tab: RouteId;
+  onSelect: (tab: RouteId) => void;
 }
 
 /**
@@ -14,7 +16,7 @@ interface Props {
 export function AppNav({ tab, onSelect }: Props) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
-  const current = findItem(tab);
+  const current = findItemOrNull(tab);
 
   // A menu should close when attention moves away from it — a click anywhere
   // else, or Escape. Without both, the menu strands itself open over content.
@@ -52,15 +54,16 @@ export function AppNav({ tab, onSelect }: Props) {
           key={group.id}
           group={group}
           tab={tab}
-          isCurrentGroup={group.id === current.group.id}
+          isCurrentGroup={group.id === current?.group.id}
           open={openGroup === group.id}
           onToggle={() => setOpenGroup((g) => (g === group.id ? null : group.id))}
           onChoose={choose}
         />
       ))}
-      {/* Which module is open is otherwise only visible inside a closed menu. */}
+      {/* Which module is open is otherwise only visible inside a closed menu.
+          On the landing page there is no module, so there is nothing to name. */}
       <span className="nav-current" aria-live="polite">
-        {current.label}
+        {current?.label ?? ''}
       </span>
     </nav>
   );
@@ -75,7 +78,7 @@ function Group({
   onChoose,
 }: {
   group: NavGroup;
-  tab: Tab;
+  tab: RouteId;
   isCurrentGroup: boolean;
   open: boolean;
   onToggle: () => void;

@@ -20,6 +20,9 @@ MatVista gives students and material scientists visual, interactive views onto m
 
 Modules are grouped in the header by where they sit in a materials course — Structure, Microstructure, Properties, Analysis.
 
+The app opens on a landing page introducing the nine modules; each card links straight
+into one. `#/trends` is the periodic table.
+
 ## Sharing a view
 
 Every module is linkable, and so is what it is showing. The URL carries the state that

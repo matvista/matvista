@@ -17,16 +17,26 @@
  */
 import { NAV_GROUPS, type Tab } from './nav';
 
-export const DEFAULT_TAB: Tab = 'trends';
+/**
+ * The landing page is a route but deliberately not a module: it is the front
+ * door, so it has no entry in `NAV_GROUPS` and no group to highlight.
+ */
+export const HOME = 'home';
+export type RouteId = Tab | typeof HOME;
 
-const TABS = new Set<string>(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id)));
+export const DEFAULT_TAB: RouteId = HOME;
 
-export function isTab(value: string): value is Tab {
+const TABS = new Set<string>([
+  HOME,
+  ...NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id)),
+]);
+
+export function isTab(value: string): value is RouteId {
   return TABS.has(value);
 }
 
 export interface Route {
-  tab: Tab;
+  tab: RouteId;
   params: Record<string, string>;
 }
 
@@ -58,7 +68,7 @@ export function parseHash(hash: string): Route {
  * produce different URLs depending on which knob was turned first. These links
  * get pasted into worksheets and compared by eye, so one state means one URL.
  */
-export function buildHash(tab: Tab, params: Record<string, string>): string {
+export function buildHash(tab: RouteId, params: Record<string, string>): string {
   const search = new URLSearchParams();
   for (const k of Object.keys(params).sort()) {
     if (params[k] !== '') search.set(k, params[k]);

@@ -1,11 +1,8 @@
-import { Suspense, lazy, useState } from 'react';
-import elementsRaw from './data/elements.json';
-import type { ElementData, PropertyDef } from './types';
-import { PROPERTIES } from './types';
-import { RAMP } from './color';
-import { PeriodicTable } from './components/PeriodicTable';
-import { ElementDetail } from './components/ElementDetail';
+import { Suspense, lazy } from 'react';
 import { AppNav } from './components/AppNav';
+import { Landing } from './components/Landing';
+import { useTab } from './useRoute';
+import './index.css';
 
 /**
  * Modules load on demand.
@@ -16,9 +13,12 @@ import { AppNav } from './components/AppNav';
  * dependency here and it is reachable from only three modules, so shipping it
  * to a reader who opened the periodic table was most of the payload wasted.
  *
- * The periodic table itself stays eager: it is the default view, so lazy-loading
- * it would only add a round trip before anything appears.
+ * The landing page is the one eager view, because it is what a visitor sees
+ * first; everything behind it, the periodic table included, is a chunk away.
  */
+const PeriodicTrends = lazy(() =>
+  import('./components/PeriodicTrends').then((m) => ({ default: m.PeriodicTrends })),
+);
 const CrystalStructures = lazy(() =>
   import('./components/CrystalStructures').then((m) => ({ default: m.CrystalStructures })),
 );
@@ -43,42 +43,25 @@ const AshbyChart = lazy(() =>
 const XrdSimulator = lazy(() =>
   import('./components/XrdSimulator').then((m) => ({ default: m.XrdSimulator })),
 );
-import { useRouteString, useTab } from './useRoute';
-import './index.css';
-
-const elements = elementsRaw as ElementData[];
 
 export default function App() {
   const [tab, setTab] = useTab();
-  // Which property colours the table, and which element the panel describes, are
-  // both part of "what am I looking at" — so both travel in the URL. Hover is
-  // not: it is a pointer position, gone the moment the reader moves the mouse.
-  const [propertyKey, setPropertyKey] = useRouteString('prop', PROPERTIES[0].key);
-  const [selectedSymbol, setSelectedSymbol] = useRouteString('el', 'Fe');
-  const [hovered, setHovered] = useState<ElementData | null>(null);
-
-  const property: PropertyDef =
-    PROPERTIES.find((p) => p.key === propertyKey) ?? PROPERTIES[0];
-  const selected: ElementData | null =
-    elements.find((e) => e.symbol === selectedSymbol) ?? null;
-
-  const values = elements
-    .map((e) => e[property.key] as number | null)
-    .filter((v): v is number => v != null && v > 0);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const hoverValue = hovered ? (hovered[property.key] as number | null) : null;
 
   return (
-    <div className="app">
+    <div className={`app ${tab === 'home' ? 'app-home' : ''}`}>
       <header className="app-header">
-        <h1>MatVista</h1>
+        <button className="app-brand" onClick={() => setTab('home')} aria-label="MatVista home">
+          MatVista
+        </button>
         <AppNav tab={tab} onSelect={setTab} />
       </header>
 
-      {tab !== 'trends' && (
+      {tab === 'home' && <Landing />}
+
+      {tab !== 'home' && (
         <Suspense fallback={<p className="mod-loading">Loading module…</p>}>
-          {tab === 'crystals' && <CrystalStructures elements={elements} />}
+          {tab === 'trends' && <PeriodicTrends />}
+          {tab === 'crystals' && <CrystalStructures />}
           {tab === 'miller' && <MillerIndices />}
           {tab === 'defects' && <DefectsDiffusion />}
           {tab === 'mechanical' && <StressStrain />}
@@ -87,61 +70,6 @@ export default function App() {
           {tab === 'selection' && <AshbyChart />}
           {tab === 'xrd' && <XrdSimulator />}
         </Suspense>
-      )}
-
-      {tab === 'trends' && (
-        <>
-      <div className="controls">
-        <label htmlFor="prop">Color by</label>
-        <select
-          id="prop"
-          value={property.key}
-          onChange={(e) => setPropertyKey(e.target.value)}
-        >
-          {PROPERTIES.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        <div className="legend" aria-hidden="true">
-          <span className="legend-label">
-            {min.toLocaleString()} {property.unit}
-          </span>
-          <div
-            className="legend-bar"
-            style={{ background: `linear-gradient(to right, ${RAMP.join(',')})` }}
-          />
-          <span className="legend-label">
-            {max.toLocaleString()} {property.unit}
-            {property.log ? ' (log)' : ''}
-          </span>
-        </div>
-        <div className="hover-readout" role="status">
-          {hovered
-            ? `${hovered.name}: ${
-                hoverValue != null ? `${hoverValue} ${property.unit}` : 'no data'
-              }`
-            : 'Hover an element'}
-        </div>
-      </div>
-
-      <main className="layout">
-        <div>
-          <PeriodicTable
-            elements={elements}
-            property={property}
-            selected={selected}
-            onSelect={(el) => setSelectedSymbol(el.symbol)}
-            onHover={setHovered}
-          />
-          <p className="trend-note">
-            <strong>Trend to spot:</strong> {property.trendNote}
-          </p>
-        </div>
-        {selected && <ElementDetail element={selected} />}
-      </main>
-        </>
       )}
     </div>
   );

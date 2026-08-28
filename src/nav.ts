@@ -18,6 +18,7 @@ export type Tab =
   | 'mechanical'
   | 'failure'
   | 'selection'
+  | 'corrosion'
   | 'xrd';
 
 export interface NavItem {
@@ -105,6 +106,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'selection',
         label: 'Material selection',
         blurb: 'Ashby charts and performance indices',
+      },
+      {
+        id: 'corrosion',
+        label: 'Corrosion',
+        blurb: 'Galvanic couples, Nernst, Pourbaix',
       },
     ],
   },

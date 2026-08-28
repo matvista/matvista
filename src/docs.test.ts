@@ -9,6 +9,7 @@ import { PHASE_SYSTEMS } from './phase/systems';
 import { JOMINY_DISTANCES, JOMINY_RATES, STEELS } from './heattreat/steels';
 import { DIFFUSION_SYSTEMS } from './diffusion/model';
 import { BRITTLE_SOLIDS, FATIGUE_BEHAVIOUR, FRACTURE_ALLOYS, GROWTH_CLASSES } from './failure/materials';
+import { EMF_SERIES, GALVANIC_SERIES, POURBAIX } from './corrosion/data';
 import elementsRaw from './data/elements.json';
 
 /**
@@ -18,7 +19,7 @@ import elementsRaw from './data/elements.json';
  */
 describe('documented counts', () => {
   it('118 elements', () => expect((elementsRaw as unknown[]).length).toBe(118));
-  it('ten modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(10));
+  it('eleven modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(11));
   it('8 crystal structures', () => expect(STRUCTURES).toHaveLength(8));
   it('12 FCC slip systems', () =>
     expect(slipSystems(SLIP_MODES.find((m) => m.id === 'fcc')!)).toHaveLength(12));
@@ -44,6 +45,12 @@ describe('documented counts', () => {
     expect(FRACTURE_ALLOYS).toHaveLength(5);
     expect(BRITTLE_SOLIDS).toHaveLength(3);
     expect(GROWTH_CLASSES).toHaveLength(3);
+  });
+  it('20 EMF entries, 25 galvanic alloys, 3 Pourbaix metals', () => {
+    expect(EMF_SERIES).toHaveLength(20);
+    expect(GALVANIC_SERIES).toHaveLength(25);
+    expect(POURBAIX).toHaveLength(3);
+    expect(POURBAIX.map((p) => p.id)).toEqual(['fe', 'al', 'zn']);
   });
   it('fatigue behaviour is defined for every mechanical metal', () => {
     expect(FATIGUE_BEHAVIOUR).toHaveLength(MECH_MATERIALS.length);

@@ -44,6 +44,9 @@ const HeatTreatment = lazy(() =>
 const AshbyChart = lazy(() =>
   import('./components/AshbyChart').then((m) => ({ default: m.AshbyChart })),
 );
+const Corrosion = lazy(() =>
+  import('./components/Corrosion').then((m) => ({ default: m.Corrosion })),
+);
 const XrdSimulator = lazy(() =>
   import('./components/XrdSimulator').then((m) => ({ default: m.XrdSimulator })),
 );
@@ -82,6 +85,7 @@ export default function App() {
           {tab === 'phase' && <PhaseDiagrams />}
           {tab === 'heattreat' && <HeatTreatment />}
           {tab === 'selection' && <AshbyChart />}
+          {tab === 'corrosion' && <Corrosion />}
           {tab === 'xrd' && <XrdSimulator />}
         </Suspense>
       )}

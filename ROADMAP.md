@@ -14,12 +14,12 @@ is next.
 | ~~2~~ | ~~**TTT / CCT diagrams & heat treatment**~~ — shipped | very high | medium | ✅ |
 | ~~3~~ | ~~**Fatigue, creep & fracture**~~ — shipped | high | medium | ✅ |
 | 4 | **Semiconductors & band structure** | high | medium | ✅ |
-| 5 | **Corrosion & the galvanic series** | medium | low | ✅ |
+| ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1), (2) and (3) shipped; (4) and (5) are
-committed work, tracked alongside the product-level backlog in
-[docs/GAUNTLET.md](docs/GAUNTLET.md).
+Ranked by value per unit of effort. (1), (2), (3) and (5) shipped; (4),
+semiconductors, is the last one outstanding. Tracked alongside the
+product-level backlog in [docs/GAUNTLET.md](docs/GAUNTLET.md).
 
 ---
 
@@ -116,7 +116,28 @@ module.
   scaffolding.
 - **New:** `src/electronic/` for the dataset and carrier-statistics maths.
 
-## 5. Corrosion & the galvanic series
+## 5. Corrosion & the galvanic series — shipped
+
+Built in `corrosion/model.ts`, `corrosion/data.ts` and `components/Corrosion.tsx`;
+costs 6.6 kB gzipped. Three panels: galvanic couple with the area-ratio effect,
+the EMF series with live Nernst shifts, and Pourbaix diagrams for Fe, Al and Zn.
+
+Departure from the plan below: the galvanic series and the EMF series are kept as
+**two separate datasets**, not merged into one ordered list. They disagree — passive
+316 stainless sits above copper in seawater while chromium and iron are both far
+below copper in the EMF series — because passivity is an oxide film and not a
+standard potential. Blending them would have produced a single authoritative-looking
+ranking that is wrong for whichever question you were asking.
+
+- **Data:** as built — 25 alloys with typical seawater potentials (the *ordering*
+  is the established part and the UI says so), the 20-entry EMF series from
+  Callister table 17.1, and three simplified Pourbaix region maps.
+- **Verified:** the Daniell cell at 1.103 V; the Nernst slope at 0.0592 V/decade;
+  the water stability lines at −0.414 V and 0.815 V at pH 7; zinc anodic to steel
+  and steel anodic to copper; aluminium and zinc corroding at both pH extremes
+  while iron passivates in alkali.
+
+## 5b. Original plan
 
 Pick two metals and get the galvanic couple prediction: which one corrodes, the
 driving voltage, and the area-ratio effect that makes a small anode

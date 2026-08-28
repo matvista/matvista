@@ -1843,3 +1843,23 @@ button.nav-active {
 .fa-dot-bad {
   fill: #e34948;
 }
+
+/* ------------------------------------------------------------- corrosion -- */
+.co-dot { fill: var(--muted); opacity: 0.55; }
+/* The anode is the one being consumed, so it takes the warning colour. */
+.co-anode { fill: #e34948; }
+.co-cathode { fill: #1baf7a; }
+.co-pick-label { font-size: 11px; fill: var(--ink); }
+.co-region-label { font-size: 11px; fill: var(--ink-2); }
+
+/* Pourbaix fields. Immunity and passivation are both "safe" outcomes but for
+   different reasons, so they are tinted differently rather than merged. */
+.co-immunity { fill: #1baf7a; opacity: 0.16; }
+.co-passivation { fill: #2a78d6; opacity: 0.16; }
+.co-corrosion { fill: #e34948; opacity: 0.14; }
+.co-water {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+}

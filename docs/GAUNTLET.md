@@ -74,8 +74,13 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **product gap** (iteration 10). Next lens: **performance**; the next
-builds are semiconductors and corrosion.
+Last shipped lens: **roadmap module** (iteration 11). Next lens: **accessibility**; the
+last outstanding roadmap module is semiconductors.
+
+**Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
+modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
+AshbyChart's dead memos, which recompute 54 points in microseconds. That is tidying, not
+performance, and the lens rules say to say so rather than invent work to fill it.
 
 **Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write
 assertions as `*.test.ts` beside the module and run `npm test`. Physics still gets verified
@@ -98,6 +103,7 @@ do not invent busywork to fill it.
 | 8 | Roadmap module | **Failure analysis** — fracture toughness, S–N fatigue, Paris crack growth, Larson–Miller creep. Verified against two published worked examples |
 | 9 | Correctness | Fe–C was missing its single-phase α field: pure iron at 800 °C read as a two-phase α+γ mixture. Found by a sweep of ~3 000 phase points |
 | 10 | Product gap | **Test runner + CI**: 281 permanent assertions (vitest) replacing the throwaway `src/__check.ts` workflow, plus a GitHub Actions check |
+| 11 | Roadmap module | **Corrosion** — galvanic couples with the area-ratio effect, EMF series with live Nernst shifts, Pourbaix diagrams for Fe/Al/Zn |
 
 ## Backlog
 
@@ -137,7 +143,6 @@ subject to the lens rotation.
 | Module | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
 | Semiconductors & band structure | 4 | 3 | 1.3 | The biggest audience expansion available — brings in electrical engineering and physics, not only materials. No overlap with any existing module. |
-| Corrosion & the galvanic series | 4 | 2 | 2.0 | Cheapest of the three and concrete: which metal corrodes, the driving voltage, the area-ratio effect, simplified Pourbaix diagrams. |
 
 Materials Project integration stays **deferred** — it cannot hold under static hosting
 without a key-bearing proxy, which the deployment model rules out. See `ROADMAP.md`.
@@ -382,6 +387,29 @@ densities, and the diffusion solution.
   running where a red assertion was my error — treat a failure as a hypothesis.
 - `docs.test.ts` asserts the counts written into the README, ROADMAP and landing page.
   **Run `npm test` after any dataset change**; it is what stops the docs quietly lying.
+
+### From iteration 11 (corrosion module)
+
+- **The galvanic series and the EMF series are two datasets, not one.** They genuinely
+  disagree: passive 316 stainless sits *above* copper in seawater, while chromium and iron
+  are both far below copper in the EMF series, because passivity is an oxide film and not a
+  standard potential. Merging them into one ranking — the obvious simplification — would
+  have produced an authoritative-looking list that is wrong for whichever question was
+  being asked. Both are shipped, kept apart, with the UI saying which to use when.
+- Stainless appears **twice** in the galvanic series, passive and active, ~0.5 V apart.
+  That is not a duplicate to be cleaned up: it is the reason crevice corrosion is dangerous
+  in an otherwise noble alloy.
+- Verified before any UI: the Daniell cell at **1.103 V**; the Nernst slope at
+  **0.0592 V/decade** at 25 °C; the water stability lines at **−0.414 V** and **0.815 V**
+  at pH 7 and exactly 1.229 V apart at every pH; zinc anodic to steel and steel anodic to
+  copper; aluminium and zinc corroding at *both* pH extremes while iron passivates in
+  alkali.
+- The `docs.test.ts` guard **earned itself** here: adding the module turned "ten modules"
+  false and the suite failed immediately, before the README could ship a wrong number.
+- Third time now that a memo closing over a scale function has produced a new lint warning
+  (AshbyChart, FailureAnalysis, Corrosion). The fix is always the same — compute the scale
+  inside the memo, or hoist fixed bounds to module scope. **Worth remembering when writing
+  the next chart.**
 
 ### Standing hazards (unverified, worth checking when touched)
 

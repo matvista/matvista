@@ -165,6 +165,21 @@ const artFailure = (
   </svg>
 );
 
+const artCorrosion = (
+  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
+    {/* two metals joined, with the anode pitting away beneath the electrolyte */}
+    <path d="M10 44h34v10H10z" fill="var(--ld-accent)" opacity="0.55" />
+    <path d="M52 44h34v10H52z" fill="var(--ld-art)" opacity="0.5" />
+    <path d="M44 49h8" stroke="var(--ld-art)" strokeWidth="1.6" />
+    <path d="M8 34h80" stroke="var(--ld-art)" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" fill="none" />
+    {[16, 24, 32].map((x, i) => (
+      <circle key={i} cx={x} cy={44} r={3.2} fill="var(--ld-art)" opacity="0.85" />
+    ))}
+    {/* current arcs from anode to cathode */}
+    <path d="M24 40Q48 18 70 40" fill="none" stroke="var(--ld-accent)" strokeWidth="1.3" />
+  </svg>
+);
+
 const CARDS: ModuleCard[] = [
   {
     id: 'trends',
@@ -231,6 +246,14 @@ const CARDS: ModuleCard[] = [
     art: artFailure,
   },
   {
+    id: 'corrosion',
+    title: 'Corrosion',
+    href: '#/corrosion',
+    blurb: 'Galvanic couples, the Nernst equation, Pourbaix.',
+    detail: 'Pair any two alloys and see which one corrodes, how hard the couple is driven, and why a small anode beside a large cathode is the dangerous arrangement — then read the pH–potential map that says whether a metal is immune, passive or dissolving.',
+    art: artCorrosion,
+  },
+  {
     id: 'xrd',
     title: 'XRD simulator',
     href: '#/xrd',
@@ -264,7 +287,7 @@ export function Landing() {
             behave the way they do.
           </h1>
           <p className="ld-lede">
-            MatVista turns the core of an undergraduate materials course into ten things you
+            MatVista turns the core of an undergraduate materials course into eleven things you
             can actually drive: rotate a unit cell, drag a cooling rate across a TTT diagram,
             move a tie line and watch the phase fractions follow. Every number is computed
             from the published relations, not drawn to look right.
@@ -274,7 +297,7 @@ export function Landing() {
               Start with the periodic table
             </a>
             <a className="ld-btn" href="#modules">
-              Browse all ten modules
+              Browse all eleven modules
             </a>
           </div>
           <p className="ld-note">
@@ -288,7 +311,7 @@ export function Landing() {
 
       <section className="ld-strip">
         {[
-          ['10', 'interactive modules'],
+          ['11', 'interactive modules'],
           ['118', 'elements in the table'],
           ['54', 'materials in the Ashby chart'],
           ['0', 'sign-ups or downloads'],
@@ -301,7 +324,7 @@ export function Landing() {
       </section>
 
       <section className="ld-section" id="modules">
-        <h2 className="ld-h2">The ten modules</h2>
+        <h2 className="ld-h2">The eleven modules</h2>
         <p className="ld-sub">
           Grouped the way a course is: what the material <em>is</em>, what is going on inside
           it, how it <em>behaves</em>, and how you measure or choose it.

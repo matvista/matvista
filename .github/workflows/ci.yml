@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Lint first: it is the fastest signal, and the repo holds a warning
+      # baseline rather than zero, so it is checked but not made fatal here.
+      - run: npm run lint
+      # The physics suite. This is the one that matters — a wrong number in a
+      # teaching tool teaches a wrong thing.
+      - run: npm test
+      # Build last: type-checks the tests as well as the app.
+      - run: npm run build

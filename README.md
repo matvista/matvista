@@ -52,6 +52,24 @@ npm run dev
 
 Then open http://localhost:5173.
 
+## Tests
+
+```bash
+npm test
+```
+
+281 assertions over the physics, the data and the routing. They are not smoke tests: the
+ones that matter check computed values against published worked examples — Callister's
+8.2 µm Griffith flaw in soda-lime glass, his S-590 creep rupture at 800 °C and 140 MPa,
+the 0.35 wt% carbon steel that comes out 44% pearlite, the carburising problem that takes
+seven hours, copper's first four diffraction lines at 43.3, 50.4, 74.1 and 90.0°.
+
+The rest guard the domain boundaries, which is where this kind of app goes wrong quietly:
+that only alloys with a real fatigue limit get a flat S–N curve, that every XRD sample is
+cubic because the d-spacing formula is, that a two-phase point always has its composition
+between the ends of its own tie line, and that the documented counts in this file still
+match the data.
+
 ## Stack
 
 - [Vite](https://vite.dev/) + [React](https://react.dev/) + TypeScript

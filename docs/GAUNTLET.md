@@ -74,8 +74,13 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **correctness** (iteration 9). Next lens: **product gap**; the next
+Last shipped lens: **product gap** (iteration 10). Next lens: **performance**; the next
 builds are semiconductors and corrosion.
+
+**Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write
+assertions as `*.test.ts` beside the module and run `npm test`. Physics still gets verified
+against published values *before* any UI is written — that has not changed; what has
+changed is that the assertions now survive the iteration instead of being deleted with it.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -92,6 +97,7 @@ do not invent busywork to fill it.
 | 7 | Docs-and-claims truth | ROADMAP's bundle section rewritten against a real build; all 20 documented counts asserted against the data |
 | 8 | Roadmap module | **Failure analysis** — fracture toughness, S–N fatigue, Paris crack growth, Larson–Miller creep. Verified against two published worked examples |
 | 9 | Correctness | Fe–C was missing its single-phase α field: pure iron at 800 °C read as a two-phase α+γ mixture. Found by a sweep of ~3 000 phase points |
+| 10 | Product gap | **Test runner + CI**: 281 permanent assertions (vitest) replacing the throwaway `src/__check.ts` workflow, plus a GitHub Actions check |
 
 ## Backlog
 
@@ -109,7 +115,6 @@ subject to the lens rotation.
 | Export (SVG/PNG charts, CSV tables) | 4 | 3 | 1.3 | Wanted for reports and slides. Downloads work in a normal web app. |
 | Dark-theme toggle | 2 | 2 | 1.0 | Currently `prefers-color-scheme` only. |
 | Print stylesheet | 2 | 2 | 1.0 | |
-| Test runner + CI | 3 | 3 | 1.0 | No test framework installed; verification currently goes through a throwaway `src/__check.ts`. Would supersede that workflow. |
 
 ### Technical debt
 
@@ -356,6 +361,27 @@ densities, and the diffusion solution.
   carburising example (0.80 wt% C at 0.5 mm after 7 h).
 - The Ashby guide line provably selects exactly the top-N by index value, for all five
   indices — the log-space test and the ranking agree because slope = 1/exponent.
+
+### From iteration 10 (tests)
+
+- **281 assertions across 11 files, 0.45 s.** vitest is a devDependency only: nothing
+  reaches the bundle, no test chunk is emitted, and the deployed payload is unchanged. This
+  did not trip the "ask before adding a dependency" rule, which is about *runtime*
+  dependencies and the Cloudflare Pages constraint.
+- `npm run build` runs `tsc -b` over `src`, so the tests are **type-checked by the build**.
+  A test that stops compiling breaks the build, which is the behaviour worth having.
+- Every published worked example previously verified and then thrown away is now permanent:
+  Griffith's 8.2 µm, S-590 at 231 h, 0.35 wt% C at 44% pearlite, carburising at 7 h, the
+  Cu–Ni tie line, copper's four diffraction lines, silicon's (111) at 28.44°.
+- The regression guards that matter are the domain ones — only real fatigue limits flatten,
+  every XRD sample is cubic, every two-phase point brackets its own composition, and the
+  transformed-fraction discontinuity at the critical cooling rate stays below 0.01 pp.
+- Two test failures during the port were **the tests' fault, not the code's** (an α reading
+  taken at a temperature where the phase does not exist, and an erf tolerance tighter than
+  the approximation's own documented 1.5 × 10⁻⁷ bound). That is now the third iteration
+  running where a red assertion was my error — treat a failure as a hypothesis.
+- `docs.test.ts` asserts the counts written into the README, ROADMAP and landing page.
+  **Run `npm test` after any dataset change**; it is what stops the docs quietly lying.
 
 ### Standing hazards (unverified, worth checking when touched)
 

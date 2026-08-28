@@ -1,19 +1,48 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import elementsRaw from './data/elements.json';
 import type { ElementData, PropertyDef } from './types';
 import { PROPERTIES } from './types';
 import { RAMP } from './color';
 import { PeriodicTable } from './components/PeriodicTable';
 import { ElementDetail } from './components/ElementDetail';
-import { CrystalStructures } from './components/CrystalStructures';
-import { MillerIndices } from './components/MillerIndices';
-import { DefectsDiffusion } from './components/DefectsDiffusion';
-import { StressStrain } from './components/StressStrain';
-import { PhaseDiagrams } from './components/PhaseDiagrams';
-import { HeatTreatment } from './components/HeatTreatment';
-import { AshbyChart } from './components/AshbyChart';
-import { XrdSimulator } from './components/XrdSimulator';
 import { AppNav } from './components/AppNav';
+
+/**
+ * Modules load on demand.
+ *
+ * Deployment is Cloudflare Pages: static assets, hashed and immutably cached at
+ * the edge, so a split chunk costs one extra request on first open and nothing
+ * after. What that buys is first paint — three.js is far and away the largest
+ * dependency here and it is reachable from only three modules, so shipping it
+ * to a reader who opened the periodic table was most of the payload wasted.
+ *
+ * The periodic table itself stays eager: it is the default view, so lazy-loading
+ * it would only add a round trip before anything appears.
+ */
+const CrystalStructures = lazy(() =>
+  import('./components/CrystalStructures').then((m) => ({ default: m.CrystalStructures })),
+);
+const MillerIndices = lazy(() =>
+  import('./components/MillerIndices').then((m) => ({ default: m.MillerIndices })),
+);
+const DefectsDiffusion = lazy(() =>
+  import('./components/DefectsDiffusion').then((m) => ({ default: m.DefectsDiffusion })),
+);
+const StressStrain = lazy(() =>
+  import('./components/StressStrain').then((m) => ({ default: m.StressStrain })),
+);
+const PhaseDiagrams = lazy(() =>
+  import('./components/PhaseDiagrams').then((m) => ({ default: m.PhaseDiagrams })),
+);
+const HeatTreatment = lazy(() =>
+  import('./components/HeatTreatment').then((m) => ({ default: m.HeatTreatment })),
+);
+const AshbyChart = lazy(() =>
+  import('./components/AshbyChart').then((m) => ({ default: m.AshbyChart })),
+);
+const XrdSimulator = lazy(() =>
+  import('./components/XrdSimulator').then((m) => ({ default: m.XrdSimulator })),
+);
 import { useRouteString, useTab } from './useRoute';
 import './index.css';
 
@@ -47,21 +76,18 @@ export default function App() {
         <AppNav tab={tab} onSelect={setTab} />
       </header>
 
-      {tab === 'crystals' && <CrystalStructures elements={elements} />}
-
-      {tab === 'miller' && <MillerIndices />}
-
-      {tab === 'defects' && <DefectsDiffusion />}
-
-      {tab === 'mechanical' && <StressStrain />}
-
-      {tab === 'phase' && <PhaseDiagrams />}
-
-      {tab === 'heattreat' && <HeatTreatment />}
-
-      {tab === 'selection' && <AshbyChart />}
-
-      {tab === 'xrd' && <XrdSimulator />}
+      {tab !== 'trends' && (
+        <Suspense fallback={<p className="mod-loading">Loading module…</p>}>
+          {tab === 'crystals' && <CrystalStructures elements={elements} />}
+          {tab === 'miller' && <MillerIndices />}
+          {tab === 'defects' && <DefectsDiffusion />}
+          {tab === 'mechanical' && <StressStrain />}
+          {tab === 'phase' && <PhaseDiagrams />}
+          {tab === 'heattreat' && <HeatTreatment />}
+          {tab === 'selection' && <AshbyChart />}
+          {tab === 'xrd' && <XrdSimulator />}
+        </Suspense>
+      )}
 
       {tab === 'trends' && (
         <>

@@ -1543,3 +1543,15 @@ button.nav-active {
   flex-wrap: wrap;
   margin-top: 0.3rem;
 }
+
+/* ---------------------------------------------------------- lazy modules -- */
+/* Modules arrive as separate chunks, so there is a beat before one paints.
+   Reserving height stops the header and footer jumping when it lands. */
+.mod-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

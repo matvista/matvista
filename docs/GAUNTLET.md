@@ -74,7 +74,9 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **product gap** (iteration 2). Next lens: **performance**.
+Last shipped lens: **performance** (iteration 3). Next lens: **accessibility** — but the
+landing page is a committed deliverable and takes the next slot; resume the rotation after
+it.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -84,6 +86,7 @@ do not invent busywork to fill it.
 |---|------|--------|
 | 1 | Correctness | Hardenability readout: critical cooling rate now derived from the module's own Scheil model, transformed-fraction discontinuity removed, backwards UI sentence corrected |
 | 2 | Product gap | Hash routing: every module and its result-affecting state is linkable and shareable, with back/forward, clamped values and graceful fallback |
+| 3 | Performance | Route-level code splitting: first paint 355.68 → **84.18 kB gzip** (−76%); three.js no longer ships to readers who never open a 3D module |
 
 ## Backlog
 
@@ -171,6 +174,26 @@ not a queue — a product gap that improves all nine existing modules generally 
   regresses past the 4-warning baseline.
 - Several range inputs in `DefectsDiffusion` report `aria-label` as null. Not touched here
   — **material for the accessibility lens**.
+
+### From iteration 3 (code splitting)
+
+Measured from `npm run build` and from `performance.getEntriesByType('resource')` against
+the **production** build served by `npm run preview` (launch config `matvista-preview`) —
+the dev server does not chunk the same way, so never quote sizes from it.
+
+- First paint: **355.68 → 84.18 kB gzip**, one chunk, 82 kB over the wire.
+- three.js lands in a chunk named `geometry-*.js` (904 kB / 241 kB gzip) because
+  `crystal/geometry.ts` anchors that chunk's graph. **The name does not say "three" — do
+  not assume it is dead weight and do not rename the file expecting the chunk to follow.**
+- Browsing all five non-3D modules costs **108 kB** cumulative. Opening `crystals` adds
+  three.js and jumps to 349 kB; `miller` and `defects` then add only 5 and 4 kB, so the
+  cost is paid once.
+- The periodic table stays eager on purpose: it is the default view, and lazy-loading it
+  would put a round trip in front of first paint. **When the landing page becomes the
+  entry point, revisit this** — the table should probably become lazy too.
+- The `chunkSizeWarningLimit` warning from Vite now refers to the three.js chunk alone,
+  which is expected and deliberate. It is not a regression signal any more.
+- Suspense fallback is `.mod-loading`, which reserves 60vh so the header does not jump.
 
 ### Standing hazards (unverified, worth checking when touched)
 

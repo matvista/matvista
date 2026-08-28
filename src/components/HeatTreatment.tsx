@@ -11,6 +11,8 @@ import {
   coolingPath,
   criticalCoolingRate,
   predict,
+  tangentCoolingRate,
+  TRACE_FRACTION,
   type CurvePoint,
 } from '../heattreat/model';
 
@@ -52,7 +54,11 @@ export function HeatTreatment() {
     () => predict(steel, ttt, AUSTENITISE, rate),
     [steel, ttt, rate],
   );
-  const critical = criticalCoolingRate(steel, AUSTENITISE);
+  const critical = useMemo(
+    () => criticalCoolingRate(steel, ttt, AUSTENITISE),
+    [steel, ttt],
+  );
+  const tangent = tangentCoolingRate(steel, AUSTENITISE);
   const path = useMemo(
     () => coolingPath(AUSTENITISE, rate, T_MIN, T_MAX),
     [rate],
@@ -223,7 +229,7 @@ export function HeatTreatment() {
 
         <div className="ht-bar" role="img" aria-label="Predicted phase fractions">
           {outcome.fractions
-            .filter((f) => f.fraction > 0.001)
+            .filter((f) => f.fraction >= TRACE_FRACTION)
             .map((f) => (
               <div
                 key={f.product}
@@ -238,7 +244,7 @@ export function HeatTreatment() {
         </div>
         <ul className="ht-frac-list">
           {outcome.fractions
-            .filter((f) => f.fraction > 0.001)
+            .filter((f) => f.fraction >= TRACE_FRACTION)
             .map((f) => (
               <li key={f.product}>
                 <i style={{ background: PRODUCT_COLOR[f.product] }} />
@@ -264,7 +270,7 @@ export function HeatTreatment() {
             </tr>
             <tr>
               <th scope="row">Critical rate</th>
-              <td>{fmtRate(critical)} °C/s</td>
+              <td>{critical == null ? 'faster than this model resolves' : `${fmtRate(critical)} °C/s`}</td>
             </tr>
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
@@ -291,11 +297,21 @@ export function HeatTreatment() {
         <div className="density-box">
           <h3>Hardenability</h3>
           <p className="density-note">
-            The critical rate is the slowest quench that still misses the nose entirely. Below it
-            you get martensite; above it you start trading martensite for pearlite. It is a
-            property of the <em>steel</em>, and it is the number alloying is bought to change —
-            note that 4340 needs a quench roughly a hundred times gentler than 1080, while its
-            martensite is no harder.
+            The critical rate is the slowest quench that still misses the nose entirely. Quench{' '}
+            <em>faster</em> and you keep fully martensitic structure; quench <em>slower</em> and you
+            start trading martensite away for pearlite and bainite. It is a property of the{' '}
+            <em>steel</em>, and it is the number alloying is bought to change — note that 4340
+            needs a quench roughly a hundred times gentler than 1080, while its martensite is
+            actually a little softer.
+          </p>
+          <p className="density-note">
+            Drawing a cooling line straight through the nose — the usual by-hand construction —
+            gives {fmtRate(tangent)} °C/s for this steel
+            {critical != null && `, against the ${fmtRate(critical)} °C/s quoted above`}. Merely
+            touching the nose is not enough: the path has to linger near it long enough to
+            accumulate a full incubation, which is what the diagram above actually integrates.
+            Set the slider just below the quoted rate and the first trace of bainite appears —
+            transformation beginning barely above Mˢ, on the lower limb of the C.
           </p>
           <button
             className={`toggle ${showJominy ? 'toggle-on' : ''}`}

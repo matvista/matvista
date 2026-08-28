@@ -74,8 +74,8 @@ resists three genuine attempts — report the blockage rather than lowering the 
 correctness → **product gap** → performance → accessibility → mobile/responsive →
 docs-and-claims truth → repeat.
 
-Last shipped lens: **docs-and-claims truth** (iteration 7) — one full rotation complete.
-Next lens: **correctness**, and the next build is the fatigue/creep/fracture module.
+Last shipped lens: **roadmap module** (iteration 8). Next lens: **correctness**, then
+continue the rotation; the next builds are semiconductors and corrosion.
 If the current lens has nothing worth doing, say so explicitly and take the next lens —
 do not invent busywork to fill it.
 
@@ -90,6 +90,7 @@ do not invent busywork to fill it.
 | 5 | Accessibility | Every route now has exactly one `<h1>`, no unlabelled controls, `aria-pressed` on all five state toggles, and reduced-motion honoured |
 | 6 | Mobile/responsive | No horizontal overflow on any of the ten routes at 320, 375, 768 or 1280 px — was overflowing on 10/10 routes at 320 px and on Miller at 375 px |
 | 7 | Docs-and-claims truth | ROADMAP's bundle section rewritten against a real build; all 20 documented counts asserted against the data |
+| 8 | Roadmap module | **Failure analysis** — fracture toughness, S–N fatigue, Paris crack growth, Larson–Miller creep. Verified against two published worked examples |
 
 ## Backlog
 
@@ -129,7 +130,6 @@ subject to the lens rotation.
 
 | Module | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Fatigue, creep & fracture | 5 | 3 | 1.7 | The mechanical module covers monotonic loading only, leaving out the entire failure half of the subject. Most real components fail by fatigue rather than yielding. S–N curves, Paris-law crack growth, Griffith/K_IC critical crack size, Larson–Miller creep. |
 | Semiconductors & band structure | 4 | 3 | 1.3 | The biggest audience expansion available — brings in electrical engineering and physics, not only materials. No overlap with any existing module. |
 | Corrosion & the galvanic series | 4 | 2 | 2.0 | Cheapest of the three and concrete: which metal corrodes, the driving voltage, the area-ratio effect, simplified Pourbaix diagrams. |
 
@@ -302,6 +302,31 @@ cleared — the *deepest* element that fixes it is the culprit, not the widest.
   against a README that quietly starts lying.
 - A module of the existing kind costs **3.5–5.6 kB gzipped** (nine total 35.5 kB), not the
   ~7 kB the roadmap estimated. Use the real figure when sizing the remaining three.
+
+### From iteration 8 (failure module)
+
+- **The roadmap's own data plan was wrong, and following it would have fabricated numbers.**
+  It said to extend the seven entries in `mechanical/materials.ts` with `K_IC` and Paris
+  constants. But K_IC belongs to an alloy *in a specific heat treatment* — 4340 tempered at
+  260 °C and at 425 °C differ by a factor of 1.75 — and Barsom's Paris constants are
+  published per class of steel and are not transferable to aluminium. The module therefore
+  carries three datasets with three domains, and only the S–N panel reuses `MECH_MATERIALS`.
+  **Check a roadmap entry's data plan against the physics before following it.**
+- Verified before any UI existed: Griffith reproduces Callister's **8.2 µm** flaw in
+  soda-lime glass at 40 MPa; Larson–Miller reproduces his S-590 example at 800 °C and
+  140 MPa as **231 h** against a published ~233 h; the closed-form Paris integration matches
+  a 400 000-step numerical integration to better than 0.05%; and m = 3 gives exactly the
+  8× life for a halved stress range.
+- **The domain trap this module exists to teach was nearly shipped as a bug.** Aluminium at
+  a low amplitude reported "6757.0B cycles" — a Basquin extrapolation four decades past the
+  fit's last anchor. Lives beyond 10⁹ now read "> 10⁹" and say plainly that further is
+  extrapolation. Non-ferrous alloys correctly draw **no** endurance line and never report
+  infinite life; ferrous and titanium do.
+- Two new `exhaustive-deps` warnings appeared from memos closing over a scale function
+  built from a changing `yMax` — the same defect the pre-existing AshbyChart warnings
+  describe. Fixed by computing the scale *inside* the memo. **Do not close over a scale
+  function from a memo keyed on the value that scale depends on.**
+- The module is 8.6 kB gzipped in its own chunk, so it costs nothing until opened.
 
 ### Standing hazards (unverified, worth checking when touched)
 

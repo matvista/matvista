@@ -16,6 +16,7 @@ export type Tab =
   | 'phase'
   | 'heattreat'
   | 'mechanical'
+  | 'failure'
   | 'selection'
   | 'xrd';
 
@@ -83,6 +84,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'mechanical',
         label: 'Mechanical properties',
         blurb: 'Stress–strain curves and Hall–Petch',
+      },
+      {
+        id: 'failure',
+        label: 'Failure analysis',
+        blurb: 'Fracture, fatigue, crack growth, creep',
       },
     ],
   },

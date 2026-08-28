@@ -154,6 +154,17 @@ const artSelection = (
   </svg>
 );
 
+const artFailure = (
+  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
+    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
+    {/* an S–N curve that knees over into an endurance limit */}
+    <path d="M16 14Q40 34 58 40H84" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
+    <path d="M58 40H84" fill="none" stroke="var(--ld-accent)" strokeWidth="1.8" />
+    {/* a crack opening from the edge */}
+    <path d="M20 50l4-6 3 5 3-6" fill="none" stroke="var(--ld-accent)" strokeWidth="1.4" strokeLinejoin="round" />
+  </svg>
+);
+
 const CARDS: ModuleCard[] = [
   {
     id: 'trends',
@@ -212,6 +223,14 @@ const CARDS: ModuleCard[] = [
     art: artStress,
   },
   {
+    id: 'failure',
+    title: 'Failure analysis',
+    href: '#/failure',
+    blurb: 'Fracture, fatigue, crack growth and creep.',
+    detail: 'Find the critical crack size for a real alloy, read an S–N curve that only flattens for the alloys that actually have a fatigue limit, grow a crack by Paris’ law, and trade temperature against time with Larson–Miller.',
+    art: artFailure,
+  },
+  {
     id: 'xrd',
     title: 'XRD simulator',
     href: '#/xrd',
@@ -245,7 +264,7 @@ export function Landing() {
             behave the way they do.
           </h1>
           <p className="ld-lede">
-            MatVista turns the core of an undergraduate materials course into nine things you
+            MatVista turns the core of an undergraduate materials course into ten things you
             can actually drive: rotate a unit cell, drag a cooling rate across a TTT diagram,
             move a tie line and watch the phase fractions follow. Every number is computed
             from the published relations, not drawn to look right.
@@ -255,7 +274,7 @@ export function Landing() {
               Start with the periodic table
             </a>
             <a className="ld-btn" href="#modules">
-              Browse all nine modules
+              Browse all ten modules
             </a>
           </div>
           <p className="ld-note">
@@ -269,7 +288,7 @@ export function Landing() {
 
       <section className="ld-strip">
         {[
-          ['9', 'interactive modules'],
+          ['10', 'interactive modules'],
           ['118', 'elements in the table'],
           ['54', 'materials in the Ashby chart'],
           ['0', 'sign-ups or downloads'],
@@ -282,7 +301,7 @@ export function Landing() {
       </section>
 
       <section className="ld-section" id="modules">
-        <h2 className="ld-h2">The nine modules</h2>
+        <h2 className="ld-h2">The ten modules</h2>
         <p className="ld-sub">
           Grouped the way a course is: what the material <em>is</em>, what is going on inside
           it, how it <em>behaves</em>, and how you measure or choose it.

@@ -32,6 +32,9 @@ const DefectsDiffusion = lazy(() =>
 const StressStrain = lazy(() =>
   import('./components/StressStrain').then((m) => ({ default: m.StressStrain })),
 );
+const FailureAnalysis = lazy(() =>
+  import('./components/FailureAnalysis').then((m) => ({ default: m.FailureAnalysis })),
+);
 const PhaseDiagrams = lazy(() =>
   import('./components/PhaseDiagrams').then((m) => ({ default: m.PhaseDiagrams })),
 );
@@ -75,6 +78,7 @@ export default function App() {
           {tab === 'miller' && <MillerIndices />}
           {tab === 'defects' && <DefectsDiffusion />}
           {tab === 'mechanical' && <StressStrain />}
+          {tab === 'failure' && <FailureAnalysis />}
           {tab === 'phase' && <PhaseDiagrams />}
           {tab === 'heattreat' && <HeatTreatment />}
           {tab === 'selection' && <AshbyChart />}

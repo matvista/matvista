@@ -1794,3 +1794,52 @@ button.nav-active {
 .canvas-wrap canvas {
   max-width: 100%;
 }
+
+/* ------------------------------------------------------- failure analysis -- */
+.fa-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.fa-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 0.5rem 1.2rem;
+  margin-bottom: 0.9rem;
+}
+
+.fa-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+.fa-slider input {
+  width: 100%;
+}
+
+/* The critical-stress locus, and the limits it is read against. */
+.fa-curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.fa-yield {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+}
+.fa-endurance {
+  stroke: #1baf7a;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+}
+.fa-dot-ok {
+  fill: #1baf7a;
+}
+.fa-dot-bad {
+  fill: #e34948;
+}

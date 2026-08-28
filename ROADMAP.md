@@ -12,12 +12,12 @@ is next.
 |---|---|---|---|---|
 | ~~1~~ | ~~**Miller indices & slip systems**~~ — shipped | high | low | ✅ |
 | ~~2~~ | ~~**TTT / CCT diagrams & heat treatment**~~ — shipped | very high | medium | ✅ |
-| 3 | **Fatigue, creep & fracture** | high | medium | ✅ |
+| ~~3~~ | ~~**Fatigue, creep & fracture**~~ — shipped | high | medium | ✅ |
 | 4 | **Semiconductors & band structure** | high | medium | ✅ |
 | 5 | **Corrosion & the galvanic series** | medium | low | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
 
-Ranked by value per unit of effort. (1) and (2) shipped; (3), (4) and (5) are
+Ranked by value per unit of effort. (1), (2) and (3) shipped; (4) and (5) are
 committed work, tracked alongside the product-level backlog in
 [docs/GAUNTLET.md](docs/GAUNTLET.md).
 
@@ -69,21 +69,35 @@ get a material", which is the actual engineering skill.
   `components/PhaseDiagrams.tsx`; the existing Fe–Fe₃C system for context.
 - **New:** `src/heattreat/` for curve data and microstructure/hardness lookup.
 
-## 3. Fatigue, creep & fracture
+## 3. Fatigue, creep & fracture — shipped
 
-The mechanical module covers monotonic loading only, leaving out the entire
-failure half of the subject. Adds S–N curves with endurance limits, Paris-law
-crack growth, a Griffith / K_IC critical-crack-size calculator, and Larson–Miller
-creep parameters.
+Built in `failure/model.ts`, `failure/materials.ts` and
+`components/FailureAnalysis.tsx`; costs 8.6 kB gzipped. Four panels: critical
+crack size from K_IC, estimated S–N curves, Paris-law crack growth, and
+Larson–Miller creep rupture.
 
-Most real components fail by fatigue rather than yielding, so this is the highest
-practical relevance on the list.
+One departure from the plan below, and it matters. The plan was to extend the
+seven entries in `mechanical/materials.ts` with `K_IC` and Paris constants. That
+would have been wrong: plane-strain fracture toughness is a property of a
+specific alloy in a specific heat treatment, not of "aluminium", and Paris
+constants are published per *class* of steel and are not transferable to other
+metals. Bolting either onto the annealed pure metals would have produced
+confident numbers with no basis. So the module carries three separate datasets
+with separate domains — `FRACTURE_ALLOYS` (Callister table 8.1, K_IC paired with
+the yield strength it was measured against), `GROWTH_CLASSES` (Barsom & Rolfe,
+steels only), and `BRITTLE_SOLIDS` (for Griffith) — and only the S–N panel reuses
+`MECH_MATERIALS`, where tensile strength genuinely is the right input.
 
-- **Data:** extend the seven entries in `mechanical/materials.ts` with `K_IC`,
-  endurance limit, and Paris constants `C` and `m`.
-- **Reuses:** `MECH_MATERIALS`, the curve-building and SVG axis code in
-  `mechanical/materials.ts` and `components/StressStrain.tsx`.
-- **New:** log–log S–N and da/dN plots; critical crack size solver.
+- **Data:** as built — five alloys with K_IC and yield strength, three brittle
+  solids with E and surface energy, three Barsom crack-growth classes, per-alloy
+  fatigue behaviour keyed to `MECH_MATERIALS`, and a digitised S-590
+  Larson–Miller master curve.
+- **Reuses:** `MECH_MATERIALS` for the S–N panel; the SVG axis and detail-panel
+  patterns from `components/HeatTreatment.tsx`.
+- **Verified:** Griffith reproduces Callister's 8.2 µm flaw in soda-lime glass at
+  40 MPa; Larson–Miller reproduces his S-590 worked example (800 °C, 140 MPa →
+  231 h against a published ~233 h); the closed-form Paris integration matches a
+  400 000-step numerical integration to better than 0.05%.
 
 ## 4. Semiconductors & band structure
 

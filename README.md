@@ -15,12 +15,13 @@ MatVista gives students and material scientists visual, interactive views onto m
 | **Mechanical properties** — engineering stress–strain curves for 7 metals with the 0.002 offset construction, resilience, true-stress overlay, and a Hall–Petch grain-size panel | ✅ available |
 | **Phase Diagram Explorer** — interactive Cu–Ni, Pb–Sn and Fe–Fe₃C diagrams; click any point for phases, tie line, lever-rule fractions and steel microstructure | ✅ available |
 | **Heat treatment** — TTT diagrams for 1080/5140/4340 steels with a cooling-rate slider read by Scheil additivity, predicted phase fractions and hardness, and a Jominy end-quench comparison | ✅ available |
+| **Failure analysis** — plane-strain fracture toughness and critical crack size for five alloys, estimated S–N curves that flatten only for alloys with a real fatigue limit, Paris-law crack growth for three steel classes, and Larson–Miller creep rupture | ✅ available |
 | **Material Selection (Ashby)** — log–log property chart of 54 materials with movable performance-index guide lines (E/ρ, E^½/ρ, E^⅓/ρ, σ/ρ, σ^⅔/ρ) and live ranking | ✅ available |
 | **XRD Simulator** — powder diffraction patterns for SC/BCC/FCC/diamond-cubic samples across four X-ray sources, with indexed peak table, structure overlay, and an extinction panel | ✅ available |
 
 Modules are grouped in the header by where they sit in a materials course — Structure, Microstructure, Properties, Analysis.
 
-The app opens on a landing page introducing the nine modules; each card links straight
+The app opens on a landing page introducing the ten modules; each card links straight
 into one. `#/trends` is the periodic table.
 
 ## Sharing a view

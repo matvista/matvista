@@ -17,6 +17,7 @@
  * out at 43.32, 50.45, 74.13 and 89.95° against literature 43.3, 50.4, 74.1
  * and 90.0°, and silicon's (111) at 28.44°.
  */
+import { dSpacing as millerDSpacing } from '../crystal/miller';
 
 export type XrdLattice = 'sc' | 'bcc' | 'fcc' | 'diamond';
 
@@ -143,9 +144,13 @@ export function angularDamping(thetaRad: number, lambdaNm: number): number {
   return Math.exp(-ANGULAR_DAMPING * s * s);
 }
 
-/** Interplanar spacing for a cubic lattice, nm. */
+/**
+ * Interplanar spacing for a cubic lattice, nm. Delegates to the crystallography
+ * module so the Miller and XRD views can never drift apart; the argument order
+ * here is kept for the existing callers.
+ */
 export function dSpacing(a: number, h: number, k: number, l: number): number {
-  return a / Math.sqrt(h * h + k * k + l * l);
+  return millerDSpacing([h, k, l], a);
 }
 
 /**

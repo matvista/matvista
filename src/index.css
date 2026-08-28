@@ -930,3 +930,327 @@ button.nav-active {
   text-decoration: line-through;
   opacity: 0.7;
 }
+
+/* ---------------------------------------------------- Miller indices module */
+
+.mi-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .mi-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mi-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.mi-input-block label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.mi-input-block input {
+  font: inherit;
+  font-size: 1.05rem;
+  width: 100%;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-invalid {
+  border-color: #e34948;
+}
+
+.mi-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.mi-swatch-plane {
+  background: #eb6834;
+}
+
+.mi-swatch-dir {
+  background: #eda100;
+}
+
+.mi-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.mi-chip {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.16rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-chip:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.mi-chip-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.mi-axis-key {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  margin: 0.5rem 0;
+}
+
+.mi-axis-key span {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.mi-axis-key i {
+  width: 0.85rem;
+  height: 0.18rem;
+  border-radius: 2px;
+}
+
+.mi-derivation {
+  margin-top: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.mi-deriv-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+.mi-deriv-table th,
+.mi-deriv-table td {
+  padding: 0.28rem 1.1rem 0.28rem 0;
+  text-align: left;
+}
+
+.mi-deriv-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mi-deriv-table tbody th {
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.mi-deriv-result td {
+  font-weight: 700;
+  font-size: 1.05rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.mi-error {
+  font-size: 0.85rem;
+  color: #e34948;
+}
+
+.mi-family {
+  margin-top: 1.1rem;
+}
+
+.mi-family h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.mi-family-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.mi-slip {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.mi-slip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.mi-slip-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mi-slip-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.mi-slip-controls select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.mi-axis-input {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 5.5rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-sigma {
+  width: 130px;
+  accent-color: var(--accent);
+}
+
+.mi-sigma-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  min-width: 4.5rem;
+}
+
+.mi-slip-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 0.8rem 0 1rem;
+}
+
+.mi-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.mi-stat-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.mi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-table th,
+.mi-table td {
+  padding: 0.3rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mi-table th:first-child,
+.mi-table td:first-child,
+.mi-table th:nth-child(2),
+.mi-table td:nth-child(2),
+.mi-table th:nth-child(3),
+.mi-table td:nth-child(3) {
+  text-align: left;
+}
+
+.mi-table thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.mi-row-hot {
+  background: rgba(235, 104, 52, 0.14);
+}
+
+.mi-link {
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-link:hover {
+  text-decoration: underline;
+}
+
+.mi-dim {
+  color: var(--muted);
+  font-size: 0.8rem;
+}

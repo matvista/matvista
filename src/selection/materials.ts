@@ -219,7 +219,7 @@ export const INDICES: PerformanceIndex[] = [
     property: 'modulus',
     exponent: 0.5,
     slope: 2,
-    scenario: 'Stiff beam in bending. The square root appears because you may thicken the beam, and bending stiffness grows as the cube of depth.',
+    scenario: 'Stiff beam in bending. The square root appears because the section is square and free to grow: mass goes as b² while bending stiffness goes as b⁴, and ½ is that ratio.',
     derivation: {
       functionName: 'Beam of fixed length L and square section b × b, loaded in bending',
       objective: 'minimise the mass  m = b²·L·ρ',

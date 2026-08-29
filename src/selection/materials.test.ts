@@ -82,6 +82,49 @@ describe('index derivations', () => {
   });
 
   /**
+   * The one-line scenario is what a reader sees *before* opening the
+   * derivation, and it may not contradict it.
+   *
+   * `e12-rho` said the square root appears "because bending stiffness grows as
+   * the cube of depth". That is the panel case, not the beam case: this beam
+   * has a square section free in both directions, I = b⁴/12, so stiffness goes
+   * as b⁴ and the exponent is 2/4. The sentence rendered immediately above a
+   * derivation box saying exactly that, on `?index=e12-rho`. The reason it
+   * gave was wrong too — fixed-width, free-depth is mass ∝ d and stiffness
+   * ∝ d³, which is a = 1/3, the *next* index down.
+   *
+   * Any scenario naming a power of the free variable now has to name its own.
+   */
+  const POWER_WORDS: [RegExp, number][] = [
+    [/\bthe square of\b/, 2],
+    [/\bthe cube of\b/, 3],
+    [/\bthe fourth power of\b/, 4],
+    [/goes as b²/, 2],
+    [/goes as b⁴/, 4],
+    [/goes as t³/, 3],
+  ];
+
+  it.each(INDICES.map((i) => i.id))(
+    '%s: the scenario names no power its own derivation contradicts',
+    (id) => {
+      const idx = INDICES.find((i) => i.id === id)!;
+      const q = idx.derivation.constraintPower;
+      const p = idx.derivation.massPower;
+      let named = 0;
+      for (const [re, power] of POWER_WORDS) {
+        if (!re.test(idx.scenario)) continue;
+        named++;
+        // A named power is either the constraint's or the mass's; it may not
+        // be a third number belonging to a different section geometry.
+        expect([p, q], `${id}: "${idx.scenario}"`).toContain(power);
+      }
+      // The one that carried the error must still say something checkable,
+      // or the guard passes by the sentence going quiet.
+      if (id === 'e12-rho') expect(named).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  /**
    * The claim the whole panel rests on. If the stated exponent were not the
    * ratio of the two powers, the derivation on screen would not produce the
    * index beside it.

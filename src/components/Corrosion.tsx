@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import {
-  EMF_SERIES, GALVANIC_SERIES, POURBAIX, getPourbaix, regionAt,
+  EMF_SERIES, GALVANIC_SERIES, POURBAIX, electrochemistryFor, getPourbaix, regionAt,
 } from '../corrosion/data';
 import {
-  areaRatioFactor, galvanicCouple, hydrogenLine, nernstPotential, nernstSlope,
-  oxygenLine,
+  G102_K_MILS_PER_YEAR, areaRatioFactor, currentDensityToCPR, equivalentWeight,
+  galvanicCouple, hydrogenLine, nernstPotential, nernstSlope, oxygenLine,
 } from '../corrosion/model';
 
 const W = 660;
@@ -59,6 +59,8 @@ function CouplePanel() {
   const [bName, setBName] = useRouteString('b', 'Copper');
   const [anodeArea, setAnodeArea] = useRouteNumber('aa', 10, 0.1, 100);
   const [cathodeArea, setCathodeArea] = useRouteNumber('ca', 10, 0.1, 100);
+  // Log-scaled: measured corrosion current densities span 0.01–1000 µA/cm².
+  const [logI, setLogI] = useRouteNumber('logi', 0, -2, 3);
 
   const a = GALVANIC_SERIES.find((g) => g.name === aName) ?? GALVANIC_SERIES[19];
   const b = GALVANIC_SERIES.find((g) => g.name === bName) ?? GALVANIC_SERIES[11];
@@ -152,6 +154,8 @@ function CouplePanel() {
           </p>
         )}
 
+        <RatePanel anode={couple.anode} ratio={ratio} logI={logI} setLogI={setLogI} />
+
         <div className="density-box">
           <h3>Three things are needed</h3>
           <p className="density-note">
@@ -166,6 +170,122 @@ function CouplePanel() {
           <p className="trend-note">{a.note ?? b.note}</p>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * Voltage says which way; current density says how fast. The module is
+ * otherwise entirely thermodynamic and says so, which leaves a student unable
+ * to answer the only question an engineer asks.
+ *
+ * The current density is an **input**. i_corr cannot be predicted from the
+ * couple — it depends on the electrolyte, aeration, flow and the polarisation
+ * behaviour of both metals — so the control is framed as "suppose you
+ * measured", and the panel never presents it as something derived here.
+ */
+const PLATE_MM = 3;
+const PLATE_YEARS = [1, 5, 20];
+
+function RatePanel({
+  anode, ratio, logI, setLogI,
+}: {
+  anode: string;
+  ratio: number;
+  logI: number;
+  setLogI: (v: number) => void;
+}) {
+  const chem = electrochemistryFor(anode);
+  const i = 10 ** logI;
+
+  if (!chem) {
+    return (
+      <div className="density-box">
+        <h3>How fast?</h3>
+        <p className="density-note">
+          No penetration rate is offered for <strong>{anode}</strong>. Faraday’s law needs an
+          equivalent weight, and for a multi-phase alloy that is a composition-weighted average
+          rather than A/n — not something derivable from anything this module ships. Pick an
+          elemental anode (zinc, copper, aluminium, magnesium…) or carbon steel to see the
+          arithmetic.
+        </p>
+      </div>
+    );
+  }
+
+  const EW = equivalentWeight(chem.atomicMass, chem.valence);
+  // The area ratio concentrates the same total current into a smaller anode,
+  // and it is the anodic current *density* that removes metal.
+  const iAnode = i * ratio;
+  const mmPerYear = currentDensityToCPR(iAnode, EW, chem.density);
+  const milsPerYear = currentDensityToCPR(iAnode, EW, chem.density, G102_K_MILS_PER_YEAR);
+  const yearsToPerforate = mmPerYear > 0 ? PLATE_MM / mmPerYear : Infinity;
+
+  return (
+    <div className="density-box">
+      <h3>How fast? — Faraday’s law</h3>
+      <p className="density-eq">CR = K·(i / ρ)·EW</p>
+
+      <Slider
+        label="Suppose you measured"
+        unit="µA/cm² at equal areas"
+        value={logI}
+        min={-2}
+        max={3}
+        step={0.1}
+        onChange={setLogI}
+        display={i < 1 ? i.toFixed(2) : i.toFixed(1)}
+      />
+
+      <table className="detail-props">
+        <tbody>
+          <tr><th scope="row">Equivalent weight</th><td>{EW.toFixed(2)} g/eq</td></tr>
+          <tr><th scope="row">Density</th><td>{chem.density} g/cm³</td></tr>
+          <tr>
+            <th scope="row">i at the anode</th>
+            <td>{(iAnode < 1 ? iAnode.toFixed(2) : iAnode.toFixed(1))} µA/cm²</td>
+          </tr>
+          <tr>
+            <th scope="row">Penetration</th>
+            <td>{mmPerYear < 0.01 ? mmPerYear.toExponential(2) : mmPerYear.toFixed(3)} mm/yr</td>
+          </tr>
+          <tr>
+            <th scope="row"> in mils per year</th>
+            <td>{milsPerYear < 0.01 ? milsPerYear.toExponential(2) : milsPerYear.toFixed(2)} mpy</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="density-note">
+        A {PLATE_MM} mm plate of {anode.toLowerCase()} loses{' '}
+        {PLATE_YEARS.map((y, idx) => {
+          const lost = Math.min(mmPerYear * y, PLATE_MM);
+          return (
+            <span key={y}>
+              {idx > 0 ? ', ' : ''}
+              <strong>
+                {lost >= PLATE_MM ? `all ${PLATE_MM} mm` : `${lost.toFixed(lost < 0.1 ? 3 : 2)} mm`}
+              </strong>{' '}
+              in {y} year{y === 1 ? '' : 's'}
+            </span>
+          );
+        })}
+        {'. '}
+        {yearsToPerforate <= 200
+          ? `It perforates after about ${yearsToPerforate < 1 ? `${(yearsToPerforate * 12).toFixed(1)} months` : `${yearsToPerforate.toFixed(1)} years`}.`
+          : 'At that rate it outlasts any structure it could be part of.'}
+      </p>
+
+      <p className="ht-caveat">
+        <strong>i_corr is a measurement, not a prediction.</strong> Nothing on this page can derive
+        it: the driving voltage sets the <em>direction</em>, and the kinetics of the electrolyte set
+        the <em>rate</em>. A 1.6 V couple in dry air corrodes at nothing at all. What the couple
+        does control is the geometry term — the {ratio.toFixed(1)} : 1 area ratio above
+        multiplies the anodic current density by {ratio.toFixed(1)}, and that is why the same pair
+        of metals can be harmless or perforate in a season.
+      </p>
+
+      <p className="density-note">{chem.basis}</p>
     </div>
   );
 }
@@ -422,17 +542,26 @@ const VERDICT: Record<string, string> = {
 
 /* ================================================================ shared == */
 
+/**
+ * `display` exists for the log-scaled sliders: the input's own value is the
+ * exponent, which is not the quantity anyone reads. It also becomes
+ * `aria-valuetext`, so a screen reader hears "1.0 µA/cm²" rather than the
+ * exponent 0. (When U6/U9 lift this into a shared control, that pairing is the
+ * part to keep.)
+ */
 function Slider({
-  label, unit, value, min, max, step, onChange, fixed = 0,
+  label, unit, value, min, max, step, onChange, fixed = 0, display,
 }: {
   label: string; unit: string; value: number; min: number; max: number;
-  step: number; onChange: (v: number) => void; fixed?: number;
+  step: number; onChange: (v: number) => void; fixed?: number; display?: string;
 }) {
+  const shown = display ?? value.toFixed(fixed);
   return (
     <label className="fa-slider">
-      <span>{label} <strong>{value.toFixed(fixed)}</strong> {unit}</span>
+      <span>{label} <strong>{shown}</strong> {unit}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={display ? `${shown} ${unit}`.trim() : undefined}
         aria-label={`${label}${unit ? `, ${unit}` : ''}`} />
     </label>
   );

@@ -114,6 +114,47 @@ export function penetrationRate(
   return (K * massLoss_mg) / (density_g_cm3 * area_cm2 * hours);
 }
 
+/**
+ * Corrosion rate from a **measured** corrosion current density —
+ * ASTM G102 eq. 1, Callister eq. 17.24:
+ *
+ *   CR = K · (i_corr / ρ) · EW
+ *
+ * with i_corr in µA/cm², EW in grams per mole of electrons and ρ in g/cm³.
+ * K = 3.27 × 10⁻³ gives mm/yr and K = 1.288 × 10⁻¹ gives mils per year; unlike
+ * Callister's pair for eq. 17.23, both of these take the area in cm², so the
+ * two differ by nothing but 1 mm = 39.37 mils.
+ *
+ * **i_corr is an input, never an output.** It is not predictable from the
+ * couple: the driving voltage sets the direction, and the kinetics of the
+ * electrolyte set the rate. Anything calling this must present the current
+ * density as a measurement the reader supposes, not as something the module
+ * derived.
+ */
+export const G102_K_MM_PER_YEAR = 3.27e-3;
+export const G102_K_MILS_PER_YEAR = 1.288e-1;
+
+export function currentDensityToCPR(
+  i_uA_cm2: number,
+  equivalentWeight_g: number,
+  density_g_cm3: number,
+  K = G102_K_MM_PER_YEAR,
+): number {
+  if (density_g_cm3 <= 0 || i_uA_cm2 < 0 || equivalentWeight_g <= 0) return 0;
+  return K * (i_uA_cm2 / density_g_cm3) * equivalentWeight_g;
+}
+
+/**
+ * Grams dissolved per mole of electrons, for an element going to a single
+ * ionic species: EW = A/n. A multi-phase or multi-element alloy needs a
+ * composition-weighted average instead, which is why the shipped table covers
+ * only entries where this form holds.
+ */
+export function equivalentWeight(atomicMass: number, valence: number): number {
+  if (valence <= 0) return 0;
+  return atomicMass / valence;
+}
+
 /* ------------------------------------------------------- Pourbaix boundaries */
 
 /**

@@ -398,6 +398,10 @@ describe('prose and bar never disagree', () => {
       const alpha = ttt.equilibriumFerrite;
       for (let lg = -2; lg <= 4; lg += 0.002) {
         const o = predict(s, ttt, AUST, 10 ** lg);
+        // Only above the ferrite floor. Below it the model reports pearlite
+        // with no proeutectoid ferrite at all, which is the floor's whole
+        // point; ferrite-leads does not run there.
+        if (o.startTemp === null || o.startTemp < s.nose.temp) continue;
         const pearlite = o.fractions
           .filter((f) => f.product === 'coarse pearlite' || f.product === 'fine pearlite')
           .reduce((a, f) => a + f.fraction, 0);
@@ -515,17 +519,29 @@ describe('ferrite-leads: continuity, monotonicity, carbon balance', () => {
     expect(Math.abs(pearliteOf(hi) - pearliteOf(lo))).toBeLessThan(0.001);
   });
 
-  it.each(HYPO)('%s: ferrite and pearlite are both monotone in cooling rate', (id) => {
+  /**
+   * **Scope, stated because this is narrower than it was.** Ferrite and the
+   * diffusional total are monotone in rate; *total pearlite* is not, and the
+   * earlier version of this assertion claimed it was. The ferrite floor flips
+   * the product identity at the nose — above it the diffusional product is
+   * ferrite, below it pearlite — so total pearlite steps up as cooling gets
+   * faster. That step is a product relabelling, not a change in how much
+   * transformed, which is why the total is the quantity that stays monotone.
+   * Its size is bounded in the ferrite-floor block below rather than left
+   * unasserted.
+   */
+  it.each(HYPO)('%s: ferrite and the diffusional total are monotone in rate', (id) => {
     const s = getSteel(id);
     const ttt = buildTtt(s);
     let prevFerrite = 1;
-    let prevPearlite = 1;
+    let prevTotal = 1;
     for (let lg = -2; lg <= 4; lg += 0.002) {
       const o = predict(s, ttt, AUST, 10 ** lg);
+      const total = 1 - (o.fractions.find((f) => f.product === 'martensite')?.fraction ?? 0);
       expect(ferriteOf(o)).toBeLessThanOrEqual(prevFerrite + 1e-9);
-      expect(pearliteOf(o)).toBeLessThanOrEqual(prevPearlite + 1e-9);
+      expect(total).toBeLessThanOrEqual(prevTotal + 1e-9);
       prevFerrite = ferriteOf(o);
-      prevPearlite = pearliteOf(o);
+      prevTotal = total;
     }
   });
 
@@ -535,22 +551,37 @@ describe('ferrite-leads: continuity, monotonicity, carbon balance', () => {
    * and what is left in the austenite can only be richer than the bulk — that
    * is the direction ferrite rejection moves it.
    */
-  it.each(HYPO)('%s: carbon balances, and the austenite is enriched not depleted', (id) => {
+  /**
+   * Carbon conservation always; the *direction* only where ferrite led.
+   *
+   * Below the ferrite floor the model reports pearlite with no proeutectoid
+   * ferrite, and eutectoid pearlite drawn from 0.40 wt% C austenite leaves
+   * what remains leaner, not richer. That is a real inconsistency of the
+   * floor and it is bounded here rather than asserted away: nothing displayed
+   * depends on it, because `untransformedAusteniteCarbon` returns null when no
+   * ferrite formed.
+   */
+  it.each(HYPO)('%s: carbon is conserved, and the direction holds where ferrite led', (id) => {
     const s = getSteel(id);
     const ttt = buildTtt(s);
     const C0 = s.composition.C;
     for (let lg = -2; lg <= 4; lg += 0.002) {
       const o = predict(s, ttt, AUST, 10 ** lg);
-      const inFerrite = ferriteOf(o) * FERRITE_MAX;
-      const inPearlite = pearliteOf(o) * EUTECTOID_X;
-      const consumed = inFerrite + inPearlite;
-      const solid = ferriteOf(o) + pearliteOf(o);
+      const ferrite = ferriteOf(o);
+      const pearlite = pearliteOf(o);
+      const consumed = ferrite * FERRITE_MAX + pearlite * EUTECTOID_X;
+      const solid = ferrite + pearlite;
+      // Global conservation, everywhere and without exception.
       expect(consumed).toBeLessThanOrEqual(C0 + 1e-12);
-      if (solid < 1 - 1e-9) {
-        const remaining = (C0 - consumed) / (1 - solid);
+      if (solid >= 1 - 1e-9) continue;
+      const remaining = (C0 - consumed) / (1 - solid);
+      if (ferrite > 0) {
+        // Ferrite led: the austenite can only be enriched, up to the eutectoid.
         expect(remaining).toBeGreaterThanOrEqual(C0 - 1e-9);
-        // and never past the eutectoid, which is where ferrite rejection stops
         expect(remaining).toBeLessThanOrEqual(EUTECTOID_X + 1e-9);
+      } else {
+        // Pearlite without ferrite: leaner, and by no more than this.
+        expect(remaining).toBeGreaterThan(C0 - 0.06);
       }
     }
   });
@@ -716,17 +747,6 @@ describe('the pearlitic field has a floor', () => {
     expect(lowest).toBeGreaterThan(400);
   });
 
-  it('gives a hypoeutectoid steel no fine-pearlite field', () => {
-    for (const id of ['5140', '4340']) {
-      const s = getSteel(id);
-      const ttt = buildTtt(s);
-      for (let lg = -2; lg <= 4; lg += 0.0005) {
-        const o = predict(s, ttt, AUST, 10 ** lg);
-        expect(o.fractions.map((f) => f.product)).not.toContain('fine pearlite');
-      }
-    }
-  });
-
   it('closes the narrow fine-pearlite window a reviewer found in 4340', () => {
     // 1.9877–2.0082 °C/s reported "fine pearlite" starting near 396 °C, which
     // ferrite-leads then rendered as proeutectoid ferrite.
@@ -734,7 +754,8 @@ describe('the pearlitic field has a floor', () => {
     const ttt = buildTtt(s);
     for (const rate of [1.9877, 1.99, 2.0, 2.0082]) {
       const o = predict(s, ttt, AUST, rate);
-      expect(o.fractions.map((f) => f.product)).not.toContain('fine pearlite');
+      // Below the measured bainite start, so bainite — and below the ferrite
+      // floor either way, so no proeutectoid ferrite.
       expect(ferriteOf(o)).toBe(0);
       expect(o.fractions.map((f) => f.product)).toContain('bainite');
     }
@@ -1109,5 +1130,94 @@ describe('the ferrite fraction is an upper bound everywhere', () => {
     const shown = o.fractions.find((f) => f.product === 'proeutectoid ferrite')!.fraction;
     expect(shown).toBeLessThan(ttt.equilibriumFerrite);
     expect(shown).toBeGreaterThan(0.42); // above a plausible alloy-corrected alpha'
+  });
+});
+
+/**
+ * The pearlite/bainite divide and the ferrite floor are two boundaries.
+ *
+ * 5306e90 fixed the ferrite defect by moving the *pearlite* floor to the nose,
+ * because `splitProeutectoid` fires on pearlitic labels and so the two rode on
+ * one boundary. That kept the ferrite gain but paid for it three ways: 4340's
+ * bainite start traded the sign of its error rather than losing it, the
+ * fine-pearlite field became unreachable for both hypoeutectoid grades, and
+ * the ferrite→bainite flip moved from a trace to a tenth of the sample.
+ *
+ * They are separate boundaries and are now separated: `pearliteFloor` takes
+ * the measured Bs, and the ferrite floor is its own guard inside
+ * `splitProeutectoid`, at the nose.
+ */
+describe('the pearlite floor and the ferrite floor are independent', () => {
+  const ferriteOf = (o: ReturnType<typeof predict>) =>
+    o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+  const scan = (id: string) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    let ferriteMin = Infinity;
+    let bainiteMax = -Infinity;
+    let sawFinePearlite = false;
+    for (let lg = -2; lg <= 4; lg += 0.0005) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      if (o.startTemp === null) continue;
+      const has = (n: string) => o.fractions.some((f) => f.product === n && f.fraction > 0);
+      if (ferriteOf(o) > 0) ferriteMin = Math.min(ferriteMin, o.startTemp);
+      if (has('bainite')) bainiteMax = Math.max(bainiteMax, o.startTemp);
+      if (has('fine pearlite')) sawFinePearlite = true;
+    }
+    return { ferriteMin, bainiteMax, sawFinePearlite };
+  };
+
+  it('lands 4340 bainite on the measured 476–480 °C without losing the ferrite floor', () => {
+    const r = scan('4340');
+    expect(r.bainiteMax).toBeGreaterThan(470);
+    expect(r.bainiteMax).toBeLessThan(480);
+    // the ferrite gain from 5306e90 is kept in full
+    expect(r.ferriteMin).toBeGreaterThanOrEqual(getSteel('4340').nose.temp);
+  });
+
+  it('lands 5140 bainite inside the 42CrMo4 proxy band, 500–520 °C', () => {
+    const r = scan('5140');
+    expect(r.bainiteMax).toBeGreaterThan(500);
+    expect(r.bainiteMax).toBeLessThan(520);
+    expect(r.ferriteMin).toBeGreaterThanOrEqual(getSteel('5140').nose.temp);
+  });
+
+  it('restores the fine-pearlite field, so its shipped hardness is not dead data', () => {
+    for (const id of ['5140', '4340']) {
+      expect(scan(id).sawFinePearlite).toBe(true);
+      expect(getSteel(id).hardness.finePearlite).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The ferrite floor is a real discontinuity and the block above asserts
+   * continuity only at the completion edge, so the largest jump in the model
+   * went untested. It is bounded here rather than wished away: monotonicity
+   * alone accepts a 12.78 → 0 cliff.
+   */
+  it.each(['5140', '4340'])('%s: the hardness step at the ferrite floor is bounded', (id) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    let worst = 0;
+    let prev: ReturnType<typeof predict> | null = null;
+    for (let lg = -2; lg <= 4; lg += 0.00005) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      if (prev && ferriteOf(prev) > 0 && ferriteOf(o) === 0) {
+        worst = Math.max(worst, Math.abs(o.hardness - prev.hardness));
+      }
+      prev = o;
+    }
+    // Was 3.63 HRC (5140) and 3.03 (4340) with the two boundaries merged.
+    expect(worst).toBeLessThan(2.6);
+  });
+
+  it.each(['1080', '5140', '4340'])('%s: critical cooling rate is bit-identical', (id) => {
+    const expected: Record<string, number> = {
+      '1080': 233.41044666842697,
+      '5140': 36.46135678530757,
+      '4340': 2.133696798237151,
+    };
+    expect(criticalCoolingRate(getSteel(id), buildTtt(getSteel(id)), AUST)).toBe(expected[id]);
   });
 });

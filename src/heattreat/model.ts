@@ -216,43 +216,24 @@ export interface Outcome {
 }
 
 /**
- * Lowest temperature at which this model will call a product pearlitic.
+ * Lowest temperature at which this model will call a product pearlitic — the
+ * top of the bainite field.
  *
- * **Hypoeutectoid steels: the pearlite nose.** Below it the product is
- * bainite. This is the floor the whole ferrite series needed and did not have.
- * Pearlite in a hypoeutectoid steel implies proeutectoid ferrite before it —
- * that is what `splitProeutectoid` encodes — so wherever this function says
- * "pearlite", the model reports ferrite. With the divide at the arithmetic
- * midpoint below, 4340 called everything down to 395 °C fine pearlite and the
- * model duly reported proeutectoid ferrite forming at 396.5 °C, against a
- * measured ferrite start near 700 °C that only appears at 0.01–0.1 °C/s
- * (dilatometric CCT for 4340, Materials 2020, 13, 5585; 42CrMo4 agrees as a
- * 0.4 wt% C proxy, Materials 2022, 15, 3076).
+ * The measured bainite start where one exists, and otherwise the shipped
+ * arithmetic midpoint of the sub-nose range, which has no metallurgical basis
+ * and is left alone rather than extrapolated (see `Steel.bainiteStart`).
  *
- * The nose is shipped digitised data and it is the lowest temperature at which
- * this model has any evidence of a pearlitic reaction, so it is the tightest
- * bound available without inventing one. It errs toward under-reporting
- * ferrite, which is the safe direction for a number the module presents as a
- * ceiling.
- *
- * **Known limitation, deliberately not patched.** 4340's bainite start is
- * measured at 476–480 °C and is not used here. Adopting it would put a
- * fine-pearlite field between 478 and 560 °C, and ferrite-leads would then
- * report proeutectoid ferrite down to 478 °C — further from the measured
- * ferrite start than the nose is. One measured number cannot be dropped into a
- * model whose neighbouring boundary is inferred; both would have to move
- * together, and the second has no published value for 5140 that is readable
- * (the ASM atlas is paywalled). Recorded rather than extrapolated.
- *
- * **Eutectoid steels keep the shipped midpoint**, unchanged. It has no
- * metallurgical basis either, but 1080 forms no proeutectoid phase, so nothing
- * downstream of it is affected and changing it would move published output for
- * no gain. Steven & Haynes' Bs is not a fix: it is fitted to 0.10–0.55 wt% C
- * and 1080 is 0.79, outside its range.
+ * **This used to be the nose, and that was one boundary doing two jobs.**
+ * `splitProeutectoid` fires on pearlitic labels, so moving this floor was the
+ * only lever on where ferrite is reported; putting it at the nose bought the
+ * ferrite fix by trading the sign of the bainite-start error, deleting the
+ * fine-pearlite field for both hypoeutectoid grades, and turning the
+ * ferrite→bainite flip from a trace into a tenth of the sample. The ferrite
+ * floor is now its own guard inside `splitProeutectoid`, so this boundary is
+ * free to be the measured one.
  */
 function pearliteFloor(steel: Steel): number {
-  if (steel.composition.C < EUTECTOID_X) return steel.nose.temp;
-  return (steel.nose.temp + steel.bainiteFloor) / 2;
+  return steel.bainiteStart ?? (steel.nose.temp + steel.bainiteFloor) / 2;
 }
 
 /** Which diffusional product forms at a given transformation temperature. */
@@ -405,8 +386,10 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
  * one and is not made here. The UI says so.
  */
 function splitProeutectoid(
+  steel: Steel,
   ttt: TttModel,
   product: Product,
+  startT: number,
   fraction: number,
 ): { product: Product; fraction: number }[] {
   const alpha = ttt.equilibriumFerrite;
@@ -414,6 +397,16 @@ function splitProeutectoid(
   if (product !== 'coarse pearlite' && product !== 'fine pearlite') {
     return [{ product, fraction }];
   }
+  // The ferrite floor, and the reason it is here rather than in `productAt`:
+  // proeutectoid ferrite is confined to the top of the diagram — measured
+  // dilatometry puts 4340's ferrite start near 700 °C and finds it only at
+  // 0.01–0.1 °C/s — while the pearlite/bainite divide is a separate, measured
+  // boundary far below. The nose is the lowest temperature at which this
+  // model has evidence of a pearlitic reaction and is the tightest bound the
+  // shipped data supports; below it the product is pearlite without
+  // proeutectoid ferrite, which this model reports as such rather than
+  // inventing a fraction.
+  if (startT < steel.nose.temp) return [{ product, fraction }];
   const ferrite = Math.min(fraction, alpha);
   const pearlite = Math.max(0, fraction - alpha);
   const parts: { product: Product; fraction: number }[] = [
@@ -539,7 +532,7 @@ function predictWithMs(
   const finishRun = scheil(ttt.finish, startTemp, rate, ms);
 
   if (finishRun.reached) {
-    const parts = splitProeutectoid(ttt, product, 1);
+    const parts = splitProeutectoid(steel, ttt, product, hitStart.T, 1);
     const alpha = parts.length > 1 ? parts[0].fraction : 0;
     return {
       fractions: parts,
@@ -568,7 +561,7 @@ function predictWithMs(
   const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
   const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
   const fraction = Math.min(1, Math.max(0, progress));
-  const parts = splitProeutectoid(ttt, product, fraction);
+  const parts = splitProeutectoid(steel, ttt, product, hitStart.T, fraction);
   const shown = describeParts(parts);
   // The matrix is subject to the same rule as the product: if the bar does not
   // draw the martensite, the prose must not say the structure is embedded in

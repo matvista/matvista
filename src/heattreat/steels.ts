@@ -50,6 +50,24 @@ export interface Steel {
   finishFactor: number;
   /** Lower bound of the bainite field, °C — below this, only martensite forms. */
   bainiteFloor: number;
+  /**
+   * Bainite-start temperature, °C — the top of the bainite field, measured.
+   *
+   * Where a published dilatometric CCT gives one, this is it, and `productAt`
+   * uses it as the pearlite/bainite divide. Absent it falls back to the
+   * arithmetic midpoint of the sub-nose range, which has no metallurgical
+   * basis and is documented as such.
+   *
+   * 4340: 478 °C, the mid of a measured 476–480 (Materials 2020, 13, 5585;
+   * 0.40C dilatometry, austenitised 850 °C).
+   * 5140: 510 °C, the mid of a measured 500–520 for 42CrMo4 (Materials 2022,
+   * 15, 3076) — the same 0.4 wt% C proxy already relied on for the ferrite
+   * start, so no new licence is taken.
+   * 1080: none. Its 0.79 wt% C is outside the range of every 0.4C source
+   * here, and it forms no proeutectoid phase, so nothing downstream depends
+   * on the divide; changing it would move published output for no gain.
+   */
+  bainiteStart?: number;
   /** Hardness of each product for this carbon level, HRC. */
   hardness: {
     coarsePearlite: number;
@@ -93,6 +111,7 @@ export const STEELS: Steel[] = [
     nose: { time: 6, temp: 550 },
     finishFactor: 12,
     bainiteFloor: 250,
+    bainiteStart: 510,
     hardness: { coarsePearlite: 12, finePearlite: 25, bainite: 40, martensite: 57 },
     jominy: [57, 54, 47, 40, 35, 33, 31, 30, 28, 27, 26, 25, 24 ],
     note: 'Under a percent of chromium moves the nose from one second to about six, and that is the whole story of alloy steel: the chromium does little for the hardness of martensite, but it buys the time needed to form martensite at all in a section of useful thickness.',
@@ -105,6 +124,7 @@ export const STEELS: Steel[] = [
     nose: { time: 100, temp: 560 },
     finishFactor: 15,
     bainiteFloor: 230,
+    bainiteStart: 478,
     hardness: { coarsePearlite: 14, finePearlite: 27, bainite: 42, martensite: 57 },
     jominy: [60, 59, 58, 57, 57, 56, 56, 55, 54, 53, 51, 48, 45],
     note: 'The deep-hardening benchmark. With the nose pushed out past a hundred seconds, even the slowly cooled centre of a thick section escapes pearlite — 4340 is still near 50 HRC 50 mm from the quenched end, where 1080 has fallen to 23. Same martensite hardness as 5140; vastly more of the part gets to be martensite.',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CEMENTITE_X, CU_NI, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS,
   boundaryTemperature, gibbsPhaseRule, lever, microconstituents, steelMicrostructure,
+  type PhaseSystem,
 } from './systems';
 import { STEELS } from '../heattreat/steels';
 
@@ -129,31 +130,57 @@ describe('the Gibbs phase rule', () => {
   });
 
   /**
-   * The sweep the iteration-9 audit established, now checking F rather than
-   * the fractions: 41 × 41 points per system, and every one must satisfy
-   * F = 3 − P with P the number of phases `evaluate` actually reports.
+   * The sweep the iteration-9 audit established, given an oracle it does not
+   * already own.
+   *
+   * **What it used to do.** It computed `const P = sys.evaluate(x, T).phases.length`
+   * and then asserted `r.P === P` and `r.F === 3 - P`. But `gibbsPhaseRule`
+   * *defines* P as `evaluate(x, T).phases.length` and F as `2 + 1 - P`, so
+   * both lines restated the implementation. Nothing could fail them short of
+   * `evaluate` being non-deterministic, and they would have passed unchanged
+   * with the evaluator reporting the wrong phase count at every point on the
+   * diagram. Billed as physics asserted before the UI; it was not.
+   *
+   * **What it does now.** The oracle is the region name — the string the panel
+   * prints as its heading, produced by the same call but not by the same
+   * arithmetic. "α + Fe₃C" is two phases and must list exactly α and Fe₃C;
+   * "L" is one. So an evaluator that returned a phase list disagreeing with
+   * the field it says the point is in fails here, which is the failure the old
+   * form could not see. Compared as sets: the label is written left-to-right
+   * across the diagram ("β + L") while the table lists the tie line's ends in
+   * its own order, and that difference is cosmetic.
    */
-  it.each(PHASE_SYSTEMS.map((s) => s.id))('%s: F = 3 − P at every point on the grid', (id) => {
-    const sys = PHASE_SYSTEMS.find((s) => s.id === id)!;
-    let singles = 0;
-    let doubles = 0;
-    for (let i = 0; i <= 40; i++) {
-      for (let j = 0; j <= 40; j++) {
-        const x = sys.xMin + ((sys.xMax - sys.xMin) * i) / 40;
-        const T = sys.tMin + ((sys.tMax - sys.tMin) * j) / 40;
-        const r = gibbsPhaseRule(sys, x, T);
-        if (r.invariant) continue;
-        const P = sys.evaluate(x, T).phases.length;
-        expect(r.P).toBe(P);
-        expect(r.F).toBe(3 - P);
-        if (P === 1) singles++;
-        else doubles++;
+  it.each(PHASE_SYSTEMS.map((s) => s.id))(
+    '%s: the phase list and the field name agree at every point on the grid',
+    (id) => {
+      const sys = PHASE_SYSTEMS.find((s) => s.id === id)!;
+      let singles = 0;
+      let doubles = 0;
+      for (let i = 0; i <= 40; i++) {
+        for (let j = 0; j <= 40; j++) {
+          const x = sys.xMin + ((sys.xMax - sys.xMin) * i) / 40;
+          const T = sys.tMin + ((sys.tMax - sys.tMin) * j) / 40;
+          const r = gibbsPhaseRule(sys, x, T);
+          if (r.invariant) continue;
+          const { region, phases } = sys.evaluate(x, T);
+          const named = region.split(' + ');
+          expect([...named].sort(), `${id} at (${x}, ${T})`).toEqual(
+            phases.map((p) => p.name).sort(),
+          );
+          expect(r.P).toBe(named.length);
+          expect(r.F).toBe(3 - named.length);
+          // A binary at fixed pressure off an invariant can only be in a one-
+          // or two-phase field; three would mean F = 0 somewhere unflagged.
+          expect(named.length).toBeLessThanOrEqual(2);
+          if (named.length === 1) singles++;
+          else doubles++;
+        }
       }
-    }
-    // Both cases have to actually occur, or the assertion above is vacuous.
-    expect(singles).toBeGreaterThan(0);
-    expect(doubles).toBeGreaterThan(0);
-  });
+      // Both cases have to actually occur, or the loop proves nothing.
+      expect(singles).toBeGreaterThan(0);
+      expect(doubles).toBeGreaterThan(0);
+    },
+  );
 
   it('gives F = 0 exactly on the Pb–Sn eutectic', () => {
     const pbsn = PHASE_SYSTEMS.find((s) => s.id === 'pb-sn')!;
@@ -173,12 +200,46 @@ describe('the Gibbs phase rule', () => {
     expect(eutectic.F).toBe(0);
   });
 
-  it('finds no invariant in an isomorphous system, which has none', () => {
-    for (let i = 0; i <= 20; i++) {
-      for (let j = 0; j <= 20; j++) {
-        const x = (100 * i) / 20;
-        const T = 1000 + (550 * j) / 20;
-        expect(gibbsPhaseRule(CU_NI, x, T).invariant).toBeNull();
+  /**
+   * An isomorphous system has no invariant — and this has to be asserted about
+   * the *diagram*, not about the lookup.
+   *
+   * The previous form swept 21 × 21 points expecting `invariant` to be null.
+   * `CU_NI.invariants` is `[]`, so `.find()` returns undefined for every
+   * input, whatever the other 440 coordinates were: all 441 assertions were
+   * one trivially-true statement about an empty array. The claim worth making
+   * is about the diagram — nowhere in Cu–Ni do three phases meet, so no
+   * invariant *could* be declared there.
+   *
+   * The two eutectic systems run the identical probe as the control, or
+   * "Cu–Ni has none" would only be saying that the probe finds nothing
+   * anywhere. This is still a negative claim; that Cu–Ni's lens is a real
+   * two-phase field at all is the grid sweep above, which requires both
+   * one-phase and two-phase points in every system.
+   */
+  it('has no three-phase point anywhere in an isomorphous system', () => {
+    const meets3 = (sys: PhaseSystem, x: number, T: number) =>
+      new Set(
+        [T - 1e-6, T + 1e-6].flatMap((t) => sys.evaluate(x, t).phases.map((p) => p.name)),
+      ).size >= 3;
+
+    let cuNiHits = 0;
+    for (let i = 0; i <= 40; i++) {
+      for (let j = 0; j <= 40; j++) {
+        const x = (100 * i) / 40;
+        const T = CU_NI.tMin + ((CU_NI.tMax - CU_NI.tMin) * j) / 40;
+        expect(gibbsPhaseRule(CU_NI, x, T).invariant, `Cu–Ni at (${x}, ${T})`).toBeNull();
+        if (meets3(CU_NI, x, T)) cuNiHits++;
+      }
+    }
+    expect(cuNiHits).toBe(0);
+
+    // The control: the same probe, on the two systems that do have invariants,
+    // walked along their isotherms rather than over a grid that would miss a
+    // line of zero height.
+    for (const sys of PHASE_SYSTEMS.filter((s) => s.invariants.length > 0)) {
+      for (const inv of sys.invariants) {
+        expect(meets3(sys, inv.x, inv.T), `${sys.id} ${inv.label}`).toBe(true);
       }
     }
   });

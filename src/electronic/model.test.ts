@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FREEZE_OUT_K, K_B, Q, T_REF, builtInPotential, carriers,
-  conductivity, depletionSplit, depletionWidth, fermiOffset, intrinsicCarriers,
-  intrinsicOnsetTemp, isDegenerate, isFreezeOut, thermalVoltage,
+  FREEZE_OUT_K, HC_EV_NM, K_B, Q, T_REF, VISIBLE_MAX_NM, VISIBLE_MIN_NM,
+  builtInPotential, carriers, conductivity, depletionSplit, depletionWidth, fermiOffset,
+  intrinsicCarriers, intrinsicOnsetTemp, isDegenerate, isFreezeOut, photonEnergy,
+  photonWavelength, thermalVoltage, wavelengthToRgb,
 } from './model';
 import { DOPABLE, SEMICONDUCTORS, getSemiconductor } from './materials';
 
@@ -318,3 +319,120 @@ describe('the dataset fences its own domain', () => {
     expect(byGap[byGap.length - 1].id).toBe('cds');
   });
 });
+
+/**
+ * P10 — a band gap is a wavelength. λ = hc/E, and with hc in eV·nm that is
+ * 1239.84/E — the arithmetic every exam asks for and the chart never did.
+ */
+describe('band gap to wavelength', () => {
+  it('uses hc = 1239.84 eV·nm', () => {
+    // h = 4.135667696e-15 eV·s, c = 2.99792458e8 m/s.
+    expect(HC_EV_NM).toBeCloseTo(4.135667696e-15 * 2.99792458e17, 4);
+    expect(HC_EV_NM).toBeCloseTo(1239.84, 2);
+  });
+
+  /**
+   * Against published absorption edges. Silicon's is quoted at about 1100 nm,
+   * GaAs emits at about 870 nm, and CdS — the photoconductor the module's own
+   * copy names — cuts off in the green at about 515 nm.
+   */
+  it.each([
+    ['si', 1.11, 1117],
+    ['ge', 0.67, 1850.5],
+    ['gaas', 1.42, 873],
+    ['gap', 2.25, 551],
+    ['cds', 2.4, 517],
+    ['znte', 2.26, 549],
+    ['insb', 0.17, 7293],
+  ])('%s at %s eV emits at %s nm', (id, eV, nm) => {
+    expect(getSemiconductor(id).Eg).toBe(eV);
+    expect(photonWavelength(eV)!).toBeCloseTo(nm, 0);
+  });
+
+  it('is its own inverse', () => {
+    for (let eV = 0.1; eV < 4; eV += 0.01) {
+      expect(photonEnergy(photonWavelength(eV)!)!).toBeCloseTo(eV, 9);
+    }
+  });
+
+  it('refuses a non-physical energy or wavelength', () => {
+    expect(photonWavelength(0)).toBeNull();
+    expect(photonWavelength(-1)).toBeNull();
+    expect(photonEnergy(0)).toBeNull();
+  });
+
+  /**
+   * The LED problem, which is the reason this panel exists: blue is at the
+   * short end of the visible band, so it needs the widest gap — and not one of
+   * the seven materials tabulated here has both a wide enough gap and a direct
+   * one. That absence is the answer to "why did blue LEDs take thirty years".
+   */
+  it('puts blue past every direct gap in the table', () => {
+    const blue = photonEnergy(460)!;
+    expect(blue).toBeCloseTo(2.7, 1);
+    const direct = SEMICONDUCTORS.filter((s) => s.gapKind === 'direct');
+    expect(direct.length).toBeGreaterThan(0);
+    for (const s of direct) expect(s.Eg).toBeLessThan(blue);
+    // GaP is wide enough for green but indirect, so it is a poor emitter —
+    // the case the swatch has to show as an absence rather than a colour.
+    expect(getSemiconductor('gap').Eg).toBeGreaterThan(photonEnergy(VISIBLE_MAX_NM)!);
+    expect(getSemiconductor('gap').gapKind).toBe('indirect');
+  });
+
+  it('agrees with the visible band the chart already shades', () => {
+    // The chart shades 1.65–3.10 eV; that band is 400–750 nm to two figures.
+    expect(photonWavelength(1.65)!).toBeCloseTo(VISIBLE_MAX_NM, -1);
+    expect(photonWavelength(3.1)!).toBeCloseTo(VISIBLE_MIN_NM, -1);
+    expect(VISIBLE_MIN_NM).toBe(400);
+    expect(VISIBLE_MAX_NM).toBe(750);
+  });
+});
+
+/**
+ * The swatch. Decorative, not colorimetric — a piecewise linear hue ramp, not
+ * a CIE colour-matching integration — and the wavelength is printed beside it
+ * so colour is never the only carrier.
+ */
+describe('wavelength to a screen colour', () => {
+  it('returns nothing outside the visible range, so infrared gets no swatch', () => {
+    expect(wavelengthToRgb(873)).toBeNull(); // GaAs
+    expect(wavelengthToRgb(1117)).toBeNull(); // silicon
+    expect(wavelengthToRgb(300)).toBeNull();
+  });
+
+  it.each([
+    [660, 'r'],
+    [550, 'g'],
+    [470, 'b'],
+    [517, 'g'], // CdS
+  ])('makes %s nm predominantly %s', (nm, channel) => {
+    const c = wavelengthToRgb(nm)!;
+    expect(c).not.toBeNull();
+    const values = { r: c.r, g: c.g, b: c.b } as Record<string, number>;
+    for (const other of ['r', 'g', 'b'].filter((k) => k !== channel)) {
+      expect(values[channel]).toBeGreaterThan(values[other]);
+    }
+  });
+
+  it('keeps every channel a valid 8-bit value across the band', () => {
+    for (let nm = 380; nm <= 780; nm += 1) {
+      const c = wavelengthToRgb(nm)!;
+      expect(c).not.toBeNull();
+      for (const v of [c.r, c.g, c.b]) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(255);
+        expect(Number.isInteger(v)).toBe(true);
+      }
+    }
+  });
+
+  it('fades out at both ends rather than cutting off', () => {
+    const sum = (nm: number) => {
+      const c = wavelengthToRgb(nm)!;
+      return c.r + c.g + c.b;
+    };
+    expect(sum(385)).toBeLessThan(sum(450));
+    expect(sum(775)).toBeLessThan(sum(650));
+  });
+});
+

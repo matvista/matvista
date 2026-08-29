@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { DOPABLE, SEMICONDUCTORS } from '../electronic/materials';
 import {
-  FREEZE_OUT_K, K_B, builtInPotential, carriers, conductivity, depletionSplit,
-  depletionWidth, fermiOffset, intrinsicCarriers, intrinsicOnsetTemp,
-  isDegenerate, isFreezeOut, thermalVoltage,
+  FREEZE_OUT_K, K_B, VISIBLE_MAX_NM, VISIBLE_MIN_NM, builtInPotential, carriers,
+  conductivity, depletionSplit, depletionWidth, fermiOffset, intrinsicCarriers,
+  intrinsicOnsetTemp, isDegenerate, isFreezeOut, photonEnergy, photonWavelength,
+  thermalVoltage, wavelengthToRgb,
 } from '../electronic/model';
+import type { Semiconductor } from '../electronic/materials';
 
 const W = 660;
 const H = 380;
@@ -57,18 +59,88 @@ export function Semiconductors() {
 
 /* ================================================================== gaps == */
 
+/**
+ * One material's emission colour, or a stated reason there is none.
+ *
+ * Gated on `gapKind`, which keeps the module's existing direct/indirect
+ * teaching honest: GaP has a visible-range gap and is a poor emitter, and that
+ * has to show as an **absence** rather than a colour. The wavelength is
+ * printed in text beside the swatch, so the colour is never the only carrier.
+ */
+function EmissionRow({ s }: { s: Semiconductor }) {
+  const nm = photonWavelength(s.Eg)!;
+  const rgb = s.gapKind === 'direct' ? wavelengthToRgb(nm) : null;
+  const reason =
+    s.gapKind === 'indirect'
+      ? 'indirect gap — a poor emitter whatever its wavelength'
+      : nm > VISIBLE_MAX_NM
+        ? 'infrared — direct, but invisible'
+        : 'ultraviolet';
+  return (
+    <li>
+      {rgb ? (
+        <i
+          className="sc-swatch"
+          style={{ background: `rgb(${rgb.r} ${rgb.g} ${rgb.b})` }}
+          aria-hidden="true"
+        />
+      ) : (
+        <i className="sc-swatch sc-swatch-none" aria-hidden="true" />
+      )}
+      <span>
+        <strong>{s.formula}</strong> · {nm.toFixed(0)} nm
+        {rgb ? ' · visible' : ` · ${reason}`}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * P10 — the wavelength ticks along the top of the band-gap chart.
+ *
+ * λ = hc/E, so equal steps in energy are **not** equal steps in wavelength:
+ * the ticks crowd together toward the right. That crowding is the point, and
+ * it is why the near-infrared occupies most of the chart while the whole
+ * visible band is squeezed into its right-hand third.
+ */
+const NM_TICKS = [2000, 1200, 800, 600, 500, 450, 400, 360];
+
+/**
+ * Right-hand end of the energy axis, eV.
+ *
+ * Was `maxGap * 1.15` = 2.76 eV, which cut the visible band off at its right
+ * edge and left no room for the bar labels — they ran off the plot once the
+ * wavelength was added to them. 3.6 eV contains the whole 1.65–3.10 eV visible
+ * band and the photon slider's full 3.5 eV reach, so neither the shading nor
+ * the marker can leave the chart.
+ */
+const EV_MAX = 3.6;
+
 function GapPanel() {
   const [tempK, setTempK] = useRouteNumber('T', 300, 100, 800);
+  // Photon energy the sample is illuminated with. eV rather than nm because
+  // the chart's axis is eV and the comparison with E_g has to be direct.
+  const [photonEv, setPhotonEv] = useRouteNumber('ph', 2, 0.3, 3.5);
 
-  const maxGap = Math.max(...SEMICONDUCTORS.map((s) => s.Eg));
   const barH = (plotH - 10) / SEMICONDUCTORS.length;
-  const sx = (eV: number) => PAD.l + (eV / (maxGap * 1.15)) * plotW;
+  const sx = (eV: number) => PAD.l + (eV / EV_MAX) * plotW;
+  const photonNm = photonWavelength(photonEv)!;
 
   return (
     <div className="ss-layout">
       <section className="dd-block">
         <div className="fa-sliders">
           <Slider label="Temperature" unit="K" value={tempK} min={100} max={800} step={5} onChange={setTempK} />
+          <Slider
+            label="Illuminating photon"
+            unit={`eV — λ = ${photonNm.toFixed(0)} nm`}
+            value={photonEv}
+            min={0.3}
+            max={3.5}
+            step={0.01}
+            onChange={setPhotonEv}
+            fixed={2}
+          />
         </div>
 
         <svg className="ht-plot" viewBox={`0 0 ${W} ${H}`} role="img"
@@ -83,15 +155,56 @@ function GapPanel() {
                 <rect x={PAD.l} y={y} width={sx(s.Eg) - PAD.l} height={barH - 10}
                   className={s.gapKind === 'direct' ? 'sc-direct' : 'sc-indirect'} rx={2} />
                 <text x={sx(s.Eg) + 6} y={y + barH / 2 + 1} className="sc-bar-label">
-                  {s.Eg.toFixed(2)} eV · {s.gapKind}
+                  {s.Eg.toFixed(2)} eV · {photonWavelength(s.Eg)!.toFixed(0)} nm · {s.gapKind}
                 </text>
               </g>
             );
           })}
           {/* Visible light spans roughly 1.65–3.1 eV; below it a gap cannot emit
               visible light at all, which is why the LED problem is a gap problem. */}
-          <rect x={sx(1.65)} y={PAD.t} width={sx(3.1) - sx(1.65)} height={plotH} className="sc-visible" />
-          <text x={sx(1.65) + 4} y={PAD.t + plotH - 6} className="ht-edge-label">visible light</text>
+          <rect
+            x={sx(photonEnergy(VISIBLE_MAX_NM)!)}
+            y={PAD.t}
+            width={sx(photonEnergy(VISIBLE_MIN_NM)!) - sx(photonEnergy(VISIBLE_MAX_NM)!)}
+            height={plotH}
+            className="sc-visible"
+          />
+          <text x={sx(photonEnergy(VISIBLE_MAX_NM)!) + 4} y={PAD.t + plotH - 6} className="ht-edge-label">
+            visible light
+          </text>
+
+          {/* The photon the slider is shining on the samples. Everything to its
+              left absorbs; everything to its right is transparent. */}
+          <line
+            x1={sx(photonEv)}
+            x2={sx(photonEv)}
+            y1={PAD.t - 4}
+            y2={PAD.t + plotH}
+            className="sc-photon"
+          />
+          <text x={sx(photonEv)} y={PAD.t + plotH + 14} className="sc-bar-label" textAnchor="middle">
+            photon {photonEv.toFixed(2)} eV
+          </text>
+
+          {/* Wavelength ticks along the top — the same axis in the other unit. */}
+          {NM_TICKS.filter((nm) => photonEnergy(nm)! <= EV_MAX).map((nm) => (
+            <g key={nm}>
+              <line
+                x1={sx(photonEnergy(nm)!)}
+                x2={sx(photonEnergy(nm)!)}
+                y1={PAD.t - 8}
+                y2={PAD.t - 3}
+                className="dd-axis"
+              />
+              <text x={sx(photonEnergy(nm)!)} y={PAD.t - 11} className="dd-tick" textAnchor="middle">
+                {nm}
+              </text>
+            </g>
+          ))}
+          <text x={PAD.l} y={PAD.t - 11} className="dd-tick" textAnchor="end">
+            nm
+          </text>
+
           <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={PAD.t + plotH} className="dd-axis" />
           <text x={PAD.l + plotW / 2} y={H - 10} className="dd-tick" textAnchor="middle">band gap (eV)</text>
         </svg>
@@ -138,12 +251,53 @@ function GapPanel() {
         </p>
 
         <div className="density-box">
-          <h3>Direct and indirect</h3>
+          <h3>Shine {photonEv.toFixed(2)} eV on it</h3>
+          <p className="density-eq">λ = 1239.8 / E ⟹ {photonNm.toFixed(0)} nm</p>
+          <table className="detail-props">
+            <tbody>
+              {SEMICONDUCTORS.map((s) => (
+                <tr key={s.id}>
+                  <th scope="row">{s.formula}</th>
+                  <td className={photonEv >= s.Eg ? 'sc-absorbs' : 'sc-transparent'}>
+                    {photonEv >= s.Eg ? 'absorbs' : 'transparent'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="density-note">
+            A photon is absorbed only if it carries at least the gap — anything less passes
+            straight through, which is why silicon is opaque to visible light and a window onto
+            the infrared, and why germanium lenses are used in thermal cameras. Slide down past
+            2.40 eV and cadmium sulfide turns transparent: that threshold is the photoresistor,
+            and it is why a CdS cell responds to daylight and ignores an infrared remote.
+          </p>
+        </div>
+
+        <div className="density-box">
+          <h3>What colour is that gap?</h3>
+          <ul className="sc-swatches">
+            {SEMICONDUCTORS.map((s) => (
+              <EmissionRow key={s.id} s={s} />
+            ))}
+          </ul>
           <p className="density-note">
             A direct gap can absorb or emit a photon on its own. An indirect one needs a lattice
             vibration to carry the momentum difference too, which makes the process far less
             likely — so silicon, for all its virtues, makes a poor light emitter, and the LEDs
-            and lasers are built from the direct-gap compounds.
+            and lasers are built from the direct-gap compounds. GaP’s 2.25 eV lands in the green
+            and it still gets no swatch here, because the gap is indirect: a visible-range gap is
+            necessary for a bright emitter and nowhere near sufficient.
+          </p>
+          <p className="density-note">
+            Blue needs about 2.7 eV — shorter than every direct gap in this table. That gap is why
+            blue LEDs took thirty years and a different material system (gallium nitride) to
+            arrive, long after red and green were routine.
+          </p>
+          <p className="ht-caveat">
+            <strong>The swatches are decorative.</strong> They come from a piecewise hue ramp, not
+            from the CIE colour-matching functions, and they make no claim about your display. The
+            wavelength beside each one is the number that means something.
           </p>
         </div>
       </aside>

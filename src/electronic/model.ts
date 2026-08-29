@@ -204,3 +204,87 @@ export function intrinsicOnsetTemp(
   }
   return hi;
 }
+
+/* ------------------------------------------------------- photons and colour */
+
+/**
+ * hc in eV·nm, so λ(nm) = HC_EV_NM / E(eV).
+ *
+ * h = 4.135667696 × 10⁻¹⁵ eV·s and c = 2.99792458 × 10⁸ m/s, which is
+ * 1239.84 eV·nm — the constant every textbook quotes as "about 1240".
+ */
+export const HC_EV_NM = 4.135667696e-15 * 2.99792458e17;
+
+/**
+ * The visible band, in nm.
+ *
+ * 400–750 nm, which is the 1.65–3.10 eV the band-gap chart has always shaded;
+ * the two are the same statement and this is now the one place it is written.
+ * Other conventions run 380–780; the `wavelengthToRgb` ramp covers that wider
+ * span, and only this narrower band is called "visible" in the readout.
+ */
+export const VISIBLE_MIN_NM = 400;
+export const VISIBLE_MAX_NM = 750;
+
+/** Photon wavelength for an energy, nm. Null for a non-physical energy. */
+export function photonWavelength(eV: number): number | null {
+  if (!(eV > 0)) return null;
+  return HC_EV_NM / eV;
+}
+
+/** Photon energy for a wavelength, eV. Null for a non-physical wavelength. */
+export function photonEnergy(nm: number): number | null {
+  if (!(nm > 0)) return null;
+  return HC_EV_NM / nm;
+}
+
+export interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * A screen colour for a wavelength, 380–780 nm. Null outside that band.
+ *
+ * **Decorative, not colorimetric.** This is the standard piecewise-linear hue
+ * ramp with an intensity roll-off at both ends, not an integration against the
+ * CIE colour-matching functions, and it makes no attempt at the display's
+ * gamut or white point. It exists so a gap in the visible range reads as a
+ * colour at a glance; the wavelength is printed beside every swatch, so the
+ * colour is never the only carrier of the information (WCAG 1.4.1).
+ */
+export function wavelengthToRgb(nm: number): Rgb | null {
+  if (!(nm >= 380) || !(nm <= 780)) return null;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (nm < 440) {
+    r = -(nm - 440) / 60;
+    b = 1;
+  } else if (nm < 490) {
+    g = (nm - 440) / 50;
+    b = 1;
+  } else if (nm < 510) {
+    g = 1;
+    b = -(nm - 510) / 20;
+  } else if (nm < 580) {
+    r = (nm - 510) / 70;
+    g = 1;
+  } else if (nm < 645) {
+    r = 1;
+    g = -(nm - 645) / 65;
+  } else {
+    r = 1;
+  }
+
+  // The eye's response falls away at both ends; without this the band ends in
+  // a hard edge of full-brightness violet and red.
+  let f = 1;
+  if (nm < 420) f = 0.3 + (0.7 * (nm - 380)) / 40;
+  else if (nm > 700) f = 0.3 + (0.7 * (780 - nm)) / 80;
+
+  const channel = (v: number) => Math.round(255 * (v * f) ** 0.8);
+  return { r: channel(r), g: channel(g), b: channel(b) };
+}

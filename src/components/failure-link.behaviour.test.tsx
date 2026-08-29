@@ -18,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { CRACK_GEOMETRIES } from '../failure/model';
 
 import { warmRoutes } from './route-warmup';
 
@@ -131,5 +132,95 @@ describe('a pre-P8 ?Y= link keeps its geometry through interaction', () => {
     const select = await renderRoute('#/failure');
     expect(select.value).toBe('centre');
     expect(await settledHash()).toBe('#/failure');
+  });
+});
+
+/**
+ * The picker, driven the way a reader drives it.
+ *
+ * The legacy-link tests above all arrive by URL. Nothing covered *selecting* a
+ * geometry, and that is the path on which the module's own default geometry
+ * was unreachable: `useRouteEnum` elides a param equal to its fallback, so
+ * choosing the centre crack deleted `geom` from the hash, which re-satisfied
+ * "no `geom`, but a `Y`" — the legacy test — which forced `custom` back on the
+ * same render and rewrote `geom=custom` from the effect. Silently, and only
+ * for the one id that is the fallback.
+ */
+describe('the picker honours the reader’s choice, whatever else is in the hash', () => {
+  // Both panels share one hook, so a fix reaching only the one it was found on
+  // would be a half fix — the same reason the legacy block covers both.
+  const PANELS: [string, string][] = [
+    ['fracture', '#/failure'],
+    ['growth', '#/failure?panel=growth'],
+  ];
+
+  const picker = () => screen.getByLabelText('Crack geometry') as HTMLSelectElement;
+
+  const selectGeom = async (id: string) => {
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: id } });
+    });
+  };
+
+  it.each(PANELS)('%s: every geometry can be chosen from a clean start', async (_panel, hash) => {
+    await renderRoute(hash);
+    for (const g of CRACK_GEOMETRIES) {
+      await selectGeom(g.id);
+      expect(picker().value, g.id).toBe(g.id);
+    }
+  });
+
+  /**
+   * The blocking case, in the three interactions that reach it from `#/failure`
+   * with no legacy link anywhere: pick Custom Y, move the slider so `Y` is in
+   * the hash, then pick the default back.
+   */
+  it.each(PANELS)(
+    '%s: the default geometry is still choosable once Y is in the hash',
+    async (_panel, hash) => {
+      await renderRoute(hash);
+      await selectGeom('custom');
+      await setSlider('Geometry factor Y', '1.3');
+      expect(await settledHash()).toMatch(/[?&]Y=1\.3\b/);
+
+      await selectGeom('centre');
+      expect(picker().value).toBe('centre');
+      // The centre crack carries neither geometry slider; Custom Y carries one.
+      expect(geomSlidersOnScreen()).toEqual([]);
+      // And it must still be centre after the debounced write lands, not bounce
+      // back once the hash settles.
+      await settledHash();
+      expect(picker().value).toBe('centre');
+    },
+  );
+
+  it.each(PANELS)(
+    '%s: every geometry stays chosen with a Y already in the hash',
+    async (_panel, hash) => {
+      await renderRoute(hash);
+      await selectGeom('custom');
+      await setSlider('Geometry factor Y', '1.3');
+      for (const g of CRACK_GEOMETRIES) {
+        await selectGeom(g.id);
+        expect(picker().value, `${g.id} with Y present`).toBe(g.id);
+      }
+    },
+  );
+
+  /**
+   * The choice has to survive being shared, not just being made. A hash that
+   * renders as one geometry in the tab that produced it and another in a fresh
+   * one is the same defect wearing a link.
+   */
+  it('round-trips the chosen default through the hash it produces', async () => {
+    await renderRoute('#/failure');
+    await selectGeom('custom');
+    await setSlider('Geometry factor Y', '1.3');
+    await selectGeom('centre');
+    const shared = await settledHash();
+
+    cleanup();
+    const reopened = await renderRoute(shared);
+    expect(reopened.value, shared).toBe('centre');
   });
 });

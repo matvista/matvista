@@ -63,6 +63,29 @@ const GEOM_IDS = CRACK_GEOMETRIES.map((g) => g.id);
 /** The entry a pre-P8 `?Y=` link resolves to: the bare slider it used to be. */
 const LEGACY_GEOM = 'custom';
 
+/** The geometry shown when the reader has not chosen one. */
+const DEFAULT_GEOM = 'centre';
+
+/**
+ * "The reader has not chosen a geometry", as a value the URL can hold.
+ *
+ * `useRouteString` drops a param whose value equals its fallback, so making a
+ * real geometry the fallback makes *that* geometry the one id the URL cannot
+ * record. It is not a cosmetic loss: "no `geom`, but a `Y`" is how a pre-P8
+ * link is recognised below, so a reader who **selected** the centre crack with
+ * a `Y` in the hash produced a URL indistinguishable from a legacy link, was
+ * bounced back to Custom Y on the same render, and had `geom=custom` written
+ * underneath them by the upgrade effect. Reachable from `#/failure` in three
+ * interactions, and silent.
+ *
+ * A sentinel that is not a geometry cannot collide with a selection, so every
+ * id — the default included — is written when it is chosen. `geom` present now
+ * means "the reader chose this" and `geom` absent means "never chosen", which
+ * is exactly the distinction the legacy test is asking about.
+ */
+const GEOM_UNSET = '';
+const GEOM_CHOICES = [GEOM_UNSET, ...GEOM_IDS];
+
 /**
  * P8 — the crack geometry, shared by the fracture and crack-growth panels.
  *
@@ -90,10 +113,15 @@ const LEGACY_GEOM = 'custom';
 function useCrackGeometry() {
   const route = useRoute();
   const legacyLink = route.params.geom == null && route.params.Y != null;
-  const [rawGeomId, setGeomId] = useRouteEnum<string>('geom', 'centre', GEOM_IDS);
+  const [rawGeomId, setGeomId] = useRouteEnum<string>('geom', GEOM_UNSET, GEOM_CHOICES);
   // Applied to this render as well as written to the hash, so the upgrade is
-  // never visible as a frame of the wrong geometry.
-  const geomId = legacyLink ? LEGACY_GEOM : rawGeomId;
+  // never visible as a frame of the wrong geometry. `GEOM_UNSET` resolves to
+  // the default here rather than in the URL — see the constant.
+  const geomId = legacyLink
+    ? LEGACY_GEOM
+    : rawGeomId === GEOM_UNSET
+      ? DEFAULT_GEOM
+      : rawGeomId;
   useEffect(() => {
     if (legacyLink) setGeomId(LEGACY_GEOM);
   }, [legacyLink, setGeomId]);

@@ -1257,6 +1257,41 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
     }
     // Was 3.63 HRC (5140) and 3.03 (4340) with the two boundaries merged.
     expect(worst).toBeLessThan(2.6);
+    // And the actual figure, so quoting it elsewhere cannot go stale.
+    expect(worst).toBeCloseTo(id === '5140' ? 1.7572 : 1.467, 3);
+  });
+
+  /**
+   * What a reader can actually reach. The sweep above is finer than the
+   * slider, so its worst case is not the worst *detent* step — and a commit
+   * message in this series quoted a figure that belonged to neither, taken
+   * from a pair of detents two steps apart while calling them adjacent.
+   */
+  it.each([
+    ['5140', 319, 1.8586],
+    ['4340', 194, 1.5514],
+  ])('%s: the worst step between adjacent detents is at %i, %f HRC', (id, detent, step) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const at = (i: number) => predict(s, ttt, AUST, 10 ** (-2 + i * 0.01));
+    const ferrite = (o: ReturnType<typeof predict>) =>
+      o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+    let worst = 0;
+    let worstAt = 0;
+    for (let i = 1; i < 570; i++) {
+      const d = Math.abs(at(i).hardness - at(i - 1).hardness);
+      if (d > worst) {
+        worst = d;
+        worstAt = i;
+      }
+    }
+    expect(worstAt).toBe(detent);
+    expect(worst).toBeCloseTo(step, 3);
+    // and it is the ferrite floor that produces it: ferrite on one side, none
+    // on the other, with no detent between them.
+    expect(ferrite(at(detent - 1))).toBeGreaterThan(0);
+    expect(ferrite(at(detent))).toBe(0);
   });
 
   it.each(['1080', '5140', '4340'])('%s: critical cooling rate is bit-identical', (id) => {

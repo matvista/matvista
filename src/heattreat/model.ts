@@ -351,10 +351,18 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
  * Divide a diffusional product into the proeutectoid ferrite that leads it and
  * the pearlite that follows.
  *
- * **Ferrite leads.** In a hypoeutectoid steel the ferrite reaction is the
- * faster of the two and runs ahead of pearlite: austenite rejects carbon-poor
- * ferrite until what remains has been enriched to the eutectoid composition,
- * and only then can pearlite form. So the first `alphaEq` of any diffusional
+ * **Ferrite leads — as a bounding construction, not as a description of the
+ * kinetics.** The ordering is real: in a hypoeutectoid steel ferrite is the
+ * faster reaction and runs ahead of pearlite, rejecting carbon until what
+ * remains has been enriched to the eutectoid composition. What is *not* real
+ * is the amount. This saturates at its own bound over most of the reachable
+ * slider, because it has no ferrite kinetics; measured dilatometry has ferrite
+ * well below equilibrium and falling steeply with cooling rate — 52 → 22 vol%
+ * from 1.0 to 7.0 °C/s, where this model sheds only 48.8 → 38.1. So read the
+ * number as a ceiling that the true value sits under by a margin which widens
+ * as the quench gets faster. The UI says so too.
+ *
+ * The construction itself: the first `alphaEq` of any diffusional
  * transformation is ferrite, and only the remainder is pearlite:
  *
  *     ferrite  = min(f, alphaEq)

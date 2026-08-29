@@ -81,8 +81,13 @@ Then open http://localhost:5173.
 npm test
 ```
 
-**1041 tests across 29 files** — the count `npm test` prints, not an estimate. They are not
-smoke tests: the ones that matter check computed values against published worked examples —
+**Over 1000 tests** over the physics, the data and the routing. `npm test` prints the exact
+count, and it is deliberately not repeated here: this file said "281 assertions" until that
+was false, then "over 300" until the suite had more than tripled past it. A figure nothing
+asserts goes stale quietly, so the bound is stated in the form that can only get truer.
+
+They are not smoke tests: the ones that matter check computed values against published
+worked examples —
 Callister's 8.2 µm Griffith flaw in soda-lime glass, his S-590 creep rupture at 800 °C and
 140 MPa, the 0.35 wt% carbon steel that comes out 44% pearlite, the carburising problem
 that takes seven hours, copper's first four diffraction lines at 43.3, 50.4, 74.1 and 90.0°.

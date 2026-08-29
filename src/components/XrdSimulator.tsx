@@ -85,7 +85,7 @@ export function XrdSimulator() {
           {compare &&
             comparePeaks.map((p) => (
               <line
-                key={`c${p.h}${p.k}${p.l}`}
+                key={`c${familyLabel(p.h, p.k, p.l)}`}
                 x1={sx(p.twoTheta)}
                 x2={sx(p.twoTheta)}
                 y1={sy(0)}

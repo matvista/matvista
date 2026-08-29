@@ -418,3 +418,31 @@ describe('intensity formatting', () => {
     expect(shown).toContain('100');
   });
 });
+
+/**
+ * No Miller label may be built by bare concatenation.
+ *
+ * 11ea25d claimed both remaining call sites had been converted and named this
+ * one; it had not been touched. The pattern it looks for is `${p.h}${p.k}` —
+ * two adjacent index interpolations with nothing between them — which is
+ * exactly the form that renders (11,1,1) as "1111". A repo-wide scan rather
+ * than a list of files, because the list is what went stale.
+ */
+describe('Miller labels are always formatted, never concatenated', () => {
+  it('finds no bare index concatenation anywhere in src or scripts', () => {
+    const modules = import.meta.glob('/{src,scripts}/**/*.{ts,tsx}', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    const paths = Object.keys(modules);
+    // The glob is load-bearing: an empty match would pass vacuously.
+    expect(paths.length).toBeGreaterThan(30);
+
+    const bare = /\$\{[A-Za-z_$][\w$]*\.h\}\$\{/;
+    const offenders = paths.filter(
+      (path) => !/diffraction\.test\.ts$/.test(path) && bare.test(modules[path]),
+    );
+    expect(offenders).toEqual([]);
+  });
+});

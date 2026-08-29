@@ -10,6 +10,7 @@
  * is not a substitute for a measured CCT diagram.
  */
 
+import { a3Temperature, steelMicrostructure } from '../phase/systems';
 import {
   martensiteFractionTemp,
   martensiteStart,
@@ -65,6 +66,28 @@ export function tttCurve(steel: Steel, timeScale: number, samples = 140): CurveP
   }
 }
 
+/**
+ * Equilibrium proeutectoid ferrite fraction, by the lever rule.
+ *
+ * Delegated to `steelMicrostructure` in `phase/systems.ts` — the same function
+ * that reproduces Callister's 0.35 wt% C worked example (44% pearlite, 56%
+ * proeutectoid ferrite) — rather than retyping 0.76 and 0.022 here, so the
+ * phase diagram and the TTT module cannot drift apart. For the two 0.40 wt% C
+ * steels it is (0.76 − 0.40)/(0.76 − 0.022) ≈ 0.488.
+ *
+ * Returns 0 for any steel that is not hypoeutectoid. 1080 is nominally the
+ * eutectoid grade and its note says it forms no proeutectoid phase; its 0.79
+ * wt% C actually sits 0.03 above the eutectoid, so a real 1080 rejects a trace
+ * (≈0.5%) of proeutectoid *cementite*. This model does not report that, which
+ * is the pre-existing simplification the note describes, and it is left alone
+ * here — nothing about 1080's output changes.
+ */
+export function equilibriumFerriteFraction(steel: Steel): number {
+  const micro = steelMicrostructure(steel.composition.C);
+  if (!micro || micro.proeutectoid !== 'α (ferrite)') return 0;
+  return micro.proeutectoidFraction;
+}
+
 export interface TttModel {
   start: CurvePoint[];
   finish: CurvePoint[];
@@ -72,10 +95,19 @@ export interface TttModel {
   m50: number;
   m90: number;
   a1: number;
+  /**
+   * A₃ for this steel's carbon level, °C — the temperature at which it leaves
+   * the single-phase γ field and starts rejecting proeutectoid ferrite. Null
+   * for a steel that rejects none.
+   */
+  a3: number | null;
+  /** Lever-rule proeutectoid ferrite fraction, at full transformation. */
+  equilibriumFerrite: number;
 }
 
 export function buildTtt(steel: Steel): TttModel {
   const ms = martensiteStart(steel.composition);
+  const equilibriumFerrite = equilibriumFerriteFraction(steel);
   return {
     start: tttCurve(steel, 1),
     finish: tttCurve(steel, steel.finishFactor),
@@ -83,6 +115,8 @@ export function buildTtt(steel: Steel): TttModel {
     m50: martensiteFractionTemp(ms, 0.5),
     m90: martensiteFractionTemp(ms, 0.9),
     a1: steel.a1,
+    a3: equilibriumFerrite > 0 ? a3Temperature(steel.composition.C) : null,
+    equilibriumFerrite,
   };
 }
 
@@ -145,7 +179,12 @@ function scheil(
   return { reached: null, sum };
 }
 
-export type Product = 'coarse pearlite' | 'fine pearlite' | 'bainite' | 'martensite';
+export type Product =
+  | 'proeutectoid ferrite'
+  | 'coarse pearlite'
+  | 'fine pearlite'
+  | 'bainite'
+  | 'martensite';
 
 /**
  * Below this fraction a diffusional product is reported as a trace rather than
@@ -176,6 +215,41 @@ function productAt(steel: Steel, T: number): Product {
 }
 
 /**
+ * Split a pearlitic product into the proeutectoid ferrite that must accompany
+ * it, and the pearlite itself.
+ *
+ * **This is mass balance, not kinetics.** Pearlite is eutectoid — 0.76 wt% C.
+ * A 0.40 wt% C steel cannot produce it without first rejecting the carbon-poor
+ * ferrite that enriches the remaining austenite to 0.76, so wherever this model
+ * says "pearlite" in a hypoeutectoid steel, proeutectoid ferrite came first and
+ * the lever rule fixes the ratio. `fraction` is the part of the sample that
+ * transformed diffusionally; it is split (1 − f_eq) pearlite to f_eq ferrite.
+ *
+ * Bainite is deliberately excluded. It forms below the temperature range in
+ * which ferrite is rejected, from austenite that never gave any up, so a
+ * bainitic path carries no proeutectoid ferrite.
+ *
+ * The consequence worth noting: when nothing transforms diffusionally, nothing
+ * is split, so `criticalCoolingRate` and the fully-martensitic path are exactly
+ * as they were.
+ */
+function splitProeutectoid(
+  ttt: TttModel,
+  product: Product,
+  fraction: number,
+): { product: Product; fraction: number }[] {
+  const alpha = ttt.equilibriumFerrite;
+  if (alpha <= 0 || fraction <= 0) return [{ product, fraction }];
+  if (product !== 'coarse pearlite' && product !== 'fine pearlite') {
+    return [{ product, fraction }];
+  }
+  return [
+    { product: 'proeutectoid ferrite', fraction: fraction * alpha },
+    { product, fraction: fraction * (1 - alpha) },
+  ];
+}
+
+/**
  * Read a cooling rate against the diagram.
  *
  * Three outcomes, and the boundaries between them are the point of the whole
@@ -201,12 +275,17 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const finishRun = scheil(ttt.finish, startTemp, rate, ttt.ms);
 
   if (finishRun.reached) {
+    const parts = splitProeutectoid(ttt, product, 1);
+    const alpha = parts.length > 1 ? parts[0].fraction : 0;
     return {
-      fractions: [{ product, fraction: 1 }],
+      fractions: parts,
       hardness: hardnessOf(steel, product),
       startTemp: hitStart.T,
       complete: true,
-      summary: `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ, giving ${product} throughout. Quenching afterwards changes nothing — there is no austenite left to harden.`,
+      summary:
+        alpha > 0
+          ? `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ. Because this steel is hypoeutectoid, it must first reject ${Math.round(alpha * 100)}% proeutectoid ferrite — pearlite is eutectoid at 0.76 wt% C, and the lever rule against ${ttt.a3 === null ? 'A₃' : `A₃ (${Math.round(ttt.a3)} °C)`} is what enriches the remaining austenite to that composition. Quenching afterwards changes nothing — there is no austenite left to harden.`
+          : `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ, giving ${product} throughout. Quenching afterwards changes nothing — there is no austenite left to harden.`,
     };
   }
 
@@ -224,9 +303,15 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
   const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
   const fraction = Math.min(1, Math.max(0, progress));
+  // The bar splits a pearlitic product into ferrite and pearlite, so the prose
+  // has to name the same thing the bar shows, or the two contradict each other.
+  const diffusional =
+    splitProeutectoid(ttt, product, fraction).length > 1
+      ? `proeutectoid ferrite + ${product}`
+      : product;
   return {
     fractions: [
-      { product, fraction },
+      ...splitProeutectoid(ttt, product, fraction),
       { product: 'martensite', fraction: 1 - fraction },
     ],
     hardness:
@@ -235,13 +320,38 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
     complete: false,
     summary:
       fraction < TRACE_FRACTION
-        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
-        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${product} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${diffusional} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${diffusional} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
   };
 }
 
+/**
+ * Hardness of a transformation product for this steel.
+ *
+ * **Scope note.** Proeutectoid ferrite is not given its own entry, and the
+ * reported hardness of a fully transformed structure is therefore unchanged by
+ * the ferrite split above. That is deliberate. `steels.ts` documents this block
+ * as "hardness of each product *for this carbon level*", and the shipped
+ * numbers bear that reading out: a pearlite constituent is eutectoid whatever
+ * steel it grew in, so it would measure much the same in all three, yet 5140 is
+ * given 12 HRC against 1080's 15. 12 HRC ≈ 185 HB, and annealed 5140 measures
+ * ≈ 197 HB — so the shipped figure is already the hardness of the
+ * ferrite + pearlite structure, not of the pearlite alone. Diluting it again by
+ * the ferrite fraction would double-count, and would report ≈ 6 HRC for
+ * annealed 5140 against a real ≈ 13 HRC.
+ *
+ * What the repo does *not* determine is the hardness of the pearlite
+ * constituent on its own, which is what a partially-ferritic structure would
+ * need, and no number for it is invented here. The claim this model makes is
+ * about the **microstructure**; the hardness readout is left as it was.
+ */
 function hardnessOf(steel: Steel, product: Product): number {
   switch (product) {
+    case 'proeutectoid ferrite':
+      // Unreachable: `predict` only ever asks for the hardness of the product
+      // `productAt` chose, and that is never ferrite. Present to keep the
+      // switch exhaustive over `Product`.
+      return steel.hardness.coarsePearlite;
     case 'coarse pearlite':
       return steel.hardness.coarsePearlite;
     case 'fine pearlite':

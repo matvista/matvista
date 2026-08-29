@@ -44,6 +44,7 @@ const JPAD = { l: 62, r: 24, t: 16, b: 48 };
  * never the only thing carrying the meaning.
  */
 const PRODUCT_COLOR: Record<string, string> = {
+  'proeutectoid ferrite': '#a8681d', // light 4.27, dark 4.32
   'coarse pearlite': '#2976d2', // light 4.32, dark 4.27
   'fine pearlite': '#776bbd', // light 4.31, dark 4.28
   bainite: '#15875e', // light 4.28, dark 4.31
@@ -283,6 +284,15 @@ export function HeatTreatment() {
               <th scope="row">Critical rate</th>
               <td>{critical == null ? 'faster than this model resolves' : `${fmtRate(critical)} °C/s`}</td>
             </tr>
+            {ttt.a3 !== null && (
+              <tr>
+                <th scope="row">A₃</th>
+                <td>
+                  {Math.round(ttt.a3)} °C — below it, {(ttt.equilibriumFerrite * 100).toFixed(0)}%
+                  proeutectoid ferrite
+                </td>
+              </tr>
+            )}
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
               <td>{Math.round(martensiteStart(steel.composition))} °C</td>

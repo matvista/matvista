@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { STEELS, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
-  TRACE_FRACTION, buildTtt, criticalCoolingRate, predict, tangentCoolingRate,
+  TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
+  tangentCoolingRate,
 } from './model';
+import { EUTECTOID_T, EUTECTOID_X, a3Temperature } from '../phase/systems';
 
 const AUST = 850;
 const martensite = (id: string, rate: number) => {
@@ -123,5 +125,197 @@ describe('martensite temperatures', () => {
     const ms = 300;
     expect(martensiteFractionTemp(ms, 0.9)).toBeLessThan(martensiteFractionTemp(ms, 0.5));
     expect(martensiteFractionTemp(ms, 0.5)).toBeLessThan(ms);
+  });
+});
+
+/**
+ * 5140 and 4340 are 0.40 wt% C — hypoeutectoid. Cooled slowly they must reject
+ * proeutectoid ferrite before the remaining austenite, now at the eutectoid
+ * composition, becomes pearlite. The amount is not a kinetic quantity: it is
+ * the lever rule against the Fe–Fe₃C boundaries,
+ *
+ *     (0.76 − 0.40) / (0.76 − 0.022) = 0.36 / 0.738 ≈ 0.488,
+ *
+ * and it comes from `phase/systems.ts` so the two modules cannot drift. 1080
+ * is eutectoid at 0.79 wt% C and its own note says it forms no proeutectoid
+ * phase — that must stay true.
+ */
+describe('proeutectoid ferrite', () => {
+  const SLOW = 0.01;
+  const ferriteOf = (o: ReturnType<typeof predict>) =>
+    o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+  it('takes the A₃ boundary from the phase module, not a retyped constant', () => {
+    expect(a3Temperature(0)).toBeCloseTo(912, 9); // pure iron
+    expect(a3Temperature(EUTECTOID_X)).toBeCloseTo(EUTECTOID_T, 9); // meets A₁
+    // 0.40 wt% C sits 0.40/0.76 of the way down from 912 °C to 727 °C.
+    expect(a3Temperature(0.4)).toBeCloseTo(912 - (0.4 / 0.76) * (912 - 727), 9);
+  });
+
+  it('every shipped steel’s A₁ is the phase module’s eutectoid temperature', () => {
+    for (const s of STEELS) expect(s.a1).toBe(EUTECTOID_T);
+  });
+
+  it('gives ≈0.488 equilibrium ferrite for the two 0.40 wt% C steels', () => {
+    const lever = (0.76 - 0.4) / (0.76 - 0.022);
+    expect(lever).toBeCloseTo(0.4878, 4);
+    for (const id of ['5140', '4340']) {
+      expect(equilibriumFerriteFraction(getSteel(id))).toBeCloseTo(lever, 12);
+    }
+  });
+
+  it('gives exactly 0 for eutectoid 1080 — its note says no proeutectoid phase', () => {
+    expect(equilibriumFerriteFraction(getSteel('1080'))).toBe(0);
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.02) {
+      expect(ferriteOf(predict(s, ttt, AUST, 10 ** lg))).toBe(0);
+    }
+    expect(ttt.a3).toBeNull();
+    expect(ttt.equilibriumFerrite).toBe(0);
+  });
+
+  it('a slow cool gives ferrite + pearlite in the lever-rule proportions', () => {
+    const lever = (0.76 - 0.4) / (0.76 - 0.022);
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const o = predict(s, buildTtt(s), AUST, SLOW);
+      expect(ferriteOf(o)).toBeCloseTo(lever, 6);
+      const pearlite = o.fractions.find((f) => f.product === 'coarse pearlite')!.fraction;
+      expect(pearlite).toBeCloseTo(1 - lever, 6);
+      expect(o.fractions.reduce((a, f) => a + f.fraction, 0)).toBeCloseTo(1, 12);
+    }
+  });
+
+  it('1080 slow-cools to 100% coarse pearlite, exactly as before', () => {
+    const s = getSteel('1080');
+    const o = predict(s, buildTtt(s), AUST, SLOW);
+    expect(o.fractions).toEqual([{ product: 'coarse pearlite', fraction: 1 }]);
+    expect(o.hardness).toBe(s.hardness.coarsePearlite);
+  });
+
+  it('never exceeds the equilibrium fraction, at any rate', () => {
+    for (const s of STEELS) {
+      const eq = equilibriumFerriteFraction(s);
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.02) {
+        expect(ferriteOf(predict(s, ttt, AUST, 10 ** lg))).toBeLessThanOrEqual(eq + 1e-12);
+      }
+    }
+  });
+
+  it('is monotone: faster cooling never gives more ferrite', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      let prev = 1;
+      for (let lg = -2; lg <= 4; lg += 0.02) {
+        const f = ferriteOf(predict(s, ttt, AUST, 10 ** lg));
+        expect(f).toBeLessThanOrEqual(prev + 1e-9);
+        prev = f;
+      }
+    }
+  });
+
+  it('a fully quenched path is unchanged: 100% martensite, no ferrite', () => {
+    for (const s of STEELS) {
+      const o = predict(s, buildTtt(s), AUST, 5000);
+      expect(o.fractions).toEqual([{ product: 'martensite', fraction: 1 }]);
+      expect(o.hardness).toBe(s.hardness.martensite);
+      expect(o.startTemp).toBeNull();
+    }
+  });
+
+  /**
+   * Regression guard. The ferrite curve is confined to the A₃–A₁ band, which a
+   * quench crosses far too fast to accumulate any incubation, so the critical
+   * cooling rate — the boundary `predict` reports between a mixed structure and
+   * full martensite — must be untouched. Values measured before the change.
+   */
+  it.each([
+    ['1080', 233.410447],
+    ['5140', 36.461357],
+    ['4340', 2.133697],
+  ])('%s: critical cooling rate is unchanged at %f °C/s', (id, expected) => {
+    const s = getSteel(id);
+    expect(criticalCoolingRate(s, buildTtt(s), AUST)!).toBeCloseTo(expected, 5);
+  });
+
+  it('forms no ferrite at or above the critical cooling rate', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      const crit = criticalCoolingRate(s, ttt, AUST)!;
+      for (const r of [crit, crit * 1.5, crit * 10, 5000]) {
+        expect(ferriteOf(predict(s, ttt, AUST, r))).toBe(0);
+      }
+    }
+  });
+
+  it('reports A₃ for the hypoeutectoid steels and null otherwise', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      expect(buildTtt(s).a3).toBeCloseTo(a3Temperature(s.composition.C), 9);
+      expect(buildTtt(s).a3).toBeCloseTo(814.63, 2);
+    }
+    expect(buildTtt(getSteel('1080')).a3).toBeNull();
+  });
+
+  /**
+   * Mass balance, not kinetics: pearlite is eutectoid at 0.76 wt% C, so
+   * whatever pearlite a 0.40 wt% C steel forms must be accompanied by
+   * proeutectoid ferrite in the lever-rule ratio.
+   */
+  it('keeps ferrite and pearlite in the lever-rule ratio at every rate', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      const eq = ttt.equilibriumFerrite;
+      for (let lg = -2; lg <= 4; lg += 0.02) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const f = ferriteOf(o);
+        const p = o.fractions
+          .filter((x) => x.product === 'coarse pearlite' || x.product === 'fine pearlite')
+          .reduce((a, x) => a + x.fraction, 0);
+        if (p > 0) expect(f / (f + p)).toBeCloseTo(eq, 12);
+        else expect(f).toBe(0);
+      }
+    }
+  });
+
+  it('a bainitic path carries no proeutectoid ferrite', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.02) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        if (o.fractions.some((f) => f.product === 'bainite')) {
+          expect(ferriteOf(o)).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('leaves the hardness readout untouched at every rate', () => {
+    // The scope note on `hardnessOf` explains why: the shipped per-steel
+    // product hardnesses already describe the ferrite + pearlite structure, so
+    // diluting them again by the ferrite fraction would double-count.
+    for (const id of ['5140', '4340', '1080']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      const o = predict(s, ttt, AUST, 0.01);
+      expect(o.hardness).toBe(s.hardness.coarsePearlite);
+    }
+  });
+
+  it('ferrite appears before pearlite on the same path, never after', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.05) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const order = o.fractions.map((f) => f.product);
+        const fi = order.indexOf('proeutectoid ferrite');
+        if (fi >= 0) expect(fi).toBe(0);
+      }
+    }
   });
 });

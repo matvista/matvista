@@ -21,6 +21,14 @@ import {
   slipSystems,
   type Triple,
 } from '../crystal/miller';
+import {
+  REFLECTION_RULES,
+  XRD_SAMPLES,
+  XRD_SOURCES,
+  braggTwoTheta,
+  isAllowed,
+  xrdLatticeFor,
+} from '../xrd/diffraction';
 import { prefersReducedMotion } from '../motion';
 import { MillerScene } from './MillerScene';
 import { AXIS_COLORS } from '../color';
@@ -53,6 +61,7 @@ export function MillerIndices() {
   const [slipModeId, setSlipModeId] = useRouteString('slip', 'fcc');
   const [axisText, setAxisText] = useRouteString('axis', '123');
   const [sigma, setSigma] = useRouteNumber('sigma', 50, 0, 300);
+  const [sourceId, setSourceId] = useRouteString('source', 'cu');
 
   // Keep the slip panel in step with the cell on screen, the way the crystal
   // module keeps its density example in step with its structure selector.
@@ -82,6 +91,24 @@ export function MillerIndices() {
 
   const planeFamily = useMemo(() => (plane ? family(reduce(plane)) : []), [plane]);
   const reduced = plane ? reduce(plane) : null;
+
+  /**
+   * S12 — the two questions the XRD module answers about an (hkl), asked here.
+   *
+   * The lattice is the **selected metal's**, not the cell on screen: the 2θ is
+   * a real angle for a real crystal, and `a` already comes from that metal. The
+   * rule is applied to the plane **as entered**, never to its lowest terms —
+   * (100) is extinct in FCC and (200) is the second peak, and reducing would
+   * erase exactly the distinction the panel is there to make.
+   */
+  const source = XRD_SOURCES.find((s) => s.id === sourceId) ?? XRD_SOURCES[0];
+  const lattice = xrdLatticeFor(metal.structure);
+  const d = plane && a != null ? dSpacing(plane, a) : null;
+  const allowed = lattice && plane ? isAllowed(lattice, plane[0], plane[1], plane[2]) : null;
+  const twoTheta = allowed && d != null ? braggTwoTheta(d, source.lambda) : null;
+  // Only the samples that are the same crystal — same symbol, and a test
+  // asserts the lattice parameters agree — get a link.
+  const xrdSample = XRD_SAMPLES.find((x) => x.id === metal.symbol.toLowerCase());
 
   return (
     <div className="mi-layout">
@@ -266,24 +293,37 @@ export function MillerIndices() {
           <p className="density-eq">
             d<sub>hkl</sub> = a / √(h² + k² + l²)
           </p>
-          <select
-            value={metalSymbol}
-            onChange={(e) => setMetalSymbol(e.target.value)}
-            aria-label="Metal for spacing calculation"
-          >
-            {CUBIC_METALS.map((m) => (
-              <option key={m.symbol} value={m.symbol}>
-                {m.name} · {m.structure.toUpperCase()}
-              </option>
-            ))}
-          </select>
+          <div className="mi-source-row">
+            <select
+              value={metalSymbol}
+              onChange={(e) => setMetalSymbol(e.target.value)}
+              aria-label="Metal for spacing calculation"
+            >
+              {CUBIC_METALS.map((m) => (
+                <option key={m.symbol} value={m.symbol}>
+                  {m.name} · {m.structure.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sourceId}
+              onChange={(e) => setSourceId(e.target.value)}
+              aria-label="X-ray source"
+            >
+              {XRD_SOURCES.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          {plane && a != null && (
+          {plane && d != null && (
             <table className="detail-props">
               <tbody>
                 <tr>
                   <th scope="row">a</th>
-                  <td>{a.toFixed(4)} nm</td>
+                  <td>{a!.toFixed(4)} nm</td>
                 </tr>
                 <tr>
                   <th scope="row">√(h²+k²+l²)</th>
@@ -293,16 +333,54 @@ export function MillerIndices() {
                   <th scope="row">
                     d<sub>hkl</sub>
                   </th>
-                  <td>{dSpacing(plane, a).toFixed(4)} nm</td>
+                  <td>{d.toFixed(4)} nm</td>
                 </tr>
+                {lattice && (
+                  <tr>
+                    <th scope="row">Reflection in {metal.name}?</th>
+                    <td className={allowed ? 'err-ok' : 'err-off'}>
+                      {allowed ? 'allowed' : 'extinct'}
+                    </td>
+                  </tr>
+                )}
+                {allowed && (
+                  <tr>
+                    <th scope="row">2θ, {source.label.split(' (')[0]}</th>
+                    <td>{twoTheta != null ? `${twoTheta.toFixed(2)}°` : 'λ > 2d — no angle'}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
+
+          {plane && lattice && allowed === false && (
+            <p className="density-note">
+              <strong>Systematically absent</strong> in {metal.structure.toUpperCase()}:{' '}
+              {REFLECTION_RULES[lattice]} The planes are real and the spacing above is real — the
+              scattered waves simply cancel, so no peak appears at that angle.
+            </p>
+          )}
+          {plane && allowed && twoTheta == null && (
+            <p className="density-note">
+              Allowed, but out of reach at λ = {source.lambda} nm: sin θ would have to be{' '}
+              {(source.lambda / (2 * d!)).toFixed(2)}. A shorter wavelength brings it back.
+            </p>
+          )}
+
+          {xrdSample && (
+            <p className="density-note">
+              <a href={`#/xrd?sample=${xrdSample.id}&source=${sourceId}`}>
+                See the whole {metal.name.toLowerCase()} pattern in the XRD module →
+              </a>
+            </p>
+          )}
+
           <p className="density-note">
             This is the same d that sets diffraction peak positions — feed it into Bragg’s law,
             λ = 2d sin θ, and you have the angles the XRD module plots. Note that (200) is not a
             different set of planes from (100): it is the same family indexed at half the spacing,
-            which is why the two give different peaks.
+            which is why the two give different peaks — and in an FCC metal only one of them
+            diffracts at all.
           </p>
         </div>
 

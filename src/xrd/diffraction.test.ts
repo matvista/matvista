@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, braggReach, computePattern,
-  familyLabel, formatIntensity, isAllowed, latticeParameter, multiplicity,
-  structureFactorSquared,
+  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, braggReach, braggTwoTheta,
+  computePattern, familyLabel, formatIntensity, isAllowed, latticeParameter, multiplicity,
+  structureFactorSquared, xrdLatticeFor,
 } from './diffraction';
+import { METALS } from '../crystal/metals';
+import { STRUCTURES, getStructure } from '../crystal/structures';
+import { dSpacing as millerDSpacing } from '../crystal/miller';
 
 /**
  * The module's own doc comment claims specific peak positions against
@@ -605,6 +608,126 @@ describe('the λ ≤ 2d diffraction limit', () => {
     const lambda = (2 * a) / (INDEX_CEILING + 10);
     expect(braggIndexBound(a, lambda)).toBeGreaterThan(INDEX_CEILING);
     expect(() => braggReach('fcc', a, lambda)).toThrow(RangeError);
+  });
+});
+
+/**
+ * S12 — the Miller module asks two questions of this one: is this (hkl) an
+ * allowed reflection, and if so at what 2θ. Both are answered from code that
+ * already existed; what is new is that the Miller module's own route to `a` —
+ * `metal.R × structure.aOverR`, the same route its d-spacing box takes — has
+ * to land on the published angles.
+ */
+describe('Bragg angle from a plane spacing', () => {
+  it('is null past the λ ≤ 2d limit, and defined exactly on it', () => {
+    expect(braggTwoTheta(0.1, 0.25)).toBeNull();
+    expect(braggTwoTheta(0.1, 0.2)).toBeCloseTo(180, 9);
+    expect(braggTwoTheta(0, 0.15406)).toBeNull();
+  });
+
+  it('agrees with computePattern for every peak of every shipped combination', () => {
+    for (const s of XRD_SAMPLES) {
+      for (const src of XRD_SOURCES) {
+        for (const p of computePattern(s.lattice, s.a, src.lambda, 180)) {
+          expect(braggTwoTheta(p.d, src.lambda)).toBeCloseTo(p.twoTheta, 9);
+        }
+      }
+    }
+  });
+
+  /**
+   * The Miller module's numbers, taken end to end: copper's R from Callister
+   * table 3.1, a = 2R√2 from the FCC structure, d = a/√(h²+k²+l²) from
+   * `crystal/miller`, then Bragg. These must be the published 43.32 and 50.45°
+   * that `computePattern` already reproduces, or the two modules disagree about
+   * the same crystal.
+   */
+  it('reproduces copper’s 111 and 200 through the Miller module’s own route', () => {
+    const cu = METALS.find((m) => m.symbol === 'Cu')!;
+    const a = cu.R * getStructure('fcc').aOverR!;
+    const lambda = XRD_SOURCES.find((s) => s.id === 'cu')!.lambda;
+    expect(a).toBeCloseTo(XRD_SAMPLES.find((s) => s.id === 'cu')!.a, 12);
+    expect(braggTwoTheta(millerDSpacing([1, 1, 1], a), lambda)).toBeCloseTo(43.32, 2);
+    expect(braggTwoTheta(millerDSpacing([2, 0, 0], a), lambda)).toBeCloseTo(50.45, 2);
+  });
+
+  /**
+   * The (100)-versus-(200) puzzle the Miller module already raises in prose.
+   * (100) is extinct in FCC; (200) is the second peak. Same planes, different
+   * indexing, and only one of them diffracts.
+   */
+  it('separates FCC’s extinct (100) from its measurable (200)', () => {
+    expect(isAllowed('fcc', 1, 0, 0)).toBe(false);
+    expect(isAllowed('fcc', 1, 1, 0)).toBe(false);
+    expect(isAllowed('fcc', 2, 0, 0)).toBe(true);
+    expect(isAllowed('fcc', 1, 1, 1)).toBe(true);
+    // BCC is the mirror image, which is the eyeball test between the two.
+    expect(isAllowed('bcc', 1, 1, 1)).toBe(false);
+    expect(isAllowed('bcc', 1, 1, 0)).toBe(true);
+  });
+
+  /**
+   * The rule is a parity test, so a negative index must give the same answer
+   * as its positive twin — otherwise (1̄11), which the Miller module accepts
+   * and which is one of its presets, would be reported extinct in FCC.
+   */
+  it('is unchanged by the sign of an index', () => {
+    for (const lattice of ['sc', 'bcc', 'fcc', 'diamond'] as const) {
+      for (const [h, k, l] of [[1, 1, 1], [2, 0, 0], [1, 1, 0], [3, 1, 1], [2, 1, 0]]) {
+        for (const signs of [[-1, 1, 1], [1, -1, 1], [-1, -1, -1]]) {
+          expect(isAllowed(lattice, h * signs[0], k * signs[1], l * signs[2])).toBe(
+            isAllowed(lattice, h, k, l),
+          );
+        }
+      }
+    }
+  });
+});
+
+describe('structure ids map to reflection-rule lattices', () => {
+  it('covers exactly the four monatomic cubic structures', () => {
+    for (const id of ['sc', 'bcc', 'fcc', 'diamond']) expect(xrdLatticeFor(id)).toBe(id);
+  });
+
+  /**
+   * Rock salt, CsCl and perovskite have two or more species with different
+   * scattering factors, so the monatomic rules in `isAllowed` do not describe
+   * them — MgO's and NaCl's absences differ from each other. They return null
+   * and the panel is absent, rather than a confident wrong answer.
+   */
+  it('refuses the compound structures, whose rules are not these', () => {
+    for (const s of STRUCTURES.filter((x) => Object.keys(x.species).length > 1)) {
+      expect(xrdLatticeFor(s.id)).toBeNull();
+    }
+    expect(xrdLatticeFor('hcp')).toBeNull();
+    expect(xrdLatticeFor('nonsense')).toBeNull();
+  });
+
+  /**
+   * The Miller module's spacing calculator offers the cubic metals of
+   * Callister table 3.1. Every one of them must land on a lattice, or the new
+   * rows would blank out for part of a selector that already works.
+   */
+  it('covers every cubic metal the Miller module offers', () => {
+    const cubic = METALS.filter((m) => m.structure !== 'hcp');
+    expect(cubic.length).toBeGreaterThan(0);
+    for (const m of cubic) expect(xrdLatticeFor(m.structure)).not.toBeNull();
+  });
+
+  /**
+   * Both cross-links match a metal to a sample by symbol. If the two carried
+   * different lattice parameters the link would land on a different crystal
+   * from the one whose d-spacing was just displayed, and the 2θ on each side
+   * would disagree. Five metals overlap; all five must agree exactly.
+   */
+  it('links only samples that are the same crystal as the metal', () => {
+    const matched = METALS.filter((m) => XRD_SAMPLES.some((x) => x.id === m.symbol.toLowerCase()));
+    expect(matched.map((m) => m.symbol)).toEqual(['Al', 'Cr', 'Cu', 'Fe', 'W']);
+    for (const m of matched) {
+      const sample = XRD_SAMPLES.find((x) => x.id === m.symbol.toLowerCase())!;
+      expect(sample.lattice).toBe(m.structure);
+      expect(sample.a).toBeCloseTo(m.R * getStructure(m.structure).aOverR!, 12);
+    }
   });
 });
 

@@ -2378,3 +2378,25 @@ input[type='range'] {
   width: 24px;
   height: 6px;
 }
+
+/* S12 — the spacing box now carries two selectors. */
+.mi-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mi-source-row select {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* An allowed extinction chip is a link into the Miller module. */
+.xrd-chip-link {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.xrd-chip-link:hover {
+  border-color: var(--accent);
+}

@@ -266,6 +266,56 @@ export function braggReach(lattice: XrdLattice, a: number, lambda: number): Brag
 }
 
 /**
+ * The reflection rule in words, per lattice.
+ *
+ * Lives here rather than in a component because two modules name it: the XRD
+ * extinction panel, and the Miller module when it reports an entered (hkl) as
+ * extinct.
+ */
+export const REFLECTION_RULES: Record<XrdLattice, string> = {
+  sc: 'All reflections present.',
+  bcc: '(h + k + l) must be even.',
+  fcc: 'h, k, l must be all odd or all even.',
+  diamond: 'FCC rule, plus all-even reflections require h + k + l ≡ 0 (mod 4).',
+};
+
+/**
+ * Bragg's law solved for the angle: 2θ = 2·asin(λ/2d), degrees.
+ *
+ * Null where λ > 2d — there is no angle whose sine exceeds 1, which is the
+ * same limit `braggReach` counts — and null for a non-physical spacing.
+ * Asserted equal to `computePattern`'s own angle for every peak of every
+ * shipped sample × source.
+ */
+export function braggTwoTheta(d: number, lambda: number): number | null {
+  if (!(d > 0) || !(lambda > 0)) return null;
+  const sinTheta = lambda / (2 * d);
+  if (!(sinTheta <= 1)) return null;
+  return (2 * Math.asin(sinTheta) * 180) / Math.PI;
+}
+
+/**
+ * Crystal-structure id → the lattice whose reflection rule applies.
+ *
+ * Only the four monatomic cubic structures have rules of the form `isAllowed`
+ * implements. Rock salt, CsCl and perovskite carry two or more species with
+ * different scattering factors, so their systematic absences are not these —
+ * MgO's differ from NaCl's — and HCP is not cubic at all. Those return null
+ * and the caller shows nothing, rather than a confident wrong answer.
+ */
+export function xrdLatticeFor(structureId: string): XrdLattice | null {
+  switch (structureId) {
+    case 'sc':
+    case 'bcc':
+    case 'fcc':
+    case 'diamond':
+      return structureId;
+    default:
+      return null;
+  }
+}
+
+/**
  * Generates the powder pattern.
  *
  * The index sweep is bounded by `braggIndexBound`, not by a constant: the

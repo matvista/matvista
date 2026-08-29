@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useRouteString } from '../useRoute';
+import { METALS } from '../crystal/metals';
 import {
+  REFLECTION_RULES,
   XRD_SAMPLES,
   XRD_SOURCES,
   braggReach,
@@ -10,7 +12,7 @@ import {
   formatIntensity,
   isAllowed,
   multiplicity,
-  type XrdLattice,
+  type XrdSample,
 } from '../xrd/diffraction';
 
 const W = 760;
@@ -202,7 +204,7 @@ export function XrdSimulator() {
           </tbody>
         </table>
 
-        <ExtinctionPanel lattice={sample.lattice} a={sample.a} lambda={source.lambda} />
+        <ExtinctionPanel sample={sample} lambda={source.lambda} />
       </aside>
     </div>
   );
@@ -213,31 +215,21 @@ export function XrdSimulator() {
  * absences are what identify the structure, so they deserve to be visible
  * rather than merely missing from the pattern.
  */
-function ExtinctionPanel({
-  lattice,
-  a,
-  lambda,
-}: {
-  lattice: XrdLattice;
-  a: number;
-  lambda: number;
-}) {
+function ExtinctionPanel({ sample, lambda }: { sample: XrdSample; lambda: number }) {
+  const { lattice, a } = sample;
+  // The reverse of S12's link: an allowed reflection opens in the Miller
+  // module, on the same lattice and — where the sample is one of Callister's
+  // table-3.1 metals — the same metal, so `a` and therefore d agree.
+  const metal = METALS.find((m) => m.symbol.toLowerCase() === sample.id);
   const CANDIDATES: [number, number, number][] = [
     [1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 0, 0], [2, 1, 0], [2, 1, 1],
     [2, 2, 0], [3, 0, 0], [3, 1, 0], [3, 1, 1], [2, 2, 2], [4, 0, 0],
   ];
 
-  const RULES: Record<XrdLattice, string> = {
-    sc: 'All reflections present.',
-    bcc: '(h + k + l) must be even.',
-    fcc: 'h, k, l must be all odd or all even.',
-    diamond: 'FCC rule, plus all-even reflections require h + k + l ≡ 0 (mod 4).',
-  };
-
   return (
     <div className="density-box">
       <h3>Reflection rule</h3>
-      <p className="density-eq">{RULES[lattice]}</p>
+      <p className="density-eq">{REFLECTION_RULES[lattice]}</p>
       <div className="xrd-extinct">
         {CANDIDATES.map(([h, k, l]) => {
           const ok = isAllowed(lattice, h, k, l);
@@ -248,11 +240,26 @@ function ExtinctionPanel({
           const sinTheta = lambda / (2 * d);
           const outOfReach = ok && sinTheta > 1;
           const cls = !ok ? 'xrd-off' : outOfReach ? 'xrd-far' : 'xrd-on';
-          return (
-            <span key={familyLabel(h, k, l)} className={`xrd-chip ${cls}`}>
-              {familyLabel(h, k, l)}
+          const label = familyLabel(h, k, l);
+          const body = (
+            <>
+              {label}
               {ok && <em> · d {d.toFixed(3)}</em>}
               {outOfReach && <em> · λ/2d {sinTheta.toFixed(2)}</em>}
+            </>
+          );
+          // Forbidden families are not linked: there is nothing to look at.
+          return ok ? (
+            <a
+              key={label}
+              className={`xrd-chip xrd-chip-link ${cls}`}
+              href={`#/miller?plane=${label}&s=${lattice}${metal ? `&metal=${metal.symbol}` : ''}`}
+            >
+              {body}
+            </a>
+          ) : (
+            <span key={label} className={`xrd-chip ${cls}`}>
+              {body}
             </span>
           );
         })}
@@ -262,6 +269,10 @@ function ExtinctionPanel({
         by destructive interference. Those absences are the fingerprint: an FCC pattern opens on
         111, a BCC pattern on 110, and the diamond lattice additionally kills 200 and 222. Reading
         which peaks are <em>missing</em> is how a structure is identified.
+      </p>
+      <p className="density-note">
+        Every reachable index above is a link into the Miller module, which draws that plane in the
+        cell and shows where its spacing comes from.
       </p>
       <p className="density-note">
         Indices marked <span className="xrd-chip xrd-far">λ/2d &gt; 1</span> are the other kind of

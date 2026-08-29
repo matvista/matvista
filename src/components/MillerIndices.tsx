@@ -21,6 +21,7 @@ import {
   slipSystems,
   type Triple,
 } from '../crystal/miller';
+import { prefersReducedMotion } from '../motion';
 import { MillerScene } from './MillerScene';
 import { AXIS_COLORS } from '../color';
 
@@ -36,14 +37,6 @@ const CUBIC_METALS = METALS.filter((m) => m.structure !== 'hcp');
 /** Presets that cover the planes a course actually asks about. */
 const PLANE_PRESETS = ['111', '110', '100', '1̄11', '112', '123'];
 const DIRECTION_PRESETS = ['111', '110', '100', '1̄10', '112', '123'];
-
-/** Read once at render; the setting is not one people flip mid-session. */
-function prefersReducedMotion(): boolean {
-  return (
-    typeof matchMedia !== 'undefined' &&
-    matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
 
 export function MillerIndices() {
   const [structureId, setStructureId] = useRouteString('s', 'fcc');

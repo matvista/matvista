@@ -3,6 +3,7 @@ import elementsRaw from '../data/elements.json';
 import { useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
+import { prefersReducedMotion } from '../motion';
 import { CrystalScene, type ViewMode } from './CrystalScene';
 import type { ElementData } from '../types';
 
@@ -16,6 +17,9 @@ export function CrystalStructures() {
   const [showCell, setShowCell] = useState(true);
   const [showBonds, setShowBonds] = useState(false);
   const [showCoordination, setShowCoordination] = useState(false);
+  // A cell that spins on its own is exactly what "reduce motion" is asking us
+  // not to do. There is a checkbox either way, so this only sets the default.
+  const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
   const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
 
   const structure = getStructure(id);
@@ -90,6 +94,7 @@ export function CrystalStructures() {
           showCell={showCell}
           showBonds={showBonds}
           showCoordination={showCoordination}
+          autoRotate={autoRotate}
         />
 
         <div className="crystal-checks">
@@ -108,6 +113,14 @@ export function CrystalStructures() {
               onChange={(e) => setShowCoordination(e.target.checked)}
             />
             Coordination shell (CN = {structure.CN})
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={autoRotate}
+              onChange={(e) => setAutoRotate(e.target.checked)}
+            />
+            Rotate
           </label>
           <span className="drag-hint">Drag to rotate · scroll to zoom</span>
         </div>

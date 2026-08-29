@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { getStructure } from '../crystal/structures';
 import { DEFECTS, getDefect, type DefectKind } from '../crystal/defects';
@@ -13,6 +13,7 @@ import {
   siteDensity,
   vacancyFraction,
 } from '../diffusion/model';
+import { prefersReducedMotion } from '../motion';
 import { CrystalScene } from './CrystalScene';
 
 const K = 273.15;
@@ -22,6 +23,9 @@ export function DefectsDiffusion() {
   const [defect, setDefect] = useRouteEnum<DefectKind>('d', 'vacancy', DEFECT_KINDS);
   const [vacancyT, setVacancyT] = useRouteNumber('vacT', 1000, 20, 1080);
   const [Qv, setQv] = useRouteNumber('Qv', 0.9, 0.5, 2);
+  // A cell that spins on its own is exactly what "reduce motion" is asking us
+  // not to do. There is a checkbox either way, so this only sets the default.
+  const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
 
   const structure = getStructure(structureId);
   const defectDef = getDefect(defect);
@@ -66,7 +70,20 @@ export function DefectsDiffusion() {
           showBonds={false}
           showCoordination={false}
           defect={defect}
+          autoRotate={autoRotate}
         />
+
+        <div className="crystal-checks">
+          <label>
+            <input
+              type="checkbox"
+              checked={autoRotate}
+              onChange={(e) => setAutoRotate(e.target.checked)}
+            />
+            Rotate
+          </label>
+          <span className="drag-hint">Drag to rotate · scroll to zoom</span>
+        </div>
 
         <p className="dd-defect-cat">{defectDef.category}</p>
         <p className="trend-note">{defectDef.note}</p>

@@ -1,5 +1,12 @@
 /**
- * Motion primitives for the landing page.
+ * Shared motion primitives.
+ *
+ * Lives at the top level rather than under `landing/` because
+ * `prefersReducedMotion` is not a landing-page concern: the three 3D views use
+ * it too, to decide whether their cell starts spinning. One definition, so a
+ * fix to the guard cannot reach some call sites and miss others — which is
+ * exactly how `#/crystals` and `#/defects` came to spin forever after the
+ * same defect was fixed in `#/miller`.
  *
  * One rule: motion is decoration, and decoration must never be load-bearing.
  * A reveal that fails to fire leaves a whole section blank. So the resting
@@ -26,9 +33,10 @@ const REDUCE_QUERY = '(prefers-reduced-motion: reduce)';
  * motion as the branch that *skips* work, and defaulting to true off-screen
  * would be indistinguishable from an unstyled page.
  *
- * Prefer `useReducedMotion` inside components; this exists for the handful of
- * call sites that only need the value once, matching the convention already in
- * `MillerIndices`.
+ * Prefer `useReducedMotion` inside components; this exists for the call sites
+ * that only need the value once — the three 3D views, which read it to set the
+ * initial state of their own Rotate checkbox and then leave the reader in
+ * charge.
  */
 export function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;

@@ -242,6 +242,49 @@ export function productCarbon(product: Product, bulkC: number): number {
 }
 
 /**
+ * Carbon left in the austenite that has not transformed diffusionally, wt%.
+ *
+ * Ferrite rejection is what enriches it: every unit of ferrite takes only
+ * 0.022 wt% C out of a 0.40 wt% steel, so the balance concentrates in what
+ * remains. This is the quantity that governs the real Mˢ, and `martensiteStart`
+ * does not use it — see the note on `splitProeutectoid`. Exported so the UI can
+ * state the size of that gap instead of leaving it implicit.
+ *
+ * Martensite is excluded from the sum on purpose: it *is* the austenite that
+ * survived, so counting its carbon as already consumed would report the
+ * remaining austenite as depleted rather than enriched. Getting that wrong
+ * once made 5140 at 10 °C/s read 0.12 wt% C instead of 0.52 and silently
+ * suppressed the caveat.
+ *
+ * **Defined only where this model has a mechanism for enrichment**, which is
+ * proeutectoid ferrite rejection. Without ferrite the balance does not close:
+ * 1080 is hyper-eutectoid, its pearlite carries 0.76 wt% against a 0.79 bulk,
+ * and the surplus belongs to proeutectoid cementite the model does not track —
+ * so as the untransformed fraction approaches zero the quotient runs away
+ * (measured at 6.97 wt% C, a number no steel can hold). Rather than clamp that
+ * into range, which would hide the fact that it was computed outside its
+ * domain, this returns the bulk composition whenever no ferrite formed or
+ * nothing is left untransformed.
+ *
+ * Under ferrite-leads the result can never exceed the eutectoid: ferrite stops
+ * at `alphaEq`, which is exactly the point where the residue reaches 0.76 wt%.
+ * That is asserted rather than enforced here.
+ */
+export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): number {
+  let solid = 0;
+  let carbon = 0;
+  let ferrite = 0;
+  for (const f of outcome.fractions) {
+    if (f.product === 'martensite') continue;
+    if (f.product === 'proeutectoid ferrite') ferrite += f.fraction;
+    solid += f.fraction;
+    carbon += f.fraction * productCarbon(f.product, bulkC);
+  }
+  if (ferrite <= 0 || solid >= 1) return bulkC;
+  return (bulkC - carbon) / (1 - solid);
+}
+
+/**
  * Divide a diffusional product into the proeutectoid ferrite that leads it and
  * the pearlite that follows.
  *
@@ -418,17 +461,32 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
  * grades with no proeutectoid ferrite involved anywhere, so the phrase plainly
  * means intrinsic hardness.
  *
- * What actually settles it: pearlite is eutectoid whatever steel it grows in,
- * but 5140's pearlitic ferrite carries 0.85 Cr and 0.8 Mn in solid solution,
- * so a *pure pearlite constituent* in 5140 would be **harder** than 1080's,
- * not softer. The shipped 12 HRC against 1080's 15 is therefore only
- * explicable as dilution — the number already has the proeutectoid ferrite in
- * it. Splitting it again by the ferrite fraction would double-count and report
- * ≈ 6 HRC for annealed 5140 against a real ≈ 13 HRC.
+ * The directional argument: pearlite is eutectoid whatever steel it grows in,
+ * and 5140's pearlitic ferrite carries more in solid solution than 1080's —
+ * +0.85 Cr, and +0.05 Mn, since 1080 already holds 0.75 Mn. (An earlier
+ * version of this note said "0.85 Cr and 0.8 Mn", comparing 5140's manganese
+ * against zero rather than against 1080's; the manganese term is about
+ * sixteen times smaller than that implied, and chromium carries the argument.)
+ * A *pure pearlite constituent* in 5140 should therefore be at least as hard
+ * as 1080's, not softer, so the shipped 12 HRC against 1080's 15 points to a
+ * figure that already has the proeutectoid ferrite in it.
+ *
+ * That is evidence, not proof, and it deliberately is not leaned on harder:
+ * 12 and 15 both sit below HRC 20, the range the note below calls unreliable,
+ * so a three-point difference there cannot bear a quantitative conclusion.
+ * What it does support is the direction — do not dilute — and the check that
+ * diluting would report ≈ 6 HRC for annealed 5140 against a real ≈ 13 HRC
+ * agrees with it.
  *
  * The hardness of the pearlite constituent alone is not determined by anything
  * in this repo, and none is invented here. The claim this model makes is about
  * the **microstructure**; the hardness readout is left as it was.
+ *
+ * One consequence of ferrite-leads to be honest about: on a partial path the
+ * diffusional product can be entirely proeutectoid ferrite, and this still
+ * prices it at the pearlitic figure. Ferrite is softer, so the hardness is
+ * overstated there by at most the ferrite fraction times that figure — under
+ * 3 HRC at the worst reachable point (5140 at 10 °C/s, 24% ferrite × 12 HRC).
  *
  * Follow-up, not fixed here: all three coarse-pearlite values sit below
  * HRC 20, where the Rockwell C scale is unreliable and the indenter is barely

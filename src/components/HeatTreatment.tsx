@@ -12,8 +12,8 @@ import {
   coolingPath,
   criticalCoolingRate,
   predict,
-  productCarbon,
   tangentCoolingRate,
+  untransformedAusteniteCarbon,
   TRACE_FRACTION,
   type CurvePoint,
   type Product,
@@ -80,15 +80,11 @@ export function HeatTreatment() {
   const ferriteFraction =
     outcome.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
 
-  const solid = outcome.fractions
-    .filter((f) => f.product !== 'martensite')
-    .reduce((a, f) => a + f.fraction, 0);
-  const carbonInSolid = outcome.fractions.reduce(
-    (a, f) => a + f.fraction * productCarbon(f.product, steel.composition.C),
-    0,
-  );
-  const enrichedCarbon =
-    solid < 1 ? (steel.composition.C - carbonInSolid) / (1 - solid) : steel.composition.C;
+  const enrichedCarbon = untransformedAusteniteCarbon(outcome, steel.composition.C);
+  // The enrichment only bears on Mˢ if austenite actually survives to it. On a
+  // completed transformation there is none left, so saying "0.40 against 0.40,
+  // roughly 0 °C below" would be noise dressed as a caveat.
+  const msUnderstated = ferriteFraction > 0 && enrichedCarbon > steel.composition.C + 0.005;
 
   const critical = useMemo(
     () => criticalCoolingRate(steel, ttt, AUSTENITISE),
@@ -318,7 +314,7 @@ export function HeatTreatment() {
               <th scope="row">Mˢ (Andrews)</th>
               <td>
                 {Math.round(martensiteStart(steel.composition))} °C
-                {ferriteFraction > 0 && ' (bulk composition)'}
+                {msUnderstated && ' (bulk composition)'}
               </td>
             </tr>
             <tr>
@@ -332,18 +328,20 @@ export function HeatTreatment() {
 
         {ferriteFraction > 0 && (
           <p className="ht-caveat">
-            <strong>The ferrite fraction is an upper bound.</strong> It comes from the lever rule on
-            the <em>binary</em> Fe–Fe₃C diagram, against the eutectoid at 0.76 wt% C. Manganese,
-            chromium, nickel and molybdenum all lower the eutectoid carbon, so an alloy steel
-            reaches the eutectoid composition sooner and rejects <em>less</em> proeutectoid ferrite
-            than this: for {steel.name.split(' —')[0]} an effective eutectoid near 0.60–0.65 wt% C
-            would give roughly 35–40% rather than{' '}
-            {(ttt.equilibriumFerrite * 100).toFixed(0)}%. Ae₃ above is Andrews' regression over the
-            whole composition and does account for the alloying; the fraction does not.
+            <strong>The ferrite fraction is an upper bound.</strong> It is the lever rule on the{' '}
+            <em>binary</em> Fe–Fe₃C diagram, against the eutectoid at 0.76 wt% C. Alloying lowers
+            the eutectoid carbon — molybdenum most steeply of the elements here, manganese and
+            chromium appreciably, nickel barely at all — so an alloy steel reaches the eutectoid
+            composition sooner and rejects <em>less</em> ferrite than {(ttt.equilibriumFerrite * 100).toFixed(0)}%.
+            No corrected figure is quoted, because there is not one to quote: a ternary Fe–C–X
+            section is univariant rather than invariant, so a multicomponent steel has no single
+            eutectoid <em>point</em>, the published pseudo-binary sections are explicitly not
+            superposable, and there is no linear-additive formula for eutectoid carbon to combine
+            them with. Ae₃ above <em>is</em> composition-corrected; this fraction is not.
           </p>
         )}
 
-        {ferriteFraction > 0 && (
+        {msUnderstated && (
           <p className="ht-caveat">
             <strong>Mˢ is computed from the bulk composition.</strong> Rejecting ferrite leaves the
             untransformed austenite richer in carbon than the steel as a whole — here about{' '}

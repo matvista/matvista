@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STEELS, ae3, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
-  tangentCoolingRate,
+  tangentCoolingRate, untransformedAusteniteCarbon,
 } from './model';
 import { EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 
@@ -637,6 +637,73 @@ describe('ferrite-leads: continuity, monotonicity, carbon balance', () => {
     const ttt = buildTtt(s);
     for (let lg = -2; lg <= 4; lg += 0.002) {
       expect(ferriteOf(predict(s, ttt, AUST, 10 ** lg))).toBe(0);
+    }
+  });
+});
+
+/**
+ * The enrichment the UI puts on screen beside Mˢ.
+ *
+ * Ferrite takes only 0.022 wt% C out of a 0.40 wt% steel, so what it leaves
+ * behind is richer — and that is the austenite whose Mˢ actually matters. The
+ * first version of this calculation summed martensite's carbon into the
+ * consumed total, which made the remaining austenite look *depleted* (0.12
+ * against 0.40) and suppressed the caveat entirely.
+ */
+describe('untransformed austenite carbon', () => {
+  it('is the bulk composition when nothing is left', () => {
+    for (const id of ['5140', '4340', '1080']) {
+      const s = getSteel(id);
+      const o = predict(s, buildTtt(s), AUST, 0.01);
+      expect(o.complete).toBe(true);
+      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(s.composition.C, 12);
+    }
+  });
+
+  it('is the bulk composition on a full quench — martensite is the austenite', () => {
+    for (const s of STEELS) {
+      const o = predict(s, buildTtt(s), AUST, 5000);
+      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(s.composition.C, 12);
+    }
+  });
+
+  it('reads 0.519 wt% C for 5140 at 10 °C/s — 24% ferrite, 76% austenite', () => {
+    const s = getSteel('5140');
+    const o = predict(s, buildTtt(s), AUST, 10);
+    const ferrite = o.fractions.find((f) => f.product === 'proeutectoid ferrite')!.fraction;
+    expect(ferrite).toBeCloseTo(0.2394, 4);
+    // (0.40 − 0.2394 × 0.022) / (1 − 0.2394)
+    expect(untransformedAusteniteCarbon(o, 0.4)).toBeCloseTo(
+      (0.4 - 0.2394 * FERRITE_MAX) / (1 - 0.2394),
+      3,
+    );
+    expect(untransformedAusteniteCarbon(o, 0.4)).toBeCloseTo(0.519, 3);
+  });
+
+  /**
+   * 1080 is the case that forced the domain guard: hyper-eutectoid, so its
+   * pearlite at 0.76 wt% leaves a surplus belonging to cementite the model
+   * does not track, and the quotient ran to 6.97 wt% C as the untransformed
+   * fraction approached zero.
+   */
+  it('returns the bulk composition for a steel that rejects no ferrite', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.005) {
+      expect(untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C)).toBe(
+        s.composition.C,
+      );
+    }
+  });
+
+  it('is never below the bulk, and never above the eutectoid', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const c = untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C);
+        expect(c).toBeGreaterThanOrEqual(s.composition.C - 1e-9);
+        expect(c).toBeLessThanOrEqual(Math.max(EUTECTOID_X, s.composition.C) + 1e-9);
+      }
     }
   });
 });

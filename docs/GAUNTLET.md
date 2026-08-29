@@ -665,6 +665,20 @@ is about half the size-quoting commits and under a third of the branch — accur
 it checked, overbroad for what it says. Recorded rather than amended, for the reason that
 row gives itself.
 
+**Found after that window closed.** Kept separate so the twenty/six count above stays a
+statement about `3f79182..234672c` and does not have to be recounted every time a later
+commit joins the table:
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `4c65d70` | "the guard is **20 bytes** raw and does not move the gzip figure" | **24 bytes**: 301,121 → 301,145 B, measured as an A/B on `useRoute.ts` alone with every other chunk identical. 301.12 → 301.14 kB is what the reporter prints, and I took the difference from the rounded pair instead of the bytes I had. |
+
+The gzip half of that sentence did hold at `4c65d70` — 85.17 both sides — but it is the
+claim the rule above says not to make, and it no longer holds: the same A/B run at today's
+HEAD reports 85.17 → **85.18**. The figure did not change because the guard changed; it
+changed because a different chunk's hash did. A gzip claim about the index chunk is only
+ever true of the tree it was measured on.
+
 **Two rules that would have caught all of these, both from writing them and then
 breaking them again:**
 

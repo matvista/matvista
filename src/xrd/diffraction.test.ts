@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel, formatIntensity,
-  isAllowed, latticeParameter, multiplicity, structureFactorSquared,
+  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel,
+  formatIntensity, isAllowed, latticeParameter, multiplicity, structureFactorSquared,
 } from './diffraction';
 
 /**
@@ -259,6 +259,9 @@ describe('family labels', () => {
   it('separates the moment any index reaches double digits', () => {
     expect(familyLabel(11, 1, 1)).toBe('11,1,1');
     expect(familyLabel(10, 0, 0)).toBe('10,0,0');
+    // (14,2,0) is real — it is the top of silicon's Mo Kα pattern.
+    expect(familyLabel(14, 2, 0)).toBe('14,2,0');
+    // and the formatter is not limited to families any shipped sample reaches
     expect(familyLabel(15, 5, 3)).toBe('15,5,3');
   });
 
@@ -340,6 +343,34 @@ describe('braggIndexBound is derived from λ and a, not fixed', () => {
     expect(() => computePattern('sc', 0.1, 0.001)).toThrow(/200/);
   });
 
+  /**
+   * The ceiling itself has to be gated. Mutating it to 16 — the exact index
+   * silicon with Mo Kα needs — passed the whole suite, leaving the widest
+   * shipped combination sitting on the limit with no margin at all.
+   */
+  it('keeps real headroom over the widest shipped combination', () => {
+    const widest = Math.max(
+      ...XRD_SAMPLES.flatMap((s) => XRD_SOURCES.map((src) => (2 * s.a) / src.lambda)),
+    );
+    expect(widest).toBeCloseTo(15.284, 3); // silicon × Mo Kα
+    expect(INDEX_CEILING).toBeGreaterThanOrEqual(4 * Math.ceil(widest));
+    // and behaviourally: twice the widest shipped ratio is still fine
+    expect(() => computePattern('sc', 0.3615, 0.3615 * 2 / (2 * widest))).not.toThrow();
+  });
+
+  /**
+   * The comparison is `>`, not `>=`: a ratio landing exactly on the ceiling is
+   * inside the domain. Mutating it to `>=` passed the whole suite.
+   */
+  it('admits a ratio sitting exactly on the ceiling, and refuses one past it', () => {
+    // 2a/λ = 64 exactly → bound 64, which is the ceiling and must be allowed.
+    expect(braggIndexBound(3.2, 0.1)).toBe(INDEX_CEILING);
+    expect(() => computePattern('sc', 3.2, 0.1, 180)).not.toThrow();
+    // 2a/λ = 65 → bound 65, one past.
+    expect(braggIndexBound(3.25, 0.1)).toBe(INDEX_CEILING + 1);
+    expect(() => computePattern('sc', 3.25, 0.1, 180)).toThrow(/ceiling/i);
+  });
+
   it('lets every shipped sample × source through untouched', () => {
     for (const sample of XRD_SAMPLES) {
       for (const source of XRD_SOURCES) {
@@ -382,7 +413,7 @@ describe('intensity formatting', () => {
     const shown = peaks.map((p) => formatIntensity(p.intensity));
     // Every one is a real reflection, so none may read as a bare zero.
     expect(shown).not.toContain('0');
-    expect(shown.filter((x) => x === '<1').length).toBeGreaterThan(20);
+    expect(shown.filter((x) => x === '<1').length).toBe(62);
     // and the strongest line is still 100.
     expect(shown).toContain('100');
   });

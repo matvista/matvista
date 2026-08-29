@@ -916,6 +916,7 @@ interface XrdModule {
   XRD_SAMPLES: { id: string; name: string; lattice: string; a: number }[];
   XRD_SOURCES: { id: string; label: string; lambda: number }[];
   computePattern(lattice: string, a: number, lambda: number, maxTwoTheta?: number): PeakLike[];
+  familyLabel(h: number, k: number, l: number): string;
 }
 
 const XRD_SAMPLE_ID = 'cu';
@@ -990,7 +991,7 @@ function renderXrdFigure(mod: XrdModule): string {
   body.push(comment('(hkl) indices, strongest peaks first'));
   for (const p of [...peaks].sort((a, b) => b.intensity - a.intensity)) {
     if (p.intensity < 1) continue;
-    const text = `(${p.h}${p.k}${p.l})`;
+    const text = `(${mod.familyLabel(p.h, p.k, p.l)})`;
     const px = sx(p.twoTheta);
     const py = sy(p.intensity) - 9;
     if (!space.tryPlace(labelBox(text, px, py, 11, 'middle'))) continue;

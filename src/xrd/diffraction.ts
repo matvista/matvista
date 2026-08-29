@@ -158,17 +158,23 @@ export function dSpacing(a: number, h: number, k: number, l: number): number {
  *
  * `braggIndexBound` is the physically correct bound, but it is driven by
  * caller-supplied numbers: a tiny λ or a huge `a` would ask for a loop of
- * unbounded size. 64 corresponds to 2a/λ ≥ 128, **four times** the widest
- * shipped case — silicon with Mo Kα, at 2a/λ ≈ 15.3 — and far past any
- * laboratory combination. Enumerating sorted triples to 64 is C(67,3) = 47 905
- * iterations, so the guard costs nothing when it is not needed.
+ * unbounded size. The bound is `ceil(2a/λ)`, so a ceiling of 64 admits every
+ * ratio up to **2a/λ = 64**, i.e. a/λ = 32. The widest shipped combination is
+ * silicon with Mo Kα at 2a/λ ≈ 15.28, needing index 16, so the margin is
+ * **four times** — a figure a test asserts rather than a comment claims.
+ * (An earlier version of this comment said "2a/λ ≥ 128", which was wrong by a
+ * factor of two and contradicted the "four times" in the same sentence.)
  *
- * Past it `computePattern` **throws**. Clamping here would silently drop
- * reflections and return a plausible-looking short pattern, which is the exact
- * defect this whole change removed; a fixed cap is not an acceptable fallback
- * for a fixed cap.
+ * Enumerating sorted triples to 64 is C(67,3) = 47 905 iterations, so the
+ * guard costs nothing when it is not needed.
+ *
+ * The comparison in `computePattern` is `>`, not `>=`: a ratio landing exactly
+ * on the ceiling is inside the domain. Past it `computePattern` **throws**.
+ * Clamping here would silently drop reflections and return a
+ * plausible-looking short pattern, which is the exact defect this whole change
+ * removed; a fixed cap is not an acceptable fallback for a fixed cap.
  */
-const INDEX_CEILING = 64;
+export const INDEX_CEILING = 64;
 
 /**
  * Largest reflection index that can satisfy Bragg's law.
@@ -259,8 +265,8 @@ export function computePattern(
  *
  * Bare juxtaposition — "311" — is the crystallographic convention and it
  * works only while every index is a single digit. Once the Bragg bound lets
- * the sweep past 9 (silicon under Mo Kα reaches 15) it stops identifying the
- * family: (11,1,1) and (1,1,1) both render "1111"/"111" in a way that reads
+ * the sweep past 9 (silicon under Mo Kα reaches 14, the largest index any
+ * shipped combination returns) it stops identifying the family: (11,1,1) and (1,1,1) both render "1111"/"111" in a way that reads
  * as the low-index reflection, and (10,0,0) renders "1000", which reads as
  * (100). Commas are the standard separator for exactly this case.
  *
@@ -275,8 +281,9 @@ export function familyLabel(h: number, k: number, l: number): string {
  * Relative intensity as the table shows it.
  *
  * The pattern is normalised so the strongest line is 100, and the angular
- * damping term falls by orders of magnitude across a wide pattern — silicon
- * under Mo Kα has 50 reflections whose normalised intensity rounds to zero.
+ * damping term falls by orders of magnitude across a wide pattern — 62 of
+ * silicon's 79 lines under Mo Kα have a normalised intensity that rounds to
+ * zero.
  * They are real: `isAllowed` passed them and Bragg reaches them. Printing "0"
  * would file them alongside the systematic absences this module explains at
  * length, when the whole point is that an absence and an unmeasurably weak

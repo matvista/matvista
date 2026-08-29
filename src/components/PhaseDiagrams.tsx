@@ -299,27 +299,39 @@ export function PhaseDiagrams() {
         </p>
       </section>
 
-      <aside className="detail" aria-live="polite">
-        <h2 className="crystal-title">{result.region}</h2>
-        <p className="detail-meta">
-          {clamped.x.toFixed(2)} {system.xLabel} · {clamped.T.toFixed(0)} °C
-        </p>
+      <aside className="detail">
+        {/* The live region is the *answer*, not the whole aside.
+            `aria-live` used to sit on the aside, which was fine when it held a
+            heading, a composition and a two-row table. M7 and M8 then added the
+            Gibbs phase rule, the invariant list and the microconstituent panel
+            inside it, and the announced text went from 436 to 1688 characters —
+            all of which differs between x = 40 and x = 42, so every step of the
+            temperature spin box read the whole Gibbs table and microconstituent
+            split aloud again. Scoped here it announces the field, the point and
+            the phase fractions: what changed, and what the reader asked for. The
+            rest is still reachable in reading order, it is simply not shouted. */}
+        <div aria-live="polite" aria-atomic="true">
+          <h2 className="crystal-title">{result.region}</h2>
+          <p className="detail-meta">
+            {clamped.x.toFixed(2)} {system.xLabel} · {clamped.T.toFixed(0)} °C
+          </p>
 
-        <table className="detail-props">
-          <tbody>
-            {result.phases.map((p) => (
-              <tr key={p.name}>
-                <th scope="row">
-                  <span className="pd-swatch" style={{ background: PHASE_COLOR[p.name] ?? '#898781' }} />
-                  {p.name}
-                </th>
-                <td>
-                  {(p.fraction * 100).toFixed(1)}% · C = {p.composition.toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <table className="detail-props">
+            <tbody>
+              {result.phases.map((p) => (
+                <tr key={p.name}>
+                  <th scope="row">
+                    <span className="pd-swatch" style={{ background: PHASE_COLOR[p.name] ?? '#898781' }} />
+                    {p.name}
+                  </th>
+                  <td>
+                    {(p.fraction * 100).toFixed(1)}% · C = {p.composition.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {result.phases.length > 1 && (
           <>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { STRUCTURES, getStructure } from './structures';
+import { STRUCTURES, getStructure, packingFactor } from './structures';
 import { buildAtoms, buildBonds, coordinationShell, distance } from './geometry';
+import { METALS } from './metals';
 
 /** Structures built from a single species of touching hard sphere. */
 const ELEMENTAL = STRUCTURES.filter((s) => s.aOverR != null);
@@ -13,11 +14,7 @@ describe('structure data is self-consistent', () => {
    */
   it.each(ELEMENTAL.map((s) => s.id))('%s: stated APF matches the geometry', (id) => {
     const s = getStructure(id);
-    const R = 1;
-    const a = s.aOverR! * R;
-    const cellVolume = s.volumeOverA3 * a ** 3;
-    const sphereVolume = s.N * (4 / 3) * Math.PI * R ** 3;
-    expect(sphereVolume / cellVolume).toBeCloseTo(s.APF, 2);
+    expect(packingFactor(s)!.apf).toBeCloseTo(s.APF, 2);
   });
 
   it('gives FCC and HCP the same APF — they differ only in stacking', () => {
@@ -154,4 +151,90 @@ describe('HCP is built as the conventional hexagonal prism', () => {
       expect(Math.hypot(m.pos[0], m.pos[2])).toBeCloseTo(1 / Math.sqrt(3), 9);
     }
   });
+});
+
+/**
+ * S7 — APF is derived on screen rather than tabulated, so the derivation has
+ * to hold to more places than the two decimals `STRUCTURES` stores.
+ * Reference values: Callister & Rethwisch ch. 3 — FCC and HCP 0.74, BCC 0.68,
+ * simple cubic 0.52, diamond cubic 0.34.
+ */
+describe('packingFactor derives APF from the geometry', () => {
+  const EXPECTED: Record<string, number> = {
+    sc: 0.5236,
+    fcc: 0.7405,
+    bcc: 0.6802,
+    hcp: 0.7405,
+    diamond: 0.3401,
+  };
+
+  it.each(Object.keys(EXPECTED))('%s lands on the published value', (id) => {
+    expect(packingFactor(getStructure(id))!.apf).toBeCloseTo(EXPECTED[id], 4);
+  });
+
+  it('reports the two volumes the quotient is taken over, in units of R³', () => {
+    const fcc = packingFactor(getStructure('fcc'))!;
+    expect(fcc.N).toBe(4);
+    expect(fcc.sphereVolume).toBeCloseTo(4 * (4 / 3) * Math.PI, 12);
+    expect(fcc.cellVolume).toBeCloseTo((2 * Math.SQRT2) ** 3, 12);
+    expect(fcc.sphereVolume / fcc.cellVolume).toBe(fcc.apf);
+  });
+
+  it('uses the hexagonal prism volume for HCP, not a³', () => {
+    const hcp = packingFactor(getStructure('hcp'))!;
+    expect(hcp.cellVolume).toBeCloseTo(((3 * Math.sqrt(3)) / 2) * 1.633 * 2 ** 3, 12);
+  });
+
+  /**
+   * The whole point of the derivation: R cancels. Copper and lead are both
+   * FCC with radii 37% apart and must give the identical number.
+   */
+  it('is independent of R — copper and lead agree exactly', () => {
+    const fcc = getStructure('fcc');
+    const apfAt = (R: number) => {
+      const a = fcc.aOverR! * R;
+      return (fcc.N * (4 / 3) * Math.PI * R ** 3) / (fcc.volumeOverA3 * a ** 3);
+    };
+    const cu = METALS.find((m) => m.symbol === 'Cu')!;
+    const pb = METALS.find((m) => m.symbol === 'Pb')!;
+    expect(cu.R).toBe(0.1278);
+    expect(pb.R).toBe(0.175);
+    expect(apfAt(cu.R)).toBeCloseTo(apfAt(pb.R), 15);
+    expect(apfAt(cu.R)).toBeCloseTo(packingFactor(fcc)!.apf, 15);
+  });
+
+  /**
+   * The substitution the panel prints for copper:
+   * 4 × (4/3)π(0.1278 nm)³ ÷ (0.3615 nm)³ = 0.740.
+   */
+  it('reproduces the copper substitution the panel shows', () => {
+    const fcc = getStructure('fcc');
+    const R = METALS.find((m) => m.symbol === 'Cu')!.R;
+    const a = fcc.aOverR! * R;
+    expect(a).toBeCloseTo(0.3615, 4);
+    const spheres = fcc.N * (4 / 3) * Math.PI * R ** 3;
+    const cell = a ** 3;
+    expect(spheres).toBeCloseTo(0.03497, 5);
+    expect(cell).toBeCloseTo(0.04723, 5);
+    expect(spheres / cell).toBeCloseTo(0.740, 3);
+  });
+
+  it('ranks the four cubic structures the way the packing does', () => {
+    const apf = (id: string) => packingFactor(getStructure(id))!.apf;
+    expect(apf('fcc')).toBeGreaterThan(apf('bcc'));
+    expect(apf('bcc')).toBeGreaterThan(apf('sc'));
+    expect(apf('sc')).toBeGreaterThan(apf('diamond'));
+  });
+
+  /**
+   * Rock salt, CsCl and perovskite have no single R, so there is no hard-sphere
+   * derivation to show. They must return null, not a plausible-looking number
+   * built from a radius that does not exist.
+   */
+  it.each(STRUCTURES.filter((s) => s.aOverR == null).map((s) => s.id))(
+    '%s (compound): refuses to derive an APF',
+    (id) => {
+      expect(packingFactor(getStructure(id))).toBeNull();
+    },
+  );
 });

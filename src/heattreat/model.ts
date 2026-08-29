@@ -291,17 +291,30 @@ export function productCarbon(product: Product, bulkC: number): number {
  *  1. **No ferrite.** Without proeutectoid ferrite there is no enrichment
  *     mechanism and the balance does not close: 1080 is hyper-eutectoid, its
  *     pearlite carries 0.76 wt% against a 0.79 bulk, and the surplus belongs
- *     to cementite this model does not track. Measured with the guard removed,
- *     the quotient reaches **146.85 wt% C** on a 0.0002-decade sweep and runs
- *     higher on a finer one. (b0b4181 quoted 6.97 wt% for this, which was an
- *     understatement, not the overstatement it read as.)
+ *     to cementite this model does not track.
+ *
+ *     The quotient there is **unbounded above**, and that is a proof, not a
+ *     measurement: it is (0.79 − 0.76·solid)/(1 − solid), whose numerator
+ *     tends to 0.03 while its denominator tends to zero as the transformation
+ *     completes. At the first representable rate past 1080's completion edge —
+ *     23.341044666842329 °C/s, immediately beside the 23.44 detent this series
+ *     has browser-verified — it evaluates to 6.76 × 10¹³ wt% C.
+ *
+ *     Three rounds of this series quoted 6.97, then 1199.87, then 146.85 as
+ *     "the" maximum. All three were artefacts of how finely the rate was
+ *     sampled, and a finer grid would have beaten any of them. A divergent
+ *     limit does not have a maximum to quote.
  *  2. **Nothing untransformed.** A completed transformation leaves no
  *     austenite to have a composition.
  *  3. **Cancellation.** Just above the completion boundary both
  *     `bulkC − carbon` and `1 − solid` are differences of nearly equal
  *     doubles, so the quotient is noise: 4340 at 0.14224645321580959 returned
- *     1.0000 wt% C, and 64 of the 4000 consecutive representable rates above
- *     that edge exceeded 0.7605. Reachable from the URL, since
+ *     1.0000 wt% C, and dozens of the first few thousand representable rates
+ *     above each completion edge exceed the 0.7605 ceiling. No count is
+ *     quoted, because it depends on which double the walk starts from — two
+ *     independent measurements of the 5140 figure disagreed for exactly that
+ *     reason. What is asserted is the property, which does not: no value above
+ *     the eutectoid is ever returned. Reachable from the URL, since
  *     `useRouteNumber` parses with a bare `Number()`.
  *
  * Case 3 is caught by checking the *result* against the range ferrite-leads

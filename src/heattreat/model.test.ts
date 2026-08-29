@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STEELS, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
-  tangentCoolingRate, untransformedAusteniteCarbon,
+  productCarbon, tangentCoolingRate, untransformedAusteniteCarbon,
 } from './model';
 import { EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 
@@ -1219,5 +1219,59 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
       '4340': 2.133696798237151,
     };
     expect(criticalCoolingRate(getSteel(id), buildTtt(getSteel(id)), AUST)).toBe(expected[id]);
+  });
+});
+
+/**
+ * The quotient `untransformedAusteniteCarbon` guards is unbounded above, not
+ * merely large. Three rounds of this series quoted 6.97, 1199.87 and 146.85
+ * as its maximum; all three were sampling artefacts of a divergent limit.
+ */
+describe('the unguarded carbon quotient diverges', () => {
+  /** The same arithmetic the function does, with the domain guard removed. */
+  const unguarded = (o: ReturnType<typeof predict>, bulkC: number) => {
+    let solid = 0;
+    let carbon = 0;
+    for (const f of o.fractions) {
+      if (f.product === 'martensite') continue;
+      solid += f.fraction;
+      carbon += f.fraction * productCarbon(f.product, bulkC);
+    }
+    return (bulkC - carbon) / (1 - solid);
+  };
+
+  it('exceeds 10¹³ wt% C one representable rate past 1080’s completion edge', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    let lo = 0.001;
+    let hi = 400;
+    for (let i = 0; i < 300; i++) {
+      const mid = Math.sqrt(lo * hi);
+      const o = predict(s, ttt, AUST, mid);
+      if (o.complete && o.startTemp !== null) lo = mid;
+      else hi = mid;
+    }
+    expect(hi).toBeCloseTo(23.341044666842329, 9);
+    const raw = unguarded(predict(s, ttt, AUST, hi), s.composition.C);
+    expect(raw).toBeGreaterThan(1e13);
+    // and the guarded function refuses it rather than printing it
+    expect(untransformedAusteniteCarbon(predict(s, ttt, AUST, hi), s.composition.C)).toBeNull();
+  });
+
+  it('is a divergent limit — finer sampling gives a larger figure, without end', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    let coarse = 0;
+    for (let lg = -2; lg <= 4; lg += 0.0002) {
+      const v = unguarded(predict(s, ttt, AUST, 10 ** lg), s.composition.C);
+      if (Number.isFinite(v) && v > coarse) coarse = v;
+    }
+    let fine = 0;
+    for (let lg = -2; lg <= 4; lg += 0.00002) {
+      const v = unguarded(predict(s, ttt, AUST, 10 ** lg), s.composition.C);
+      if (Number.isFinite(v) && v > fine) fine = v;
+    }
+    // Ten times the sampling density, a strictly larger "maximum".
+    expect(fine).toBeGreaterThan(coarse);
   });
 });

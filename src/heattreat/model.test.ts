@@ -1069,10 +1069,29 @@ describe('untransformed austenite carbon refuses outside its domain', () => {
  * lesson, applied to my own prose for the second time this series.
  */
 describe('the near-complete branch is as rare as the comment says', () => {
-  /** The slider steps 0.01 decades from 0.01 to 5000 °C/s: 571 detents. */
-  const DETENTS = Array.from({ length: 571 }, (_, i) => 10 ** (-2 + i * 0.01));
+  /**
+   * The slider's own detents, derived from its bounds rather than counted by
+   * hand. `min={log10(0.01)}`, `max={log10(5000)}`, `step={0.01}`, so the
+   * reachable positions are i = 0 … floor((3.69897 − (−2)) / 0.01) = 569, and
+   * there are **570**. An earlier version hardcoded 571 and generated a 571st
+   * at 10^3.70 = 5011.87 °C/s, above the slider maximum — and asserted the
+   * count against its own construction, so nothing could have caught it.
+   */
+  const SLIDER = { min: Math.log10(0.01), max: Math.log10(5000), step: 0.01 };
+  const DETENTS = Array.from(
+    { length: Math.floor((SLIDER.max - SLIDER.min) / SLIDER.step) + 1 },
+    (_, i) => 10 ** (SLIDER.min + i * SLIDER.step),
+  );
 
-  it('is reachable at exactly one detent, on 1080 alone', () => {
+  it('covers the slider and stops at its maximum', () => {
+    expect(DETENTS).toHaveLength(570);
+    expect(DETENTS[0]).toBeCloseTo(0.01, 12);
+    expect(DETENTS[DETENTS.length - 1]).toBeLessThanOrEqual(5000);
+    // The next step would overshoot, which is what makes 570 the count.
+    expect(10 ** (SLIDER.min + DETENTS.length * SLIDER.step)).toBeGreaterThan(5000);
+  });
+
+  it('is reachable at exactly one detent, and only on 1080', () => {
     const counts = STEELS.map((s) => {
       const ttt = buildTtt(s);
       return DETENTS.filter((r) => /very nearly completes/.test(predict(s, ttt, AUST, r).summary))

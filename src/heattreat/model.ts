@@ -617,9 +617,9 @@ function predictWithMs(
   // draw the martensite, the prose must not say the structure is embedded in
   // it. Just below full transformation that fraction goes under the display
   // floor — 1080 at 23.44 °C/s leaves 0.4722%, against a 0.5% floor — and the
-  // sentence named a phase
-  // that was not on screen. Exactly one slider detent per steel reaches this
-  // branch, and only for 1080; the figure is asserted so it cannot drift.
+  // sentence named a phase that was not on screen. Exactly one of the
+  // slider's 570 detents reaches this branch, on 1080 and on neither alloy
+  // grade; both figures are asserted so they cannot drift.
   const matrixDrawn = 1 - fraction >= TRACE_FRACTION;
   // Name the floor the integration actually stopped at. Where ferrite has
   // enriched the austenite, the Mˢ on the panel is 152 °C away from it, and

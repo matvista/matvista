@@ -149,13 +149,12 @@ describe('corrosion penetration rate (Callister eq. 17.23)', () => {
   });
 
   /**
-   * The two constants are **not** related by 1 mm = 39.37 mils alone, and an
-   * earlier comment here said they were. Callister's K = 534 wants the area in
-   * square inches; K = 87.6 wants it in square centimetres. Feed both the same
-   * cm² figure — which is all this function's signature allows — and the mils
-   * answer comes out 6.4516× short. The full conversion is
-   * (534/87.6) × 6.4516 = 39.33, against 39.3701 exactly, the residue being the
-   * rounding in the published constants.
+   * The two constants are **not** related by 1 mm = 39.37 mils alone, and both
+   * an earlier version of this comment and the docstring on the constants said
+   * they were. Callister's K = 534 wants the area in square inches; K = 87.6
+   * wants it in square centimetres. Feed both the same cm² figure — which is
+   * all this function's signature allows — and the mils answer comes out
+   * 6.4516× short.
    */
   it('needs an area in square inches before K = 534 means mils per year', () => {
     const mm = penetrationRate(1000, 7.87, 100, 1000, CPR_K_MM_PER_YEAR);
@@ -165,6 +164,27 @@ describe('corrosion penetration rate (Callister eq. 17.23)', () => {
     // The same specimen measured in in² — 100 cm² is 15.500 in².
     const mils = penetrationRate(1000, 7.87, 100 / 6.4516, 1000, CPR_K_MILS_PER_YEAR);
     expect(mils / mm).toBeCloseTo(39.37, 1);
+  });
+
+  /**
+   * The arithmetic the corrected docstring on the constants now states, so the
+   * comment cannot drift away from the code again. Both constants are an
+   * 8766-hour year (365.25 days) carrying mg/(g·cm³·area) into a depth; the
+   * mils one divides by 6.4516 cm²/in² and multiplies by 393.7008 mils/cm.
+   */
+  it('reproduces both published constants from the year and the units', () => {
+    const hoursPerYear = 365.25 * 24;
+    expect(hoursPerYear).toBe(8766);
+    const milsPerCm = 1 / 2.54e-3;
+    expect(milsPerCm).toBeCloseTo(393.7008, 4);
+    const exactMm = 10 * hoursPerYear * 1e-3;
+    const exactMils = (milsPerCm * hoursPerYear * 1e-3) / 6.4516;
+    expect(exactMm).toBeCloseTo(87.66, 6);
+    expect(exactMils).toBeCloseTo(534.934, 3);
+    // Exact, the pair is 1 mm in mils. Published and rounded, it is not.
+    expect((exactMils / exactMm) * 6.4516).toBeCloseTo(1 / 0.0254, 3);
+    expect((CPR_K_MILS_PER_YEAR / CPR_K_MM_PER_YEAR) * 6.4516).toBeCloseTo(39.328, 3);
+    expect(1 / 0.0254).toBeCloseTo(39.3701, 4);
   });
 
   it('returns zero rather than infinity for degenerate inputs', () => {

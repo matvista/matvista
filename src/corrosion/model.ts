@@ -97,8 +97,24 @@ export function areaRatioFactor(cathodeArea: number, anodeArea: number): number 
  *
  *   CPR = K·W / (ρ·A·t)
  *
- * with K = 87.6 giving mm/yr for W in mg, ρ in g/cm³, A in cm², t in hours.
- * (K = 534 gives mils per year, the unit most US corrosion data is quoted in.)
+ * with K = 87.6 giving mm/yr for W in mg, ρ in g/cm³, **A in cm²** and t in
+ * hours.
+ *
+ * **K = 534 is not the same equation with a different constant.** It gives
+ * mils per year — the unit most US corrosion data is quoted in — but it wants
+ * **A in square inches**. This comment used to say only "K = 534 gives mils
+ * per year", which reads as "same units, swap K", and that is the trap: feed
+ * K = 534 an area in cm², which is all this signature offers, and the answer
+ * is 6.4516× short.
+ *
+ * Both constants are an 8766-hour year carrying mg/(g·cm³·cm²) into a depth:
+ * 10 × 8766 × 10⁻³ = 87.66 mm/yr, and 393.7008 × 8766 × 10⁻³ / 6.4516 =
+ * 534.934 mils/yr. Their exact ratio times 6.4516 is 39.370, which is
+ * 1 mm in mils; the published pair rounds to 87.6 and 534 and leaves 39.328,
+ * so the shortfall a reader would see is the unit error, not the rounding.
+ *
+ * Nothing in the app passes K = 534. The constant is exported so the
+ * assertion that documents the trap can name it.
  */
 export const CPR_K_MM_PER_YEAR = 87.6;
 export const CPR_K_MILS_PER_YEAR = 534;

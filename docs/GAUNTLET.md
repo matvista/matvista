@@ -708,3 +708,22 @@ in place:
 - `crystal/metals.ts` carries measured `coa` per HCP metal while `crystal/structures.ts`
   hardcodes the ideal 1.633 in `volumeOverA3`. Confirm which one the density readout uses
   before trusting HCP densities (Zn and Cd deviate ~15%).
+- **`useRoute`'s debounced write depends on nothing else touching `history`.** The guard
+  added in `4c65d70` drops a queued write whenever `location.hash` differs from the last
+  hash the store wrote, on the assumption that the difference will be explained by a
+  `hashchange` or `popstate` that `adopt` is about to receive. That holds today —
+  `useRoute.ts` is the only writer in the app, and every external hash move fires one of
+  those events — but it is load-bearing and nothing asserts it. If a second writer is ever
+  added, or a hash moves without an event, the guard drops that write and every later
+  debounced write with it, until some event arrives to resynchronise `urlHash`. Assert the
+  single-writer property before adding a second one.
+- **`f4c529d`'s region-name oracle is vacuous for single-phase points.** `singlePhase()`
+  sets the region and the phase name from the same identifier, so those rows compare a
+  value against itself and would survive any mutation of it. The two-phase half is
+  genuinely independent — mutating `twoPhase` gives 16 failures — so the sweep is not
+  worthless, but its single-phase rows prove nothing and should not be counted as coverage.
+- **The Gibbs readout flags F = 0 at the endpoints of an invariant isotherm**, where no
+  reaction occurs: Fe–Fe₃C at x = 6.70 for both 727 and 1147 °C, and Pb–Sn at 18.3 and
+  97.8 for 183 °C. The set is measure-zero and the endpoint is the terminus of the
+  reaction line, so it is defensible rather than wrong — but it is a deliberate reading,
+  not an accident, and anyone tightening the invariant test should know it is there.

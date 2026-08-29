@@ -2597,3 +2597,11 @@ input[type='range'] {
 .ab-deriv .mi-deriv-table td {
   padding-right: 0;
 }
+
+/* M12 — the Fe–Fe₃C strip beside the TTT chart. */
+.ht-strip {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 0.3rem 0 0.5rem;
+}

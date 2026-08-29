@@ -446,6 +446,35 @@ export const FE_C: PhaseSystem = {
 
 export const PHASE_SYSTEMS: PhaseSystem[] = [CU_NI, PB_SN, FE_C];
 
+/**
+ * Temperature of a named boundary at a composition, °C — read off the polyline
+ * the diagram actually draws, by linear interpolation between its points.
+ *
+ * M12 needs A₁, A₃ and A_cm in the heat-treatment module, and reading them
+ * from `boundaries` rather than re-deriving them is what stops the two modules
+ * describing different steels. Null when the composition is off the end of the
+ * boundary, or when no boundary carries that label — an alloy past 0.76 wt% C
+ * has no A₃, and saying so is the point.
+ */
+export function boundaryTemperature(
+  system: PhaseSystem,
+  label: string,
+  x: number,
+): number | null {
+  const pts = system.boundaries.find((b) => b.label === label)?.points;
+  if (!pts || pts.length < 2) return null;
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, t1] = pts[i - 1];
+    const [x2, t2] = pts[i];
+    const lo = Math.min(x1, x2);
+    const hi = Math.max(x1, x2);
+    if (x < lo || x > hi) continue;
+    if (x1 === x2) return t1;
+    return t1 + ((t2 - t1) * (x - x1)) / (x2 - x1);
+  }
+  return null;
+}
+
 // ===================== the Gibbs phase rule =====================
 
 export interface PhaseRuleResult {

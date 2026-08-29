@@ -1570,3 +1570,100 @@ describe('the Mˢ understatement below the ferrite floor', () => {
     expect(worst).toBeLessThan(25);
   });
 });
+
+/**
+ * M12 — the austenitising temperature becomes a control, so what it does and
+ * what it does **not** do both have to be pinned.
+ *
+ * `predict`, `criticalCoolingRate`, `tangentCoolingRate` and `coolingPath`
+ * already took `startTemp`; no model code changed for this item. What the
+ * tests below establish is the surprise that fell out of exercising the new
+ * range: the Scheil answer is *exactly* independent of where the cool started,
+ * and the tangent construction is not. That is a property of the model, and
+ * the panel says so on screen rather than letting a reader infer that the nose
+ * responds to the austenitising temperature.
+ */
+describe('the austenitising temperature across the range the slider offers', () => {
+  const RANGE = [730, 780, 850, 950, 1050];
+
+  it.each(STEELS.map((s) => s.id))('%s: fractions stay a partition at every start', (id) => {
+    const steel = getSteel(id);
+    const ttt = buildTtt(steel);
+    for (const start of RANGE) {
+      for (const rate of [0.1, 1, 10, 100, 1000]) {
+        const out = predict(steel, ttt, start, rate);
+        const total = out.fractions.reduce((a, f) => a + f.fraction, 0);
+        expect(total).toBeCloseTo(1, 6);
+        for (const f of out.fractions) {
+          expect(f.fraction).toBeGreaterThanOrEqual(-1e-9);
+          expect(f.fraction).toBeLessThanOrEqual(1 + 1e-9);
+        }
+        expect(out.hardness).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  /**
+   * **The Scheil prediction does not move.** Every C-curve in this model is
+   * anchored at A₁ = 727 °C and nothing above it transforms, so a path that
+   * starts at 1050 spends exactly the same residence time ΔT/rate in every
+   * temperature interval below A₁ as one that starts at 730. The additivity
+   * sum is therefore identical, and so are the products, the hardness, the
+   * critical rate and the ferrite band.
+   *
+   * Asserted rather than assumed: without it, a reader dragging the new slider
+   * and seeing no change would reasonably conclude the control is broken.
+   */
+  it.each(STEELS.map((s) => s.id))('%s: the Scheil answer is independent of it', (id) => {
+    const steel = getSteel(id);
+    const ttt = buildTtt(steel);
+    const base = predict(steel, ttt, 850, 1);
+    for (const start of RANGE) {
+      const out = predict(steel, ttt, start, 1);
+      expect(out.fractions.map((f) => f.product)).toEqual(base.fractions.map((f) => f.product));
+      out.fractions.forEach((f, i) => {
+        expect(f.fraction).toBeCloseTo(base.fractions[i].fraction, 12);
+      });
+      expect(out.hardness).toBeCloseTo(base.hardness, 12);
+      expect(criticalCoolingRate(steel, ttt, start)!).toBeCloseTo(
+        criticalCoolingRate(steel, ttt, 850)!,
+        12,
+      );
+      expect(ferriteBand(steel, ttt, start)).toEqual(ferriteBand(steel, ttt, 850));
+    }
+  });
+
+  /**
+   * **The tangent construction does move**, because it is pure geometry: a
+   * straight line from the start down to the nose, (T_start − T_nose)/t_nose.
+   * So the gap between the two constructions widens as the austenitising
+   * temperature rises, which is the one thing this control genuinely changes
+   * in the numbers.
+   */
+  it.each(STEELS.map((s) => s.id))('%s: the tangent rate is the nose geometry', (id) => {
+    const steel = getSteel(id);
+    for (const start of RANGE) {
+      const t = tangentCoolingRate(steel, start);
+      expect(t).toBeCloseTo((start - steel.nose.temp) / steel.nose.time, 9);
+      expect(t).toBeGreaterThan(0);
+    }
+    for (let i = 1; i < RANGE.length; i++) {
+      expect(tangentCoolingRate(steel, RANGE[i])).toBeGreaterThan(
+        tangentCoolingRate(steel, RANGE[i - 1]),
+      );
+    }
+  });
+
+  it.each(STEELS.map((s) => s.id))('%s: the two constructions diverge as it rises', (id) => {
+    const steel = getSteel(id);
+    const ttt = buildTtt(steel);
+    const gap = (start: number) =>
+      tangentCoolingRate(steel, start) / criticalCoolingRate(steel, ttt, start)!;
+    expect(gap(1050)).toBeGreaterThan(gap(730));
+    // 1080: 190/233.4 = 0.81 at 730 against 510/233.4 = 2.19 at 1050.
+    expect(gap(1050) / gap(730)).toBeCloseTo(
+      (1050 - steel.nose.temp) / (730 - steel.nose.temp),
+      9,
+    );
+  });
+});

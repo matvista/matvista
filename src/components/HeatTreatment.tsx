@@ -21,6 +21,7 @@ import {
   type CurvePoint,
   type Product,
 } from '../heattreat/model';
+import { EUTECTOID_T, FE_C, boundaryTemperature } from '../phase/systems';
 
 const W = 720;
 const H = 470;
@@ -102,20 +103,30 @@ function eutectoidShifters(steel: Steel): string {
     : `${strong.slice(0, -1).join(', ')} and ${strong[strong.length - 1]}`;
 }
 
-const AUSTENITISE = 850;
+/**
+ * The austenitising range the slider offers, °C.
+ *
+ * The floor is just above A₁ (727 °C) — below the eutectoid there is no
+ * austenite to form at all, so it is not an austenitising temperature. The
+ * ceiling is well past any practical hardening treatment.
+ */
+const AUST_MIN = 730;
+const AUST_MAX = 1050;
+const AUST_DEFAULT = 850;
 
 export function HeatTreatment() {
   // The steel and the cooling rate are the scenario; the Jominy panel is just
   // whether a section is expanded, so it stays out of the URL.
   const [steelId, setSteelId] = useRouteString('steel', '1080');
   const [rate, setRate] = useRouteNumber('rate', 50, RATE_RANGE.min, RATE_RANGE.max);
+  const [austT, setAustT] = useRouteNumber('austT', AUST_DEFAULT, AUST_MIN, AUST_MAX);
   const [showJominy, setShowJominy] = useState(true);
 
   const steel = getSteel(steelId);
   const ttt = useMemo(() => buildTtt(steel), [steel]);
   const outcome = useMemo(
-    () => predict(steel, ttt, AUSTENITISE, rate),
-    [steel, ttt, rate],
+    () => predict(steel, ttt, austT, rate),
+    [steel, ttt, austT, rate],
   );
   // Ferrite actually reported for this path, used to gate the two disclosures
   // below — the enrichment caveat only means anything once ferrite has formed.
@@ -152,17 +163,34 @@ export function HeatTreatment() {
     return null;
   };
 
-  const band = useMemo(() => ferriteBand(steel, ttt, AUSTENITISE), [steel, ttt]);
+  const band = useMemo(() => ferriteBand(steel, ttt, austT), [steel, ttt, austT]);
 
   const critical = useMemo(
-    () => criticalCoolingRate(steel, ttt, AUSTENITISE),
-    [steel, ttt],
+    () => criticalCoolingRate(steel, ttt, austT),
+    [steel, ttt, austT],
   );
-  const tangent = tangentCoolingRate(steel, AUSTENITISE);
+  const tangent = tangentCoolingRate(steel, austT);
   const path = useMemo(
-    () => coolingPath(AUSTENITISE, rate, T_MIN, T_MAX),
-    [rate],
+    () => coolingPath(austT, rate, T_MIN, T_MAX),
+    [austT, rate],
   );
+
+  /**
+   * M12 — where this austenitising temperature sits on Fe–Fe₃C, read from the
+   * phase module's own diagram rather than from a second copy of the numbers.
+   * A hypoeutectoid steel has an A₃; a hypereutectoid one has an A_cm instead,
+   * and `boundaryTemperature` returns null for the boundary that does not
+   * reach it, which is the distinction rather than an error.
+   */
+  const carbon = steel.composition.C;
+  const a1 = boundaryTemperature(FE_C, 'Eutectoid isotherm', carbon) ?? EUTECTOID_T;
+  const a3 = boundaryTemperature(FE_C, 'A₃', carbon);
+  const acm = boundaryTemperature(FE_C, 'A_cm', carbon);
+  const equilibrium = FE_C.evaluate(carbon, austT);
+  const undissolvedFerrite =
+    equilibrium.phases.find((p) => p.name === 'α')?.fraction ?? 0;
+  const undissolvedCementite =
+    equilibrium.phases.find((p) => p.name === 'Fe₃C')?.fraction ?? 0;
 
   const sx = (t: number) =>
     PAD.l + (Math.log10(t / T_MIN) / Math.log10(T_MAX / T_MIN)) * plotW;
@@ -171,7 +199,9 @@ export function HeatTreatment() {
 
   const line = (pts: CurvePoint[]) =>
     pts
-      .filter((p) => p.t >= T_MIN && p.t <= T_MAX && p.T >= TEMP_MIN)
+      // The upper clip is what lets the austenitising temperature run past the
+      // chart's 800 °C ceiling without the path drawing off the top of it.
+      .filter((p) => p.t >= T_MIN && p.t <= T_MAX && p.T >= TEMP_MIN && p.T <= TEMP_MAX)
       .map((p) => `${sx(p.t)},${sy(p.T)}`)
       .join(' ');
 
@@ -200,6 +230,20 @@ export function HeatTreatment() {
               value={Math.log10(rate)}
               onChange={(e) => setRate(10 ** Number(e.target.value))}
               aria-label="Cooling rate, °C per second"
+            />
+          </label>
+          <label className="ht-rate">
+            <span>
+              Austenitised at <strong>{austT}</strong> °C
+            </span>
+            <input
+              type="range"
+              min={AUST_MIN}
+              max={AUST_MAX}
+              step={5}
+              value={austT}
+              onChange={(e) => setAustT(Number(e.target.value))}
+              aria-label="Austenitising temperature, °C"
             />
           </label>
         </div>
@@ -269,7 +313,7 @@ export function HeatTreatment() {
           {/* Where transformation begins, if it does. */}
           {outcome.startTemp != null && (
             <circle
-              cx={sx((AUSTENITISE - outcome.startTemp) / rate)}
+              cx={sx((austT - outcome.startTemp) / rate)}
               cy={sy(outcome.startTemp)}
               r={5}
               className="ht-hit"
@@ -392,7 +436,11 @@ export function HeatTreatment() {
           <tbody>
             <tr>
               <th scope="row">Austenitised at</th>
-              <td>{AUSTENITISE} °C</td>
+              <td>
+                {austT} °C
+                {a3 != null && ` · A₃ ${Math.round(a3)}`}
+                {acm != null && ` · A_cm ${Math.round(acm)}`}
+              </td>
             </tr>
             <tr>
               <th scope="row">Nose</th>
@@ -419,6 +467,17 @@ export function HeatTreatment() {
             </tr>
           </tbody>
         </table>
+
+        <AustenitisingPanel
+          carbon={carbon}
+          austT={austT}
+          a1={a1}
+          a3={a3}
+          acm={acm}
+          undissolvedFerrite={undissolvedFerrite}
+          undissolvedCementite={undissolvedCementite}
+          region={equilibrium.region}
+        />
 
         {ferriteFraction > 0 && (
           <p className="ht-caveat">
@@ -585,6 +644,181 @@ function fmtTime(t: number): string {
   if (t >= 1000) return `10^${Math.round(Math.log10(t))}`;
   if (t >= 1) return `${t}`;
   return `${t}`;
+}
+
+/* ======================================================== austenitising == */
+
+/** The strip's window on Fe–Fe₃C: enough carbon and enough temperature to
+ *  hold A₁, A₃ and A_cm for every shipped steel. */
+const STRIP_X_MAX = 1.4;
+const STRIP_T_MIN = 690;
+// Above AUST_MAX, so the marker is on the strip at every slider setting.
+const STRIP_T_MAX = 1060;
+const SW = 300;
+const SH = 200;
+const SPAD = { l: 34, r: 10, t: 12, b: 28 };
+const spw = SW - SPAD.l - SPAD.r;
+const sph = SH - SPAD.t - SPAD.b;
+const stx = (x: number) => SPAD.l + (x / STRIP_X_MAX) * spw;
+const sty = (T: number) =>
+  SPAD.t + sph - ((T - STRIP_T_MIN) / (STRIP_T_MAX - STRIP_T_MIN)) * sph;
+
+/**
+ * M12 — the austenitising temperature read against Fe–Fe₃C.
+ *
+ * The step before the quench that teaching consistently skips, and where the
+ * equilibrium and kinetic diagrams actually meet: the austenitising
+ * temperature is *chosen* from the phase diagram, A₃ + 30–50 °C, not picked.
+ * Austenitise too low and you quench a two-phase structure, giving soft
+ * ferrite patches no faster quench can fix.
+ *
+ * The boundaries are `FE_C.boundaries` — the same polylines the phase module
+ * draws — clipped to this window, not a second copy of the numbers.
+ */
+function AustenitisingPanel({
+  carbon, austT, a1, a3, acm, undissolvedFerrite, undissolvedCementite, region,
+}: {
+  carbon: number;
+  austT: number;
+  a1: number;
+  a3: number | null;
+  acm: number | null;
+  undissolvedFerrite: number;
+  undissolvedCementite: number;
+  region: string;
+}) {
+  const target = a3 ?? a1;
+  const belowA3 = a3 != null && austT < a3;
+
+  return (
+    <div className="density-box">
+      <h3>Chosen from the phase diagram</h3>
+
+      <svg
+        className="ht-strip"
+        viewBox={`0 0 ${SW} ${SH}`}
+        role="img"
+        aria-label={`Fe–Fe₃C phase diagram near the eutectoid, with this steel at ${carbon} wt% C austenitised at ${austT} °C, in the ${region} field`}
+      >
+        <defs>
+          <clipPath id="ht-strip-clip">
+            <rect x={SPAD.l} y={SPAD.t} width={spw} height={sph} />
+          </clipPath>
+        </defs>
+
+        <g clipPath="url(#ht-strip-clip)">
+          {FE_C.boundaries.map((b) => (
+            <polyline
+              key={b.label}
+              points={b.points.map(([x, T]) => `${stx(x)},${sty(T)}`).join(' ')}
+              className={`pd-boundary pd-${b.kind}`}
+            />
+          ))}
+          {/* This steel's carbon, and where on it the furnace is set. */}
+          <line x1={stx(carbon)} x2={stx(carbon)} y1={SPAD.t} y2={SPAD.t + sph} className="pd-cross" />
+          <circle cx={stx(carbon)} cy={sty(austT)} r={5} className="pd-point" />
+        </g>
+
+        <text x={stx(0.05)} y={sty(960)} className="pd-region">γ</text>
+        <text x={stx(0.25)} y={sty(760)} className="pd-region">α + γ</text>
+        <text x={stx(1.1)} y={sty(760)} className="pd-region">γ + Fe₃C</text>
+        <text x={stx(1.1)} y={sty(706)} className="pd-region">α + Fe₃C</text>
+
+        <line x1={SPAD.l} x2={SW - SPAD.r} y1={SPAD.t + sph} y2={SPAD.t + sph} className="dd-axis" />
+        <line x1={SPAD.l} x2={SPAD.l} y1={SPAD.t} y2={SPAD.t + sph} className="dd-axis" />
+        {[0, 0.4, 0.8, 1.2].map((x) => (
+          <text key={x} x={stx(x)} y={SH - 14} className="dd-tick" textAnchor="middle">
+            {x}
+          </text>
+        ))}
+        {[700, 800, 900, 1000].map((T) => (
+          <text key={T} x={SPAD.l - 6} y={sty(T) + 4} className="dd-tick" textAnchor="end">
+            {T}
+          </text>
+        ))}
+        <text x={SPAD.l + spw / 2} y={SH - 2} className="dd-tick" textAnchor="middle">
+          wt% C
+        </text>
+      </svg>
+
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Equilibrium field</th>
+            <td>{region}</td>
+          </tr>
+          <tr>
+            <th scope="row">A₁ (eutectoid)</th>
+            <td>{Math.round(a1)} °C</td>
+          </tr>
+          {a3 != null && (
+            <tr>
+              <th scope="row">A₃</th>
+              <td>{Math.round(a3)} °C</td>
+            </tr>
+          )}
+          {acm != null && (
+            <tr>
+              <th scope="row">A_cm</th>
+              <td>{Math.round(acm)} °C</td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">Margin on {a3 != null ? 'A₃' : 'A₁'}</th>
+            <td className={austT - target >= 30 && austT - target <= 60 ? 'err-ok' : ''}>
+              {Math.abs(Math.round(austT - target))} °C {austT >= target ? 'above' : 'below'}
+            </td>
+          </tr>
+          {undissolvedFerrite > 0 && (
+            <tr>
+              <th scope="row">Undissolved ferrite</th>
+              <td className="err-off">{(undissolvedFerrite * 100).toFixed(0)}%</td>
+            </tr>
+          )}
+          {undissolvedCementite > 0 && (
+            <tr>
+              <th scope="row">Undissolved Fe₃C</th>
+              <td>{(undissolvedCementite * 100).toFixed(1)}%</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {belowA3 && (
+        <p className="ht-caveat">
+          <strong>Below A₃ — an incomplete austenitisation.</strong> At {austT} °C this steel is
+          still {region}: {(undissolvedFerrite * 100).toFixed(0)}% of it is ferrite, by the phase
+          module's own lever rule, and ferrite has almost no carbon in it to harden. Quenching from
+          here leaves soft ferrite patches in a martensitic matrix, and no faster quench fixes
+          them — the fault was made in the furnace. The usual rule is A₃ + 30–50 °C, which is{' '}
+          {Math.round(target + 30)}–{Math.round(target + 50)} °C for this grade.
+        </p>
+      )}
+
+      {a3 == null && (
+        <p className="density-note">
+          This grade is <strong>hypereutectoid</strong>, so it has no A₃ — above A₁ it enters
+          γ + Fe₃C, and only past A_cm at {acm == null ? '—' : Math.round(acm)} °C is the cementite
+          gone. Hypereutectoid steels are deliberately austenitised <em>below</em> A_cm: the
+          undissolved cementite is hard and keeps carbon out of solution, and dissolving it would
+          raise the carbon in the austenite and drop Mˢ, in the worst case below room temperature.
+        </p>
+      )}
+
+      <p className="ht-caveat">
+        <strong>This control does not move the nose, and in this model it does not move the
+        prediction either.</strong> Every C-curve here is anchored at A₁ = {Math.round(a1)} °C and
+        nothing above it transforms, so a path starting at 1050 °C spends exactly the same time in
+        each temperature interval below A₁ as one starting at 730 — the products, the hardness and
+        the critical cooling rate come out identical, to twelve decimal places. What does change is
+        the <em>tangent</em> construction, which is pure geometry from the start down to the nose,
+        so the gap between the two widens as you austenitise higher. In reality a higher
+        temperature also coarsens the austenite grain and pushes the nose right, increasing
+        hardenability; that is not modelled, and the readouts above should not be read as saying it
+        is.
+      </p>
+    </div>
+  );
 }
 
 function fmtRate(r: number): string {

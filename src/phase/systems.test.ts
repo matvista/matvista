@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CEMENTITE_X, CU_NI, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS, gibbsPhaseRule, lever,
-  microconstituents, steelMicrostructure,
+  CEMENTITE_X, CU_NI, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS,
+  boundaryTemperature, gibbsPhaseRule, lever, microconstituents, steelMicrostructure,
 } from './systems';
+import { STEELS } from '../heattreat/steels';
 
 describe('Fe–C microstructure (Callister ex. 9.4: 0.35 wt% C)', () => {
   const s = steelMicrostructure(0.35)!;
@@ -392,6 +393,111 @@ describe('steelMicrostructure still computes exactly what it did', () => {
     expect(r.pearlite).toBeCloseTo(0, 12);
     expect(r.proeutectoidFraction).toBeCloseTo(1, 12);
     expect(r.totalFerrite).toBeCloseTo(1, 12);
+  });
+});
+
+/**
+ * M12 — the austenitising temperature is *chosen from the phase diagram*,
+ * A₃ + 30–50 °C, not picked. The heat-treatment module reads these numbers off
+ * the same Fe–Fe₃C model the phase module draws, so the two cannot disagree
+ * about the steel they are both describing.
+ */
+describe('reading a boundary temperature off the diagram', () => {
+  const feC = PHASE_SYSTEMS.find((s) => s.id === 'fe-c')!;
+
+  it('puts A₃ at 912 °C for pure iron and at the eutectoid for 0.76 wt% C', () => {
+    expect(boundaryTemperature(feC, 'A₃', 0)).toBeCloseTo(912, 9);
+    expect(boundaryTemperature(feC, 'A₃', EUTECTOID_X)).toBeCloseTo(EUTECTOID_T, 9);
+  });
+
+  /** The number the austenitising panel quotes for both 0.40 wt% grades. */
+  it('puts A₃ for 0.40 wt% C at 815 °C', () => {
+    expect(boundaryTemperature(feC, 'A₃', 0.4)!).toBeCloseTo(814.6, 1);
+  });
+
+  it('puts A_cm at the eutectoid and at γ’s solubility ceiling', () => {
+    expect(boundaryTemperature(feC, 'A_cm', EUTECTOID_X)).toBeCloseTo(EUTECTOID_T, 9);
+    expect(boundaryTemperature(feC, 'A_cm', 2.14)).toBeCloseTo(1147, 9);
+    // 1080 is barely hypereutectoid, so its A_cm window is a few degrees wide.
+    expect(boundaryTemperature(feC, 'A_cm', 0.79)!).toBeCloseTo(736.1, 1);
+  });
+
+  it('returns null off the end of a boundary, and for an unknown one', () => {
+    expect(boundaryTemperature(feC, 'A₃', 1.5)).toBeNull();
+    expect(boundaryTemperature(feC, 'A_cm', 0.5)).toBeNull();
+    expect(boundaryTemperature(feC, 'not a boundary', 0.4)).toBeNull();
+  });
+
+  it('interpolates monotonically along a straight boundary', () => {
+    let prev = -Infinity;
+    for (let x = 0.76; x <= 2.14; x += 0.02) {
+      const T = boundaryTemperature(feC, 'A_cm', x)!;
+      expect(T).toBeGreaterThan(prev);
+      prev = T;
+    }
+  });
+});
+
+describe('undissolved ferrite at the austenitising temperature', () => {
+  const feC = PHASE_SYSTEMS.find((s) => s.id === 'fe-c')!;
+  const ferriteAt = (C: number, T: number) =>
+    feC.evaluate(C, T).phases.find((p) => p.name === 'α')?.fraction ?? 0;
+
+  /** Composition of a straight boundary at a temperature — the drawn line. */
+  const compositionAt = (label: string, T: number) => {
+    const pts = feC.boundaries.find((b) => b.label === label)!.points;
+    const [[x1, t1], [x2, t2]] = [pts[0], pts[pts.length - 1]];
+    return x1 + ((x2 - x1) * (T - t1)) / (t2 - t1);
+  };
+
+  it('is zero at and above A₃ for every shipped steel, and positive below', () => {
+    for (const steel of STEELS) {
+      const C = steel.composition.C;
+      const a3 = boundaryTemperature(feC, 'A₃', C);
+      if (a3 == null) continue; // hypereutectoid: A₃ does not reach it
+      expect(ferriteAt(C, a3 + 1)).toBe(0);
+      expect(ferriteAt(C, a3 - 1)).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The heat-treatment panel and the phase panel must report one number. The
+   * oracle here is the **drawn boundary polylines**, interpolated directly —
+   * `evaluate` computes its tie line from functions instead, so agreement is a
+   * real cross-check between the diagram's data and its evaluator.
+   */
+  it('matches a lever rule taken over the two drawn boundaries', () => {
+    for (const T of [740, 760, 780, 800, 810]) {
+      const alphaEnd = compositionAt('α/(α+γ)', T);
+      const gammaEnd = compositionAt('A₃', T);
+      for (const C of [0.1, 0.2, 0.3, 0.4]) {
+        if (C <= alphaEnd || C >= gammaEnd) continue;
+        expect(ferriteAt(C, T)).toBeCloseTo(lever(C, alphaEnd, gammaEnd), 9);
+      }
+    }
+  });
+
+  it('leaves the default 850 °C above A₃ for both 0.40 wt% grades', () => {
+    for (const steel of STEELS.filter((s) => s.composition.C < EUTECTOID_X)) {
+      expect(boundaryTemperature(feC, 'A₃', steel.composition.C)!).toBeLessThan(850);
+      expect(ferriteAt(steel.composition.C, 850)).toBe(0);
+    }
+  });
+
+  /**
+   * The hypereutectoid case, and why it is the other way round: 1080 at
+   * 0.79 wt% C sits in γ + Fe₃C between A₁ and A_cm, and that undissolved
+   * cementite is deliberately kept — dissolving it raises the carbon in
+   * solution and drops Mˢ.
+   */
+  it('puts 1080 in γ + Fe₃C just above A₁ and in γ at 850 °C', () => {
+    const c = STEELS.find((s) => s.id === '1080')!.composition.C;
+    expect(c).toBeGreaterThan(EUTECTOID_X);
+    expect(feC.evaluate(c, 730).region).toBe('γ + Fe₃C');
+    expect(feC.evaluate(c, 850).region).toBe('γ');
+    const acm = boundaryTemperature(feC, 'A_cm', c)!;
+    expect(acm - EUTECTOID_T).toBeLessThan(10); // a nine-degree window
+    expect(feC.evaluate(c, acm + 1).region).toBe('γ');
   });
 });
 

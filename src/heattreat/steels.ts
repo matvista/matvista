@@ -13,6 +13,12 @@
  *   diagrams (Callister & Rethwisch ch. 10–11; ASM atlas shapes) and are
  *   approximate — good to a few degrees and a factor of order 1.5 in time.
  *   They are teaching curves, not design data.
+ * - **The "1080" label is this repo's own.** Callister's eutectoid TTT figure
+ *   is captioned "eutectoid composition, 0.76 wt% C" and carries no AISI
+ *   designation; naming it 1080 and giving it 0.79 wt% C are choices made
+ *   here, and 0.79 is what makes the app's own phase module classify it as
+ *   hyper-eutectoid. The curve shape is Callister's; the grade identity is
+ *   not, and the attribution above should not be read as covering it.
  */
 
 export interface Steel {

@@ -172,6 +172,60 @@ describe('packingFactor derives APF from the geometry', () => {
     expect(packingFactor(getStructure(id))!.apf).toBeCloseTo(EXPECTED[id], 4);
   });
 
+  /**
+   * **Every term the panel prints, for every structure that has one.**
+   *
+   * `apf` was the only field with a gate on it. `aOverR` had none at all: it
+   * is `StructureDef.aOverR` copied through, and the assertions above read the
+   * source of the copy rather than the copy, so returning a constant 1 from
+   * `packingFactor` left all 882 tests green while the panel printed
+   * "a = 1.000 R" for every structure and derived its copper substitution from
+   * `packing.aOverR * metal.R` — a self-contradictory line under a clean
+   * suite. `N` was pinned for FCC alone, so `s.id === 'fcc' ? s.N : 0`
+   * survived the same way.
+   *
+   * Closed both by pinning the closed forms and by requiring the two volumes
+   * to be built from the very N and a/R the table shows above them: a
+   * derivation that disagrees with its own printed terms is the defect,
+   * whichever term was mutated.
+   */
+  const A_OVER_R: Record<string, number> = {
+    sc: 2,
+    fcc: 2 * Math.SQRT2,
+    bcc: 4 / Math.sqrt(3),
+    hcp: 2,
+    diamond: 8 / Math.sqrt(3),
+  };
+  const ATOMS_PER_CELL: Record<string, number> = { sc: 1, fcc: 4, bcc: 2, hcp: 6, diamond: 8 };
+
+  it.each(Object.keys(EXPECTED))('%s: reports every term it prints, and they agree', (id) => {
+    const s = getStructure(id);
+    const d = packingFactor(s)!;
+    expect(d.aOverR).toBeCloseTo(A_OVER_R[id], 12);
+    expect(d.N).toBe(ATOMS_PER_CELL[id]);
+    expect(d.sphereVolume).toBeCloseTo(d.N * (4 / 3) * Math.PI, 12);
+    expect(d.cellVolume).toBeCloseTo(s.volumeOverA3 * d.aOverR ** 3, 12);
+    expect(d.apf).toBeCloseTo(d.sphereVolume / d.cellVolume, 15);
+  });
+
+  /**
+   * The a = f(R) row and the lattice parameter the panel goes on to quote are
+   * the same number, checked against Callister's table 3.1 lattice parameters
+   * in nm. Three decimals, not four: his radii are themselves rounded to four
+   * figures, which moves a by up to 0.0002 nm.
+   */
+  it.each([
+    ['fcc', 'Cu', 0.3615],
+    ['fcc', 'Al', 0.4049],
+    ['fcc', 'Pb', 0.4951],
+    ['bcc', 'Fe', 0.2866],
+    ['bcc', 'W', 0.3165],
+  ])('%s + %s: a = (a/R)·R lands on the published lattice parameter', (id, symbol, a) => {
+    const d = packingFactor(getStructure(id as string))!;
+    const R = METALS.find((m) => m.symbol === symbol)!.R;
+    expect(d.aOverR * R).toBeCloseTo(a as number, 3);
+  });
+
   it('reports the two volumes the quotient is taken over, in units of R³', () => {
     const fcc = packingFactor(getStructure('fcc'))!;
     expect(fcc.N).toBe(4);

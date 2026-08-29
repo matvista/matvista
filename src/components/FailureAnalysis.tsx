@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useRoute, useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { MECH_MATERIALS } from '../mechanical/materials';
 import {
@@ -59,6 +59,9 @@ export function FailureAnalysis() {
 
 const GEOM_IDS = CRACK_GEOMETRIES.map((g) => g.id);
 
+/** The entry a pre-P8 `?Y=` link resolves to: the bare slider it used to be. */
+const LEGACY_GEOM = 'custom';
+
 /**
  * P8 — the crack geometry, shared by the fracture and crack-growth panels.
  *
@@ -71,15 +74,28 @@ const GEOM_IDS = CRACK_GEOMETRIES.map((g) => g.id);
  * already possible with the old shared `Y` key. Links written before this
  * change carry `?Y=` and no `?geom=`; those open on the `custom` entry, which
  * *is* the old slider, so nothing published stops working.
+ *
+ * **A legacy link is upgraded, not re-derived.** "No `geom`, but a `Y`" was
+ * once used as the *fallback* for `geom`, and that is unsound: `useRouteNumber`
+ * deletes a param whose value formats identically to its fallback, and `Y`'s
+ * fallback is 1. Dragging Y to exactly 1.00 on a `?Y=1.2` link therefore
+ * removed `Y` from the hash, which flipped the test false, which moved the
+ * `geom` fallback from `custom` to `centre` mid-interaction — the selector
+ * jumped, the Y slider was replaced by an a/W slider, and `a` silently stopped
+ * meaning what the sentence beside it said. The condition is a statement about
+ * the *incoming link*, so it is resolved once and written into the hash; every
+ * later read is then a plain lookup that no slider can disturb.
  */
 function useCrackGeometry() {
   const route = useRoute();
   const legacyLink = route.params.geom == null && route.params.Y != null;
-  const [geomId, setGeomId] = useRouteEnum<string>(
-    'geom',
-    legacyLink ? 'custom' : 'centre',
-    GEOM_IDS,
-  );
+  const [rawGeomId, setGeomId] = useRouteEnum<string>('geom', 'centre', GEOM_IDS);
+  // Applied to this render as well as written to the hash, so the upgrade is
+  // never visible as a frame of the wrong geometry.
+  const geomId = legacyLink ? LEGACY_GEOM : rawGeomId;
+  useEffect(() => {
+    if (legacyLink) setGeomId(LEGACY_GEOM);
+  }, [legacyLink, setGeomId]);
   // Deliberately reaches past SECANT_MAX_RATIO so the refusal is somewhere a
   // reader can actually go, rather than a branch nothing can enter.
   const [ratio, setRatio] = useRouteNumber('aw', 0.3, 0.02, 0.95);

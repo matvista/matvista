@@ -1217,11 +1217,17 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
    * The *divide* is the measured value; the highest temperature at which
    * bainite is actually reported is the largest `tttCurve` sample strictly
    * below it. The curve takes 140 samples from A₁ − 1 down to the bainite
-   * floor, so the gap is somewhere between zero and one spacing depending on
-   * where the divide falls between samples: 3.5429 °C spacing puts 4340's 478
-   * at 474.457, a near-full step, while 5140's 3.4 °C spacing puts 510 at
-   * 508.4, a sixth of one. An earlier title said this "lands on the measured
-   * 476–480", which overclaims by that quantisation.
+   * floor, so the gap is one spacing times the distance from the divide *up*
+   * to the next sample — greater than zero, and **at most** one full spacing,
+   * reached exactly when the divide lands on a sample.
+   *
+   * Both shipped steels illustrate an end of that range. 4340's 478 °C is
+   * sample 70 of 140 exactly, so its gap is a whole 3.5429 °C step, down to
+   * 474.457. 5140's 510 °C falls at sample 63.53, so its gap is 1.6 °C — 0.4706
+   * of its 3.4 °C spacing, about half a step, not the "sixth of one" an
+   * earlier version of this comment claimed. An earlier *title* said this
+   * "lands on the measured 476–480", which overclaims by the whole
+   * quantisation.
    */
   const highestSampleBelow = (id: string, divide: number) => {
     const s = getSteel(id);
@@ -1239,7 +1245,12 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
     const below = highestSampleBelow('4340', s.bainiteStart!);
     expect(r.bainiteMax).toBeCloseTo(below.temp, 2);
     expect(r.bainiteMax).toBeCloseTo(474.457, 2);
-    expect(s.bainiteStart! - r.bainiteMax).toBeLessThan(below.spacing + 1e-9);
+    // At most one spacing, not under one. 4340's divide sits exactly on
+    // sample 70, so its gap IS a full spacing — the earlier strict `<` form
+    // passed only on the slack it carried, while the comment beside it claimed
+    // headroom. The 1e-9 that remains is float noise on a 3.54 °C quantity.
+    expect(s.bainiteStart! - r.bainiteMax).toBeLessThanOrEqual(below.spacing + 1e-9);
+    expect(s.bainiteStart! - r.bainiteMax).toBeCloseTo(below.spacing, 9);
     // the ferrite gain from 5306e90 is kept in full
     expect(r.ferriteMin).toBeGreaterThanOrEqual(s.nose.temp);
   });
@@ -1253,7 +1264,10 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
     const below = highestSampleBelow('5140', s.bainiteStart!);
     expect(r.bainiteMax).toBeCloseTo(below.temp, 2);
     expect(r.bainiteMax).toBeCloseTo(508.4, 2);
-    expect(s.bainiteStart! - r.bainiteMax).toBeLessThan(below.spacing + 1e-9);
+    expect(s.bainiteStart! - r.bainiteMax).toBeLessThanOrEqual(below.spacing + 1e-9);
+    // 1.6 of 3.4 °C — about half a step, and nowhere near a sixth.
+    expect(s.bainiteStart! - r.bainiteMax).toBeCloseTo(1.6, 9);
+    expect((s.bainiteStart! - r.bainiteMax) / below.spacing).toBeCloseTo(0.470588, 6);
     expect(r.ferriteMin).toBeGreaterThanOrEqual(s.nose.temp);
   });
 
@@ -1319,6 +1333,32 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
     // on the other, with no detent between them.
     expect(ferrite(at(detent - 1))).toBeGreaterThan(0);
     expect(ferrite(at(detent))).toBe(0);
+  });
+
+  /**
+   * **Erratum for 763ad12.** That commit's headline table, correcting figures
+   * that were not reproducible, records the 5140 detent 317 -> 319 pair as
+   * 2.0158 HRC. It is not reproducible either. Measured here it is 2.0053, and
+   * no variant of the comparison gives 2.0158. History is not being rewritten,
+   * so the figure is pinned in the suite instead.
+   *
+   * What that message was *for* still stands: the pair is two detents apart,
+   * so it belongs to neither the fine sweep (1.7572) nor the worst adjacent
+   * step (1.8586), which was the whole point. And the error is in the safe
+   * direction — the quoted number was larger than the truth, and the < 2.6
+   * bound holds either way.
+   */
+  it('pins the 5140 detent 317 -> 319 pair, which 763ad12 quoted as 2.0158', () => {
+    const s = getSteel('5140');
+    const ttt = buildTtt(s);
+    const at = (i: number) => predict(s, ttt, AUST, 10 ** (-2 + i * 0.01)).hardness;
+    expect(at(317)).toBeCloseTo(51.09396, 4);
+    expect(at(319)).toBeCloseTo(53.09922, 4);
+    expect(at(319) - at(317)).toBeCloseTo(2.00526, 4);
+    // Two steps and not one, which is the claim the number was supporting:
+    // detent 318 lies strictly between them.
+    expect(at(318)).toBeGreaterThan(at(317));
+    expect(at(318)).toBeLessThan(at(319));
   });
 
   it.each(['1080', '5140', '4340'])('%s: critical cooling rate is bit-identical', (id) => {

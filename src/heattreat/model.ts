@@ -225,9 +225,19 @@ function productAt(steel: Steel, T: number): Product {
  * the lever rule fixes the ratio. `fraction` is the part of the sample that
  * transformed diffusionally; it is split (1 − f_eq) pearlite to f_eq ferrite.
  *
- * Bainite is deliberately excluded. It forms below the temperature range in
- * which ferrite is rejected, from austenite that never gave any up, so a
- * bainitic path carries no proeutectoid ferrite.
+ * **Two scope limits, both because this model has no ferrite kinetics.**
+ *
+ * 1. Only a transformation that ran to *completion* is split. The lever rule
+ *    is an equilibrium statement; it fixes how a finished structure divides
+ *    and says nothing about how a half-finished one does. `predict` therefore
+ *    applies this to the complete branch only, and reports a path cut short at
+ *    Mˢ as the undivided diffusional product it was reported as before.
+ * 2. Bainite is excluded. This is a **scope note, not a physical law** — a
+ *    slack-quenched or air-cooled 4340 really does come out ferrite + bainite,
+ *    and this model does not claim otherwise; it simply has nothing to say
+ *    about how much ferrite precedes a bainitic reaction, because that is a
+ *    kinetic question. Where it cannot compute the division it does not invent
+ *    one.
  *
  * The consequence worth noting: when nothing transforms diffusionally, nothing
  * is split, so `criticalCoolingRate` and the fully-martensitic path are exactly
@@ -236,16 +246,15 @@ function productAt(steel: Steel, T: number): Product {
 function splitProeutectoid(
   ttt: TttModel,
   product: Product,
-  fraction: number,
 ): { product: Product; fraction: number }[] {
   const alpha = ttt.equilibriumFerrite;
-  if (alpha <= 0 || fraction <= 0) return [{ product, fraction }];
+  if (alpha <= 0) return [{ product, fraction: 1 }];
   if (product !== 'coarse pearlite' && product !== 'fine pearlite') {
-    return [{ product, fraction }];
+    return [{ product, fraction: 1 }];
   }
   return [
-    { product: 'proeutectoid ferrite', fraction: fraction * alpha },
-    { product, fraction: fraction * (1 - alpha) },
+    { product: 'proeutectoid ferrite', fraction: alpha },
+    { product, fraction: 1 - alpha },
   ];
 }
 
@@ -275,7 +284,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const finishRun = scheil(ttt.finish, startTemp, rate, ttt.ms);
 
   if (finishRun.reached) {
-    const parts = splitProeutectoid(ttt, product, 1);
+    const parts = splitProeutectoid(ttt, product);
     const alpha = parts.length > 1 ? parts[0].fraction : 0;
     return {
       fractions: parts,
@@ -303,15 +312,17 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
   const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
   const fraction = Math.min(1, Math.max(0, progress));
-  // The bar splits a pearlitic product into ferrite and pearlite, so the prose
-  // has to name the same thing the bar shows, or the two contradict each other.
-  const diffusional =
-    splitProeutectoid(ttt, product, fraction).length > 1
-      ? `proeutectoid ferrite + ${product}`
-      : product;
+  // No ferrite split here, deliberately. See `splitProeutectoid`: the lever
+  // rule divides a *finished* structure, and this path did not finish. Two
+  // further things go wrong if it is applied anyway, and both were shipped
+  // once: `TRACE_FRACTION` gates this prose on `fraction` while the bar is
+  // gated on the split parts, so a product just above the floor becomes two
+  // parts just below it and the prose quantifies something the bar has already
+  // filtered out; and the percentage printed below is the sum, which no longer
+  // matches either segment on screen.
   return {
     fractions: [
-      ...splitProeutectoid(ttt, product, fraction),
+      { product, fraction },
       { product: 'martensite', fraction: 1 - fraction },
     ],
     hardness:
@@ -320,8 +331,8 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
     complete: false,
     summary:
       fraction < TRACE_FRACTION
-        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${diffusional} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
-        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${diffusional} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${product} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
   };
 }
 

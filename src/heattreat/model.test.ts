@@ -264,7 +264,7 @@ describe('proeutectoid ferrite', () => {
    * whatever pearlite a 0.40 wt% C steel forms must be accompanied by
    * proeutectoid ferrite in the lever-rule ratio.
    */
-  it('keeps ferrite and pearlite in the lever-rule ratio at every rate', () => {
+  it('keeps ferrite and pearlite in the lever-rule ratio wherever it splits', () => {
     for (const id of ['5140', '4340']) {
       const s = getSteel(id);
       const ttt = buildTtt(s);
@@ -275,8 +275,10 @@ describe('proeutectoid ferrite', () => {
         const p = o.fractions
           .filter((x) => x.product === 'coarse pearlite' || x.product === 'fine pearlite')
           .reduce((a, x) => a + x.fraction, 0);
-        if (p > 0) expect(f / (f + p)).toBeCloseTo(eq, 12);
-        else expect(f).toBe(0);
+        // The split is claimed only for a completed transformation; a path cut
+        // short at Mˢ reports the undivided product, so `f` is 0 there.
+        if (f > 0) expect(f / (f + p)).toBeCloseTo(eq, 12);
+        else if (o.complete && p > 0) expect(eq).toBe(0);
       }
     }
   });
@@ -317,5 +319,93 @@ describe('proeutectoid ferrite', () => {
         if (fi >= 0) expect(fi).toBe(0);
       }
     }
+  });
+});
+
+/**
+ * Where the ferrite split may and may not be claimed.
+ *
+ * The lever rule fixes the *equilibrium* ferrite fraction. It says nothing
+ * about how a half-finished transformation divides, and this model has no
+ * ferrite kinetics to say it with — so the split is claimed only where the
+ * diffusional transformation ran to completion.
+ *
+ * The regression these guard against: the split was applied in the
+ * partially-transformed branch too, where `TRACE_FRACTION` gates the prose on
+ * the *unsplit* fraction and the bar on the *split* fractions. In the window
+ * 0.005 ≤ f < 0.005/(1 − 0.4878) the prose quantified a product the bar had
+ * already filtered out — the exact contradiction the constant exists to
+ * prevent.
+ */
+describe('the ferrite split is only claimed where the model determines it', () => {
+  const ferriteOf = (o: ReturnType<typeof predict>) =>
+    o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+  it('reports ferrite only when the transformation ran to completion', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.005) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        if (ferriteOf(o) > 0) expect(o.complete).toBe(true);
+      }
+    }
+  });
+
+  it('never splits a product that is cut short at Mˢ', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.005) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        if (!o.complete) {
+          expect(o.fractions.map((f) => f.product)).not.toContain('proeutectoid ferrite');
+        }
+      }
+    }
+  });
+
+  /**
+   * The invariant the trace guard exists to hold: a product the prose puts a
+   * number on must be a product the bar actually draws.
+   */
+  it('never quantifies a product the bar filters out', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const quantified = o.summary.match(/roughly (\d+)% ([^,.]+?) embedded/);
+        if (!quantified) continue;
+        const named = quantified[2].split(' + ').map((x) => x.trim());
+        let sum = 0;
+        for (const name of named) {
+          const part = o.fractions.find((f) => f.product === name);
+          expect(part, `${s.id} @ ${10 ** lg}: prose names "${name}", fractions do not`).toBeDefined();
+          expect(part!.fraction).toBeGreaterThanOrEqual(TRACE_FRACTION);
+          sum += part!.fraction;
+        }
+        expect(Math.round(sum * 100)).toBe(Number(quantified[1]));
+      }
+    }
+  });
+
+  /**
+   * The three reachable slider detents a reviewer found. On the parent each
+   * drew a single ~0.91% segment; the split pushed both halves under
+   * TRACE_FRACTION so the bar showed martensite alone while the prose still
+   * claimed 1%.
+   */
+  it.each([
+    ['5140', 33.1131],
+    ['4340', 1.9055],
+    ['4340', 1.9498],
+  ])('%s at %f °C/s draws every product its prose quantifies', (id, rate) => {
+    const s = getSteel(id);
+    const o = predict(s, buildTtt(s), AUST, rate);
+    const displayed = o.fractions.filter((f) => f.fraction >= TRACE_FRACTION);
+    // The diffusional product is ~0.91% here — above the trace floor, so it
+    // must survive to the bar rather than being split into two invisible parts.
+    expect(displayed.map((f) => f.product)).toContain(
+      o.fractions.find((f) => f.product !== 'martensite')!.product,
+    );
+    expect(ferriteOf(o)).toBe(0);
   });
 });

@@ -408,28 +408,11 @@ describe('prose and bar never disagree', () => {
   });
 
   /**
-   * The invariant the trace guard exists to hold: a product the prose puts a
-   * number on must be a product the bar actually draws.
+   * Superseded by "every quantified pair in the prose matches a drawn
+   * segment" below, which asserts the same invariant per product rather than
+   * per phrase and survives the prose being rewritten. Kept as the named
+   * regression for the three reviewer detents only.
    */
-  it('never quantifies a product the bar filters out', () => {
-    for (const s of STEELS) {
-      const ttt = buildTtt(s);
-      for (let lg = -2; lg <= 4; lg += 0.002) {
-        const o = predict(s, ttt, AUST, 10 ** lg);
-        const quantified = o.summary.match(/roughly (\d+)% ([^,.]+?) embedded/);
-        if (!quantified) continue;
-        const named = quantified[2].split(' + ').map((x) => x.trim());
-        let sum = 0;
-        for (const name of named) {
-          const part = o.fractions.find((f) => f.product === name);
-          expect(part, `${s.id} @ ${10 ** lg}: prose names "${name}", fractions do not`).toBeDefined();
-          expect(part!.fraction).toBeGreaterThanOrEqual(TRACE_FRACTION);
-          sum += part!.fraction;
-        }
-        expect(Math.round(sum * 100)).toBe(Number(quantified[1]));
-      }
-    }
-  });
 
   /**
    * The three reachable slider detents a reviewer found, where the prose
@@ -806,5 +789,74 @@ describe('the pearlitic field has a floor', () => {
   ])('%s: critical cooling rate is bit-identical', (id, expected) => {
     const s = getSteel(id);
     expect(criticalCoolingRate(s, buildTtt(s), AUST)).toBe(expected);
+  });
+});
+
+/**
+ * Every number in the prose must be a number on the bar.
+ *
+ * Two failures of that rule survived into this series' own fix for it.
+ * `describeParts` joined the product names with " + " and printed their
+ * **sum**, so 5140 at 4 °C/s read "roughly 74% proeutectoid ferrite + coarse
+ * pearlite" beside segments of 49% and 25% — a figure matching neither. And
+ * the trace branch interpolated `productAt`'s label rather than the split, so
+ * it could name a product the split had replaced.
+ */
+describe('the prose quantifies each segment separately', () => {
+  /** The vocabulary the prose is allowed to name, so the match cannot run on. */
+  const PRODUCT_NAMES =
+    'proeutectoid ferrite|coarse pearlite|fine pearlite|bainite|martensite';
+
+  const shownOf = (o: ReturnType<typeof predict>) =>
+    o.fractions.filter((f) => f.fraction >= TRACE_FRACTION);
+
+  it('5140 at 4 °C/s gives each product its own percentage', () => {
+    const s = getSteel('5140');
+    const o = predict(s, buildTtt(s), AUST, 4);
+    const parts = shownOf(o).filter((f) => f.product !== 'martensite');
+    expect(parts.length).toBeGreaterThan(1);
+    // The old text printed one summed figure against a compound noun.
+    expect(o.summary).not.toMatch(/% proeutectoid ferrite \+ /);
+    for (const p of parts) {
+      expect(o.summary).toContain(`${Math.round(p.fraction * 100)}% ${p.product}`);
+    }
+  });
+
+  /**
+   * The general rule, over every reachable detent: any "N% <product>" pair the
+   * prose prints must match a segment the bar draws, to the percent.
+   */
+  it('every quantified pair in the prose matches a drawn segment', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.001) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const pairs = [...o.summary.matchAll(new RegExp(`(\\d+)% (${PRODUCT_NAMES})`, 'g'))];
+        for (const [, pct, name] of pairs) {
+          const seg = o.fractions.find((f) => f.product === name);
+          expect(seg, `${s.id} @ ${10 ** lg}: prose names "${name}"`).toBeDefined();
+          expect(seg!.fraction).toBeGreaterThanOrEqual(TRACE_FRACTION);
+          expect(Math.round(seg!.fraction * 100)).toBe(Number(pct));
+        }
+      }
+    }
+  });
+
+  it('the trace branch names the split, not the raw product label', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.001) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const trace = o.summary.match(new RegExp(`a trace of (${PRODUCT_NAMES}) forms`));
+        if (!trace) continue;
+        // Whatever it names must be a product the model actually produced.
+        expect(
+          o.fractions.some((f) => f.product === trace[1]),
+          `${s.id} @ ${10 ** lg}: prose traces "${trace[1]}", fractions are ${o.fractions
+            .map((f) => f.product)
+            .join('/')}`,
+        ).toBe(true);
+      }
+    }
   });
 });

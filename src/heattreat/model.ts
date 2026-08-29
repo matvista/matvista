@@ -392,12 +392,19 @@ function splitProeutectoid(
  * filtered out.
  */
 function describeParts(parts: { product: Product; fraction: number }[]): {
-  name: string;
+  /** "49% proeutectoid ferrite and 25% coarse pearlite" — one figure each. */
+  phrase: string;
+  /** The bare names, for the branch that quantifies nothing. */
+  names: string;
   total: number;
 } {
   const shown = parts.filter((p) => p.fraction >= TRACE_FRACTION);
+  const each = shown.map((p) => `${Math.round(p.fraction * 100)}% ${p.product}`);
+  const join = (xs: string[]) =>
+    xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
   return {
-    name: shown.map((p) => p.product).join(' + '),
+    phrase: join(each),
+    names: join(shown.map((p) => p.product)),
     total: shown.reduce((a, p) => a + p.fraction, 0),
   };
 }
@@ -456,14 +463,6 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
   const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
   const fraction = Math.min(1, Math.max(0, progress));
-  // No ferrite split here, deliberately. See `splitProeutectoid`: the lever
-  // rule divides a *finished* structure, and this path did not finish. Two
-  // further things go wrong if it is applied anyway, and both were shipped
-  // once: `TRACE_FRACTION` gates this prose on `fraction` while the bar is
-  // gated on the split parts, so a product just above the floor becomes two
-  // parts just below it and the prose quantifies something the bar has already
-  // filtered out; and the percentage printed below is the sum, which no longer
-  // matches either segment on screen.
   const parts = splitProeutectoid(ttt, product, fraction);
   const shown = describeParts(parts);
   // The matrix is subject to the same rule as the product: if the bar does not
@@ -480,10 +479,10 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
     complete: false,
     summary:
       shown.total < TRACE_FRACTION
-        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${parts[0].product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
         : matrixDrawn
-          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(shown.total * 100)}% ${shown.name} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
-          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before Mˢ, giving ${shown.name} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
+          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${shown.phrase} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
+          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before Mˢ, giving ${shown.phrase} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
   };
 }
 

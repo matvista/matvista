@@ -120,20 +120,27 @@ export function HeatTreatment() {
     ferriteFraction > 0 && enrichedCarbon !== null && enrichedCarbon > steel.composition.C + 0.005;
 
   /**
-   * Which legend entries carry a "≤" qualifier: the proeutectoid ferrite,
-   * always.
+   * Which legend entries are bounds, and in which direction.
    *
-   * An earlier version applied it only once ferrite had saturated at the
-   * lever-rule fraction, on the reasoning that below saturation the number is
-   * the transformed fraction and the lever rule does not cap it. That was
-   * wrong. The alloy-corrected equilibrium fraction α′ is smaller than the
-   * binary αₑq, and min(f, α′) ≤ min(f, αₑq) for **every** f — so the figure
-   * shown is at or above the truth at every rate, not only at saturation. The
-   * distinction was also invisible at displayed precision: 5140 at 5.668785
-   * °C/s printed "≤ 49%" and at 5.721897 printed "49%", 153 rates apart from
-   * each other and identical on screen.
+   * The split is `ferrite = min(f, αₑq)` and `pearlite = max(0, f − αₑq)`, so
+   * the *same* unknown margin makes one an over-estimate and the other an
+   * under-estimate. Two earlier versions got this wrong in opposite ways:
+   * first the mark fired only once ferrite had saturated (so most of the
+   * range showed a bare number that was still a ceiling), then it fired on
+   * every ferrite entry but on no pearlite entry — which tells the reader the
+   * pearlite figure is exact, and it is not, by 4.8–6.8 points for α′ in
+   * 0.42–0.44.
+   *
+   * Pearlite is marked only where the split actually ran, which is where
+   * ferrite is present in the same outcome; below the ferrite floor the
+   * pearlite figure is the whole diffusional product, undivided and unbounded
+   * by αₑq.
    */
-  const bounded = (product: string) => product === 'proeutectoid ferrite';
+  const boundOf = (product: string): 'upper' | 'lower' | null => {
+    if (product === 'proeutectoid ferrite') return 'upper';
+    if (/pearlite/.test(product) && ferriteFraction > 0) return 'lower';
+    return null;
+  };
 
   const band = useMemo(() => ferriteBand(steel, ttt, AUSTENITISE), [steel, ttt]);
 
@@ -324,7 +331,13 @@ export function HeatTreatment() {
                   width: `${f.fraction * 100}%`,
                   background: PRODUCT_COLOR[f.product],
                 }}
-                title={`${f.product} ${bounded(f.product) ? 'at most ' : ''}${(f.fraction * 100).toFixed(0)}%`}
+                title={`${f.product} ${
+                  boundOf(f.product) === 'upper'
+                    ? 'at most '
+                    : boundOf(f.product) === 'lower'
+                      ? 'at least '
+                      : ''
+                }${(f.fraction * 100).toFixed(0)}%`}
               />
             ))}
         </div>
@@ -340,15 +353,21 @@ export function HeatTreatment() {
                     one, and a bare bold "49%" reads as a measurement. */}
                 <strong
                   title={
-                    bounded(f.product)
-                      ? 'Upper bound — the binary lever rule; see the note below'
-                      : undefined
+                    boundOf(f.product) === null
+                      ? undefined
+                      : `${boundOf(f.product) === 'upper' ? 'Upper' : 'Lower'} bound — the two sides of the binary lever rule move together; see the note below`
                   }
                 >
-                  {bounded(f.product) && (
+                  {boundOf(f.product) === 'upper' && (
                     <>
                       <span aria-hidden="true">≤ </span>
                       <span className="vh">at most </span>
+                    </>
+                  )}
+                  {boundOf(f.product) === 'lower' && (
+                    <>
+                      <span aria-hidden="true">≥ </span>
+                      <span className="vh">at least </span>
                     </>
                   )}
                   {(f.fraction * 100).toFixed(0)}%

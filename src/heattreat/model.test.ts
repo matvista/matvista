@@ -1121,6 +1121,34 @@ describe('the ferrite fraction is an upper bound everywhere', () => {
     }
   });
 
+  /**
+   * The other side of the same split. `pearlite = max(0, f − alphaEq)`, so a
+   * smaller alpha' makes the pearlite figure a **lower** bound by exactly the
+   * margin it makes ferrite an upper one. Marking only the ferrite told the
+   * reader the pearlite was exact, which is false.
+   */
+  it('makes the pearlite figure a lower bound by the same margin', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      const alpha = ttt.equilibriumFerrite;
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const ferrite = o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+        if (ferrite === 0) continue; // unsplit below the ferrite floor
+        const shown = o.fractions
+          .filter((f) => /pearlite/.test(f.product))
+          .reduce((a, f) => a + f.fraction, 0);
+        const f = o.fractions
+          .filter((x) => x.product !== 'martensite')
+          .reduce((a, x) => a + x.fraction, 0);
+        for (const alphaPrime of [0.30, 0.35, 0.42, 0.44, alpha]) {
+          expect(Math.max(0, f - alphaPrime)).toBeGreaterThanOrEqual(shown - 1e-12);
+        }
+      }
+    }
+  });
+
   it('and the bound is strict below saturation too, which the old rule missed', () => {
     const s = getSteel('5140');
     const ttt = buildTtt(s);

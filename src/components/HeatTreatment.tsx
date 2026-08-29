@@ -86,6 +86,21 @@ export function HeatTreatment() {
   // roughly 0 °C below" would be noise dressed as a caveat.
   const msUnderstated = ferriteFraction > 0 && enrichedCarbon > steel.composition.C + 0.005;
 
+  /**
+   * Which legend entries carry a "≤" qualifier.
+   *
+   * Only proeutectoid ferrite, and only once it has *saturated* at the
+   * lever-rule fraction. That fraction is the binary Fe–Fe₃C value, which is a
+   * ceiling for an alloy steel rather than an answer — so where the bar shows
+   * it, the bar is showing a bound. Below saturation the number is the
+   * transformed fraction itself, which the lever rule does not cap (a smaller
+   * true equilibrium fraction would not change min(f, α) while f is under
+   * both), so no qualifier there: it would claim an uncertainty that is not
+   * present.
+   */
+  const bounded = (product: string, fraction: number) =>
+    product === 'proeutectoid ferrite' && fraction >= ttt.equilibriumFerrite - 1e-9;
+
   const critical = useMemo(
     () => criticalCoolingRate(steel, ttt, AUSTENITISE),
     [steel, ttt],
@@ -270,7 +285,7 @@ export function HeatTreatment() {
                   width: `${f.fraction * 100}%`,
                   background: PRODUCT_COLOR[f.product],
                 }}
-                title={`${f.product} ${(f.fraction * 100).toFixed(0)}%`}
+                title={`${f.product} ${bounded(f.product, f.fraction) ? 'at most ' : ''}${(f.fraction * 100).toFixed(0)}%`}
               />
             ))}
         </div>
@@ -281,7 +296,24 @@ export function HeatTreatment() {
               <li key={f.product}>
                 <i style={{ background: PRODUCT_COLOR[f.product] }} />
                 {f.product}
-                <strong>{(f.fraction * 100).toFixed(0)}%</strong>
+                {/* The qualifier belongs on the number, not in a footnote
+                    below it: the binary lever rule gives a ceiling for this
+                    one, and a bare bold "49%" reads as a measurement. */}
+                <strong
+                  title={
+                    bounded(f.product, f.fraction)
+                      ? 'Upper bound — the binary lever rule; see the note below'
+                      : undefined
+                  }
+                >
+                  {bounded(f.product, f.fraction) && (
+                    <>
+                      <span aria-hidden="true">≤ </span>
+                      <span className="vh">at most </span>
+                    </>
+                  )}
+                  {(f.fraction * 100).toFixed(0)}%
+                </strong>
               </li>
             ))}
         </ul>

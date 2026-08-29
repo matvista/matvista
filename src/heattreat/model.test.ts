@@ -667,3 +667,47 @@ describe('untransformed austenite carbon', () => {
     }
   });
 });
+
+/**
+ * The matrix has to be drawn too, not just the product.
+ *
+ * The prose says a product is "embedded in martensite". Where the path very
+ * nearly completes, that martensite falls below `TRACE_FRACTION` and the bar
+ * does not draw it — so the sentence names a phase that is not on screen. The
+ * mirror image of the defect fixed for the product itself, and it was there
+ * before the ferrite work started: 1080 at 23.44 °C/s reads "roughly 100%
+ * coarse pearlite embedded in martensite" with 0.098% martensite.
+ */
+describe('the prose names only phases the bar draws', () => {
+  it('never says "embedded in martensite" when no martensite is drawn', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        if (!/embedded in martensite/.test(o.summary)) continue;
+        const m = o.fractions.find((f) => f.product === 'martensite')?.fraction ?? 0;
+        expect(
+          m,
+          `${s.id} @ ${10 ** lg}: prose says "embedded in martensite", bar draws ${m}`,
+        ).toBeGreaterThanOrEqual(TRACE_FRACTION);
+      }
+    }
+  });
+
+  it('1080 at 23.44 °C/s — the witness — no longer claims an undrawn matrix', () => {
+    const s = getSteel('1080');
+    const o = predict(s, buildTtt(s), AUST, 23.44);
+    const m = o.fractions.find((f) => f.product === 'martensite')!.fraction;
+    expect(m).toBeLessThan(TRACE_FRACTION);
+    expect(o.summary).not.toMatch(/embedded in martensite/);
+    // and it still says what did happen
+    expect(o.summary).toMatch(/coarse pearlite/);
+  });
+
+  it('still says it when there really is martensite to see', () => {
+    const s = getSteel('5140');
+    const o = predict(s, buildTtt(s), AUST, 10);
+    expect(o.fractions.find((f) => f.product === 'martensite')!.fraction).toBeGreaterThan(0.5);
+    expect(o.summary).toMatch(/embedded in martensite/);
+  });
+});

@@ -426,6 +426,12 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   // matches either segment on screen.
   const parts = splitProeutectoid(ttt, product, fraction);
   const shown = describeParts(parts);
+  // The matrix is subject to the same rule as the product: if the bar does not
+  // draw the martensite, the prose must not say the structure is embedded in
+  // it. Just below full transformation that fraction goes under the display
+  // floor — 1080 at 23.44 °C/s left 0.098% — and the sentence named a phase
+  // that was not on screen.
+  const matrixDrawn = 1 - fraction >= TRACE_FRACTION;
   return {
     fractions: [...parts, { product: 'martensite', fraction: 1 - fraction }],
     hardness:
@@ -435,7 +441,9 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
     summary:
       shown.total < TRACE_FRACTION
         ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
-        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(shown.total * 100)}% ${shown.name} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
+        : matrixDrawn
+          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(shown.total * 100)}% ${shown.name} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
+          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before Mˢ, giving ${shown.name} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
   };
 }
 

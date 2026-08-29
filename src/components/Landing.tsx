@@ -1,6 +1,6 @@
 import { NAV_GROUPS } from '../nav';
 import { MODULE_MARKS } from './moduleMarks';
-import { useReveal } from '../landing/motion';
+import { useReveal } from '../motion';
 import { LatticePlate } from '../assets/figures/LatticePlate';
 import { PhaseFigure } from '../assets/figures/PhaseFigure';
 import { FatigueFigure } from '../assets/figures/FatigueFigure';

@@ -10,6 +10,7 @@
  * is not a substitute for a measured CCT diagram.
  */
 
+import { EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 import {
   martensiteFractionTemp,
   martensiteStart,
@@ -65,6 +66,28 @@ export function tttCurve(steel: Steel, timeScale: number, samples = 140): CurveP
   }
 }
 
+/**
+ * Equilibrium proeutectoid ferrite fraction, by the lever rule.
+ *
+ * Delegated to `steelMicrostructure` in `phase/systems.ts` — the same function
+ * that reproduces Callister's 0.35 wt% C worked example (44% pearlite, 56%
+ * proeutectoid ferrite) — rather than retyping 0.76 and 0.022 here, so the
+ * phase diagram and the TTT module cannot drift apart. For the two 0.40 wt% C
+ * steels it is (0.76 − 0.40)/(0.76 − 0.022) ≈ 0.488.
+ *
+ * Returns 0 for any steel that is not hypoeutectoid. 1080 is nominally the
+ * eutectoid grade and its note says it forms no proeutectoid phase; its 0.79
+ * wt% C actually sits 0.03 above the eutectoid, so a real 1080 rejects a trace
+ * (≈0.5%) of proeutectoid *cementite*. This model does not report that, which
+ * is the pre-existing simplification the note describes, and it is left alone
+ * here — nothing about 1080's output changes.
+ */
+export function equilibriumFerriteFraction(steel: Steel): number {
+  const micro = steelMicrostructure(steel.composition.C);
+  if (!micro || micro.proeutectoid !== 'α (ferrite)') return 0;
+  return micro.proeutectoidFraction;
+}
+
 export interface TttModel {
   start: CurvePoint[];
   finish: CurvePoint[];
@@ -72,10 +95,13 @@ export interface TttModel {
   m50: number;
   m90: number;
   a1: number;
+  /** Lever-rule proeutectoid ferrite fraction, at full transformation. */
+  equilibriumFerrite: number;
 }
 
 export function buildTtt(steel: Steel): TttModel {
   const ms = martensiteStart(steel.composition);
+  const equilibriumFerrite = equilibriumFerriteFraction(steel);
   return {
     start: tttCurve(steel, 1),
     finish: tttCurve(steel, steel.finishFactor),
@@ -83,6 +109,7 @@ export function buildTtt(steel: Steel): TttModel {
     m50: martensiteFractionTemp(ms, 0.5),
     m90: martensiteFractionTemp(ms, 0.9),
     a1: steel.a1,
+    equilibriumFerrite,
   };
 }
 
@@ -145,7 +172,12 @@ function scheil(
   return { reached: null, sum };
 }
 
-export type Product = 'coarse pearlite' | 'fine pearlite' | 'bainite' | 'martensite';
+export type Product =
+  | 'proeutectoid ferrite'
+  | 'coarse pearlite'
+  | 'fine pearlite'
+  | 'bainite'
+  | 'martensite';
 
 /**
  * Below this fraction a diffusional product is reported as a trace rather than
@@ -165,14 +197,316 @@ export interface Outcome {
   startTemp: number | null;
   /** Whether the diffusional transformation ran to completion. */
   complete: boolean;
+  /**
+   * Martensite-start temperature actually used for this path, °C.
+   *
+   * Not `TttModel.ms`: rejecting proeutectoid ferrite enriches the austenite
+   * that is left, and carbon dominates Andrews' equation, so the austenite
+   * quenching at the end of a ferrite-forming path has a much lower Mˢ than
+   * the steel as a whole — 183 °C against 335 for 5140 at its saturation
+   * point. This is the figure the Scheil floor, the plot's Mˢ line and the
+   * retained-austenite warning all use.
+   */
+  ms: number;
+  /**
+   * The Mˢ the Scheil integration actually stopped at, °C — the *bulk*
+   * value, always. It is `ms` only when no ferrite formed. The two are
+   * deliberately decoupled (see `withEnrichedMartensiteStart`), which means
+   * the summary has to name this one and the panel has to show the other,
+   * so both are carried rather than one being inferred from the other.
+   */
+  msFloor: number;
+  /** Temperature for 50% martensite, from `ms`. */
+  m50: number;
+  /** Temperature for 90% martensite, from `ms`. */
+  m90: number;
   summary: string;
+}
+
+/**
+ * Lowest temperature at which this model will call a product pearlitic — the
+ * top of the bainite field.
+ *
+ * The measured bainite start where one exists, and otherwise the shipped
+ * arithmetic midpoint of the sub-nose range, which has no metallurgical basis
+ * and is left alone rather than extrapolated (see `Steel.bainiteStart`).
+ *
+ * **This used to be the nose, and that was one boundary doing two jobs.**
+ * `splitProeutectoid` fires on pearlitic labels, so moving this floor was the
+ * only lever on where ferrite is reported; putting it at the nose bought the
+ * ferrite fix by trading the sign of the bainite-start error, deleting the
+ * fine-pearlite field for both hypoeutectoid grades, and turning the
+ * ferrite→bainite flip from a trace into a tenth of the sample. The ferrite
+ * floor is now its own guard inside `splitProeutectoid`, so this boundary is
+ * free to be the measured one.
+ */
+function pearliteFloor(steel: Steel): number {
+  return steel.bainiteStart ?? (steel.nose.temp + steel.bainiteFloor) / 2;
 }
 
 /** Which diffusional product forms at a given transformation temperature. */
 function productAt(steel: Steel, T: number): Product {
   if (T >= steel.nose.temp) return 'coarse pearlite';
-  if (T >= (steel.nose.temp + steel.bainiteFloor) / 2) return 'fine pearlite';
+  if (T >= pearliteFloor(steel)) return 'fine pearlite';
   return 'bainite';
+}
+
+/**
+ * Carbon content of a transformation product, wt%.
+ *
+ * Proeutectoid ferrite is the α end of the eutectoid tie line and pearlite is
+ * the eutectoid composition itself, both read from `phase/systems.ts` rather
+ * than retyped.
+ *
+ * **Bainite and martensite are returned at the bulk composition, and that is
+ * not what they carry.** They are diffusionless in carbon terms, so they
+ * inherit whatever the austenite they formed from was holding — and where
+ * ferrite has led, that austenite is enriched, up to the eutectoid 0.76 wt%.
+ * Pricing them at the bulk leaves the sample 0.184 wt% C short at 5140's
+ * saturation point, which is exactly why `untransformedAusteniteCarbon`
+ * excludes martensite from its own sum rather than trusting this value.
+ *
+ * So this is a per-*product* figure and not a per-*path* one: use it for the
+ * diffusional products, and take the diffusionless ones from
+ * `untransformedAusteniteCarbon`. Priced that way the balance closes to 10
+ * decimals at every rate where the austenite carbon is resolvable at all,
+ * which is asserted.
+ *
+ * Exported so the UI can show how far ferrite rejection has enriched the
+ * remaining austenite without recomputing the mass balance itself.
+ */
+export function productCarbon(product: Product, bulkC: number): number {
+  switch (product) {
+    case 'proeutectoid ferrite':
+      return FERRITE_MAX;
+    case 'coarse pearlite':
+    case 'fine pearlite':
+      return EUTECTOID_X;
+    case 'bainite':
+    case 'martensite':
+      return bulkC;
+  }
+}
+
+/**
+ * Carbon left in the austenite that has not transformed diffusionally, wt%, or
+ * **null where this model cannot resolve it**.
+ *
+ * Ferrite rejection is what enriches it: every unit of ferrite takes only
+ * 0.022 wt% C out of a 0.40 wt% steel, so the balance concentrates in what
+ * remains. This is the quantity that governs the real Mˢ.
+ *
+ * Martensite is excluded from the sum on purpose: it *is* the austenite that
+ * survived, so counting its carbon as already consumed would report the
+ * remaining austenite as depleted rather than enriched. Getting that wrong
+ * once made 5140 at 10 °C/s read 0.12 wt% C instead of 0.52 and silently
+ * suppressed the caveat that depends on it.
+ *
+ * **Three ways out of the domain, all returning null rather than a number.**
+ * An earlier version returned the bulk composition in the first case and
+ * nothing at all in the others, which made "outside domain" invisible to any
+ * caller not already gated — and this is exported, so one caller is all that
+ * kept it safe.
+ *
+ *  1. **No ferrite.** Without proeutectoid ferrite there is no enrichment
+ *     mechanism and the balance does not close: 1080 is hyper-eutectoid, its
+ *     pearlite carries 0.76 wt% against a 0.79 bulk, and the surplus belongs
+ *     to cementite this model does not track.
+ *
+ *     The quotient there is **unbounded above**, and that is a proof, not a
+ *     measurement: it is (0.79 − 0.76·solid)/(1 − solid), whose numerator
+ *     tends to 0.03 while its denominator tends to zero as the transformation
+ *     completes. At the first representable rate past 1080's completion edge —
+ *     23.341044666842329 °C/s, immediately beside the 23.44 detent this series
+ *     has browser-verified — it evaluates to 6.76 × 10¹³ wt% C.
+ *
+ *     Three rounds of this series quoted 6.97, then 1199.87, then 146.85 as
+ *     "the" maximum. All three were artefacts of how finely the rate was
+ *     sampled, and a finer grid would have beaten any of them. A divergent
+ *     limit does not have a maximum to quote.
+ *  2. **Nothing untransformed.** A completed transformation leaves no
+ *     austenite to have a composition.
+ *  3. **Cancellation.** Just above the completion boundary both
+ *     `bulkC − carbon` and `1 − solid` are differences of nearly equal
+ *     doubles, so the quotient is noise: 4340 at 0.14224645321580959 returned
+ *     1.0000 wt% C, and dozens of the first few thousand representable rates
+ *     above each completion edge exceed the 0.7605 ceiling. No count is
+ *     quoted, because it depends on which double the walk starts from — two
+ *     independent measurements of the 5140 figure disagreed for exactly that
+ *     reason. What is asserted is the property, which does not: no value above
+ *     the eutectoid is ever returned. Reachable from the URL, since
+ *     `useRouteNumber` parses with a bare `Number()`.
+ *
+ * Case 3 is caught by checking the *result* against the range ferrite-leads
+ * guarantees — at or above the bulk, at or below the eutectoid, because
+ * ferrite stops at `alphaEq` which is exactly where the residue reaches
+ * 0.76 wt%. A result outside that has left its domain, and saying so beats
+ * clamping it into range, which would hide the evidence. That is the lesson
+ * iteration 9 already paid for.
+ */
+export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): number | null {
+  let solid = 0;
+  let carbon = 0;
+  let ferrite = 0;
+  for (const f of outcome.fractions) {
+    if (f.product === 'martensite') continue;
+    if (f.product === 'proeutectoid ferrite') ferrite += f.fraction;
+    solid += f.fraction;
+    carbon += f.fraction * productCarbon(f.product, bulkC);
+  }
+  if (ferrite <= 0 || solid >= 1) return null;
+  const value = (bulkC - carbon) / (1 - solid);
+  if (!Number.isFinite(value)) return null;
+  if (value < bulkC - 1e-9 || value > EUTECTOID_X + 1e-9) return null;
+  return value;
+}
+
+/**
+ * Divide a diffusional product into the proeutectoid ferrite that leads it and
+ * the pearlite that follows.
+ *
+ * **Ferrite leads — as a bounding construction, not as a description of the
+ * kinetics.** The ordering is real: in a hypoeutectoid steel ferrite is the
+ * faster reaction and runs ahead of pearlite, rejecting carbon until what
+ * remains has been enriched to the eutectoid composition. What is *not* real
+ * is the amount. Having no ferrite kinetics, this holds at its own bound over
+ * much of each steel's range and then drops to nothing at the ferrite floor,
+ * where measurement has ferrite well below equilibrium and declining steadily
+ * with cooling rate. So read the number as a ceiling the true value sits under
+ * by a margin that widens as the quench gets faster.
+ *
+ * **The two sources cited across this module do not describe the same steel,
+ * and the difference is hardenability, not disagreement.** The 4340
+ * dilatometry (Materials 2020, 13, 5585) finds proeutectoid ferrite only at
+ * 0.01–0.1 °C/s, because 4340 is the deep-hardening grade — that is the whole
+ * point of it, and this model puts its own ferrite band at 0.01–0.86 °C/s,
+ * the same order. The 52 → 22 vol% decline from 1.0 to 7.0 °C/s is the
+ * leaner-alloyed 0.4 wt% C comparison, where ferrite survives to much faster
+ * quenches; against that, this model's own 5140 band runs to 15.16 °C/s. Read
+ * the first for where ferrite stops and the second for how it declines, and
+ * do not read either as covering both grades.
+ *
+ * The two steels differ enough that no single pair of figures describes both,
+ * which is why `ferriteBand` computes them per steel and the UI prints those:
+ * 5140 holds 48.8% to 12.8% over 0.01–15.16 °C/s, 4340 48.8% to 10.7% over
+ * 0.01–0.86. A caveat quoting 5140's numbers rendered on 4340 only at rates
+ * outside the window it named.
+ *
+ * The construction itself: the first `alphaEq` of any diffusional
+ * transformation is ferrite, and only the remainder is pearlite:
+ *
+ *     ferrite  = min(f, alphaEq)
+ *     pearlite = max(0, f − alphaEq)
+ *
+ * where `f` is the fraction of the sample that transformed diffusionally and
+ * `alphaEq` is the lever-rule equilibrium fraction. At f = 1 this reduces
+ * exactly to the lever rule, so a slow cool is unchanged.
+ *
+ * **Why not the two obvious alternatives**, both of which were shipped and
+ * withdrawn. Splitting `f` proportionally at every rate implies ferrite and
+ * pearlite forming together in equilibrium proportions from the first instant,
+ * which is not what happens and which credits ferrite to paths that never
+ * entered its range. Applying the lever rule only to a completed
+ * transformation is worse still: it puts a 48.78-point step across an
+ * infinitesimal change in cooling rate, and in the band just above it reports
+ * up to 98.3% pearlite — a structure that needs the remaining austenite to
+ * hold about −19 wt% carbon, i.e. one that cannot exist at any composition.
+ *
+ * Ferrite-leads holds the three properties those two broke, but **each one is
+ * narrower than the version of this paragraph written before the ferrite
+ * floor landed**, and the narrowing is what the floor cost:
+ *
+ *  - *Continuity.* The diffusional total is continuous, and so is each product
+ *    across the completion boundary. The **ferrite floor is not**: at the nose
+ *    the ferrite fraction steps from 12.78% to zero as the product relabels.
+ *    That is the same defect in kind as the 48.78-point step rejected two
+ *    paragraphs above, at a quarter the size — worth saying plainly, since the
+ *    argument against the alternative applies here too, only less. Its cost in
+ *    the readout is bounded and asserted: at most 1.7572 HRC (5140) and 1.4670
+ *    (4340) on a fine sweep across the floor.
+ *  - *Monotonicity.* Ferrite and the diffusional total are monotone in cooling
+ *    rate. **Total pearlite is not**, because the floor moves the whole
+ *    diffusional product from the ferrite column to the pearlite one as
+ *    cooling gets faster.
+ *  - *Carbon.* Global conservation holds everywhere. The *direction* holds only
+ *    where ferrite led: below `alphaEq` the product is all ferrite and the
+ *    untransformed austenite is enriched — at f = 0.1 it holds
+ *    (0.40 − 0.1 × 0.022) / 0.9 = 0.442 wt% C — reaching exactly 0.76 wt% at
+ *    f = alphaEq, which is precisely where pearlite becomes possible. Below the
+ *    ferrite floor, where pearlite forms with no proeutectoid ferrite at all,
+ *    the residue is *depleted* instead, to 0.3487 wt% (5140) and 0.3582
+ *    (4340).
+ *
+ * All of that is asserted, in the narrowed form and not the original one.
+ *
+ * **Bainite is excluded**, and that is a scope note rather than a physical
+ * law: a slack-quenched 4340 really does come out ferrite + bainite. This
+ * model has no ferrite kinetics, so it cannot say how much ferrite precedes a
+ * bainitic reaction and does not invent a figure. The consequence is that
+ * where `productAt` calls the product bainite, the whole diffusional fraction
+ * is reported as bainite.
+ *
+ * **Known simplification, disclosed rather than hidden:** enriched austenite
+ * has a lower Mˢ, and `martensiteStart` is computed from the *bulk*
+ * composition. On a path that forms ferrite and then quenches — 5140 at
+ * 10 °C/s leaves austenite at about 0.52 wt% C — the true Mˢ is some 50 °C
+ * below the one shown. Propagating the enrichment would move the Scheil floor
+ * and with it every critical cooling rate, which is a larger change than this
+ * one and is not made here. The UI says so.
+ */
+function splitProeutectoid(
+  steel: Steel,
+  ttt: TttModel,
+  product: Product,
+  startT: number,
+  fraction: number,
+): { product: Product; fraction: number }[] {
+  const alpha = ttt.equilibriumFerrite;
+  if (alpha <= 0 || fraction <= 0) return [{ product, fraction }];
+  if (product !== 'coarse pearlite' && product !== 'fine pearlite') {
+    return [{ product, fraction }];
+  }
+  // The ferrite floor, and the reason it is here rather than in `productAt`:
+  // proeutectoid ferrite is confined to the top of the diagram — measured
+  // dilatometry puts 4340's ferrite start near 700 °C and finds it only at
+  // 0.01–0.1 °C/s — while the pearlite/bainite divide is a separate, measured
+  // boundary far below. The nose is the lowest temperature at which this
+  // model has evidence of a pearlitic reaction and is the tightest bound the
+  // shipped data supports; below it the product is pearlite without
+  // proeutectoid ferrite, which this model reports as such rather than
+  // inventing a fraction.
+  if (startT < steel.nose.temp) return [{ product, fraction }];
+  const ferrite = Math.min(fraction, alpha);
+  const pearlite = Math.max(0, fraction - alpha);
+  const parts: { product: Product; fraction: number }[] = [
+    { product: 'proeutectoid ferrite', fraction: ferrite },
+  ];
+  if (pearlite > 0) parts.push({ product, fraction: pearlite });
+  return parts;
+}
+
+/**
+ * Name the diffusional products the bar will actually draw, and their total.
+ *
+ * Prose and bar are gated by the same `TRACE_FRACTION` on the same numbers, so
+ * they cannot disagree about what formed or how much of it — the failure mode
+ * that shipped once, where the prose quantified a product the bar had already
+ * filtered out.
+ */
+function describeParts(parts: { product: Product; fraction: number }[]): {
+  /** "49% proeutectoid ferrite and 25% coarse pearlite" — one figure each. */
+  phrase: string;
+  total: number;
+} {
+  const shown = parts.filter((p) => p.fraction >= TRACE_FRACTION);
+  const each = shown.map((p) => `${Math.round(p.fraction * 100)}% ${p.product}`);
+  return {
+    phrase:
+      each.length <= 1
+        ? (each[0] ?? '')
+        : `${each.slice(0, -1).join(', ')} and ${each[each.length - 1]}`,
+    total: shown.reduce((a, p) => a + p.fraction, 0),
+  };
 }
 
 /**
@@ -183,7 +517,106 @@ function productAt(steel: Steel, T: number): Product {
  * get a mixture; cool slowly through it and you get pearlite.
  */
 export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: number): Outcome {
-  const startRun = scheil(ttt.start, startTemp, rate, ttt.ms);
+  return withEnrichedMartensiteStart(steel, ttt, startTemp, rate);
+}
+
+/**
+ * Report the Mˢ of the austenite the martensite actually forms from.
+ *
+ * Rejecting proeutectoid ferrite enriches what is left, up to the eutectoid
+ * 0.76 wt% C, and carbon dominates Andrews' equation — so on a ferrite-forming
+ * path the austenite reaching Mˢ is 152 °C colder in 5140 and 152 °C colder in
+ * 4340 than the steel as a whole. Computing the displayed Mˢ from the bulk
+ * composition was wrong twice over: the row was wrong, and the
+ * retained-austenite warning is gated on M90, so it stayed silent on paths
+ * drawing up to 51% martensite that could not fully transform at room
+ * temperature — while firing for 1080, which does not need it. Two caveats on
+ * one panel contradicting each other.
+ *
+ * **The Scheil floor still uses the bulk Mˢ, and that is a reduction, not an
+ * oversight.** Feeding the enriched value back into the floor was implemented
+ * and withdrawn: the two are coupled — a lower Mˢ lets the path transform
+ * further, forming more ferrite, enriching further, lowering Mˢ again — and
+ * the map is not a contraction. Measured, the fixed point is bistable: at
+ * 5140 3.11745 °C/s it jumps 335.2 → 182.9 °C across a 0.2% change in rate,
+ * taking the pearlite fraction 2.67 points up as cooling gets *faster*. That
+ * is the discontinuity class this series has already shipped twice, so it is
+ * not shipped a third time.
+ *
+ * What the reduction leaves wrong, measured rather than hand-waved: with the
+ * floor at the bulk value the path stops transforming a little early, so the
+ * diffusional fraction is understated by a few points — 23.94% ferrite against
+ * 24.65% for 5140 at 10 °C/s, and at most about 2.7 points anywhere. That is
+ * the residual, and it is two orders of magnitude smaller than the 152 °C the
+ * displayed Mˢ was out by.
+ *
+ * Nothing here can move a critical cooling rate: a path that misses the nose
+ * forms no ferrite, so there is no enrichment, and the floor is untouched in
+ * any case. Asserted bit-identical.
+ *
+ * **Two consequences recorded rather than fixed.**
+ *
+ * The displayed Mˢ steps 152.28 °C at each steel's completion boundary —
+ * 5140 near 3.0388 °C/s, 4340 near 0.1422 — because a completed
+ * transformation leaves no austenite to have a composition, so the row falls
+ * back to the steel's own bulk figure. The two sides are different
+ * quantities, not one quantity jumping, but a reader dragging the slider sees
+ * a leap. Closing it means either propagating (bistable, see above) or
+ * showing nothing where nothing quenches, which leaves the diagram's three
+ * martensite lines undrawn.
+ *
+ * And it runs the other way below the ferrite floor. There the model reports
+ * pearlite with no proeutectoid ferrite, so the residue is *depleted* rather
+ * than enriched — 0.3500 wt% C for 5140, 0.3591 for 4340 — and Andrews on
+ * that residue gives a *higher* Mˢ than the bulk row shown. The row therefore
+ * understates by **21.14 °C** for 5140 at 15.4882 °C/s and **17.31 °C** for
+ * 4340 at 0.8710, taking the worst reachable slider detent in each case; a
+ * 0.00005-decade sweep finds 21.72 and 17.68 between detents. Left as it is
+ * on three grounds: it is an order of magnitude below the 152 °C this series
+ * treated as a defect, it errs low so nothing is claimed harder than it is,
+ * and `untransformedAusteniteCarbon` refuses to resolve a depleted residue at
+ * all, so acting on it would mean feeding the row a number the model declines
+ * to stand behind. Bounded by assertion so it cannot grow unnoticed.
+ *
+ * And the enriched Mˢ implies retained austenite the bar does not show.
+ * Koistinen–Marburger at 20 °C leaves **8.53%** of the sample untransformed
+ * for 5140 at 5.7214 °C/s and **11.87%** for 4340 at 0.2720, reported on the
+ * bar as martensite at the full martensitic hardness. The panel shows the
+ * retained-austenite caveat on exactly those paths, so the warning is there;
+ * the bar and the hardness do not yet act on it.
+ */
+function withEnrichedMartensiteStart(
+  steel: Steel,
+  ttt: TttModel,
+  startTemp: number,
+  rate: number,
+): Outcome {
+  const outcome = predictWithMs(steel, ttt, startTemp, rate, ttt.ms);
+  const carbon = untransformedAusteniteCarbon(outcome, steel.composition.C);
+  if (carbon === null || carbon <= steel.composition.C) return outcome;
+  const ms = martensiteStart({ ...steel.composition, C: carbon });
+  // Re-run with the display Mˢ supplied. The *floor* is unchanged, so the
+  // fractions and hardness are identical; what changes is that the summary can
+  // now name the floor explicitly instead of saying "Mˢ" beside a panel
+  // showing a figure 152 °C away from it.
+  return predictWithMs(steel, ttt, startTemp, rate, ttt.ms, ms);
+}
+
+function predictWithMs(
+  steel: Steel,
+  ttt: TttModel,
+  startTemp: number,
+  rate: number,
+  floor: number,
+  displayMs = floor,
+): Outcome {
+  const martensite = {
+    ms: displayMs,
+    msFloor: floor,
+    m50: martensiteFractionTemp(displayMs, 0.5),
+    m90: martensiteFractionTemp(displayMs, 0.9),
+  };
+  const startRun = scheil(ttt.start, startTemp, rate, floor);
 
   if (!startRun.reached) {
     return {
@@ -191,6 +624,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       hardness: steel.hardness.martensite,
       startTemp: null,
       complete: true,
+      ...martensite,
       summary:
         'The path outruns the nose — nowhere along it does the accumulated incubation reach one — so austenite survives to Mˢ and shears to martensite. Fully hard, and fully brittle until tempered.',
     };
@@ -198,15 +632,21 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
 
   const hitStart = startRun.reached;
   const product = productAt(steel, hitStart.T);
-  const finishRun = scheil(ttt.finish, startTemp, rate, ttt.ms);
+  const finishRun = scheil(ttt.finish, startTemp, rate, floor);
 
   if (finishRun.reached) {
+    const parts = splitProeutectoid(steel, ttt, product, hitStart.T, 1);
+    const alpha = parts.length > 1 ? parts[0].fraction : 0;
     return {
-      fractions: [{ product, fraction: 1 }],
+      fractions: parts,
       hardness: hardnessOf(steel, product),
       startTemp: hitStart.T,
       complete: true,
-      summary: `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ, giving ${product} throughout. Quenching afterwards changes nothing — there is no austenite left to harden.`,
+      ...martensite,
+      summary:
+        alpha > 0
+          ? `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ. Because this steel is hypoeutectoid, it must first reject proeutectoid ferrite — pearlite is eutectoid at 0.76 wt% C, and rejecting the carbon-poor ferrite first is what enriches the remaining austenite to that composition. The binary Fe–Fe₃C lever rule puts that at ${Math.round(alpha * 100)}%, which is an upper bound: alloying lowers the eutectoid carbon, so the true figure for this grade is lower. Quenching afterwards changes nothing — there is no austenite left to harden.`
+          : `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ, giving ${product} throughout. Quenching afterwards changes nothing — there is no austenite left to harden.`,
     };
   }
 
@@ -224,24 +664,98 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
   const banked = scheil(ttt.finish, startTemp, rate, hitStart.T).sum;
   const progress = banked >= 1 ? 1 : (finishRun.sum - banked) / (1 - banked);
   const fraction = Math.min(1, Math.max(0, progress));
+  const parts = splitProeutectoid(steel, ttt, product, hitStart.T, fraction);
+  const shown = describeParts(parts);
+  // The matrix is subject to the same rule as the product: if the bar does not
+  // draw the martensite, the prose must not say the structure is embedded in
+  // it. Just below full transformation that fraction goes under the display
+  // floor — 1080 at 23.44 °C/s leaves 0.4722%, against a 0.5% floor — and the
+  // sentence named a phase that was not on screen. Exactly one of the
+  // slider's 570 detents reaches this branch, on 1080 and on neither alloy
+  // grade; both figures are asserted so they cannot drift.
+  const matrixDrawn = 1 - fraction >= TRACE_FRACTION;
+  // Name the floor the integration actually stopped at. Where ferrite has
+  // enriched the austenite, the Mˢ on the panel is 152 °C away from it, and
+  // "cut short at Mˢ" beside that figure is simply wrong.
+  const cutAt =
+    Math.round(floor) === Math.round(displayMs) ? 'Mˢ' : `the bulk Mˢ (${Math.round(floor)} °C)`;
   return {
-    fractions: [
-      { product, fraction },
-      { product: 'martensite', fraction: 1 - fraction },
-    ],
+    fractions: [...parts, { product: 'martensite', fraction: 1 - fraction }],
     hardness:
       hardnessOf(steel, product) * fraction + steel.hardness.martensite * (1 - fraction),
     startTemp: hitStart.T,
     complete: false,
+    ...martensite,
     summary:
-      fraction < TRACE_FRACTION
-        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
-        : `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${Math.round(fraction * 100)}% ${product} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`,
+      shown.total < TRACE_FRACTION
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above ${cutAt}, so no more than a trace of ${parts[0].product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        : matrixDrawn
+          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at ${cutAt}, leaving roughly ${shown.phrase} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
+          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before ${cutAt}, giving ${shown.phrase} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
   };
 }
 
+/**
+ * Hardness of a transformation product for this steel.
+ *
+ * **Scope note: the ferrite split does not change the hardness readout, and
+ * that is deliberate.**
+ *
+ * The argument is a solid-solution one, not a reading of the doc comment. An
+ * earlier version of this note claimed `steels.ts`'s phrase "hardness of each
+ * product *for this carbon level*" implied a whole-structure figure; it does
+ * not, since martensite (57 vs 65) and bainite (40 vs 45) differ between the
+ * grades with no proeutectoid ferrite involved anywhere, so the phrase plainly
+ * means intrinsic hardness.
+ *
+ * The directional argument: pearlite is eutectoid whatever steel it grows in,
+ * and 5140's pearlitic ferrite carries more in solid solution than 1080's —
+ * +0.85 Cr, and +0.05 Mn, since 1080 already holds 0.75 Mn. (An earlier
+ * version of this note said "0.85 Cr and 0.8 Mn", comparing 5140's manganese
+ * against zero rather than against 1080's; the manganese term is about
+ * sixteen times smaller than that implied, and chromium carries the argument.)
+ * A *pure pearlite constituent* in 5140 should therefore be at least as hard
+ * as 1080's, not softer, so the shipped 12 HRC against 1080's 15 points to a
+ * figure that already has the proeutectoid ferrite in it.
+ *
+ * That is evidence, not proof, and it deliberately is not leaned on harder:
+ * 12 and 15 both sit below HRC 20, the range the note below calls unreliable,
+ * so a three-point difference there cannot bear a quantitative conclusion.
+ * What it does support is the direction — do not dilute — and the check that
+ * diluting would report ≈ 6 HRC for annealed 5140 against a real ≈ 13 HRC
+ * agrees with it.
+ *
+ * The hardness of the pearlite constituent alone is not determined by anything
+ * in this repo, and none is invented here. The claim this model makes is about
+ * the **microstructure**; the hardness readout is left as it was.
+ *
+ * One consequence of ferrite-leads to be honest about: on a partial path the
+ * diffusional product can be entirely proeutectoid ferrite, and this still
+ * prices it at the pearlitic figure. Ferrite is softer, so the hardness is
+ * overstated there by at most the ferrite fraction times that figure. The
+ * worst reachable point is where the product is entirely ferrite at the full
+ * lever-rule fraction, not where the ferrite fraction is largest in absolute
+ * terms — 5140 at 5.7219 °C/s and 4340 at 0.2719 °C/s, both 48.78% ferrite,
+ * bounding the overstatement at **5.85 and 6.83 HRC** against reported
+ * hardnesses of 35.05 and 36.03. An earlier version of this note said "under
+ * 3 HRC at 5140 @ 10 °C/s", which was the wrong point and about half the
+ * figure. Both numbers are now asserted, so they cannot go stale again.
+ *
+ * Follow-up, not fixed here: all three coarse-pearlite values sit below
+ * HRC 20, where the Rockwell C scale is unreliable and the indenter is barely
+ * engaged. They would be better quoted in HB.
+ */
 function hardnessOf(steel: Steel, product: Product): number {
   switch (product) {
+    case 'proeutectoid ferrite':
+      // Unreachable by construction: `predict` only ever asks for the hardness
+      // of the product `productAt` chose, and that is never ferrite. Returning
+      // `coarsePearlite` here — as this did — silently answered a question the
+      // scope note says has no answer, handing back 12 HRC for a ~80 HB phase.
+      throw new Error(
+        'hardnessOf: proeutectoid ferrite has no hardness in this model. ' +
+          'See the scope note above — the per-product figures already include it.',
+      );
     case 'coarse pearlite':
       return steel.hardness.coarsePearlite;
     case 'fine pearlite':
@@ -251,6 +765,69 @@ function hardnessOf(steel: Steel, product: Product): number {
     case 'martensite':
       return steel.hardness.martensite;
   }
+}
+
+/**
+ * The cooling rates the module offers, and the granularity it offers them at.
+ *
+ * Owned here rather than in the component because three places need to agree
+ * on them — the range input, the URL parameter's clamp, and the tests that
+ * reason about "reachable detents". They were retyped in all three, so
+ * changing the slider would have left the tests asserting a range the reader
+ * could no longer select.
+ *
+ * `step` is in decades: the input is logarithmic, so a detent is
+ * `10 ** (log10(min) + i · step)`.
+ */
+export const RATE_RANGE = { min: 0.01, max: 5000, step: 0.01 } as const;
+
+/** The reachable slider positions, slowest first. 570 of them. */
+export function rateDetents(): number[] {
+  const lo = Math.log10(RATE_RANGE.min);
+  const hi = Math.log10(RATE_RANGE.max);
+  const count = Math.floor((hi - lo) / RATE_RANGE.step) + 1;
+  return Array.from({ length: count }, (_, i) => 10 ** (lo + i * RATE_RANGE.step));
+}
+
+export interface FerriteBand {
+  /** Slowest rate on the slider, °C/s. */
+  slowRate: number;
+  /** Fastest rate at which any proeutectoid ferrite is still reported, °C/s. */
+  fastRate: number;
+  slowFraction: number;
+  fastFraction: number;
+}
+
+/**
+ * The range of cooling rates over which this steel reports proeutectoid
+ * ferrite, and how much it sheds across it.
+ *
+ * Exists because the caveat beside the bar quoted one steel's shedding for
+ * both: "sheds 49 to 38 between 1 and 7 °C/s" is 5140, while 4340 reports no
+ * ferrite anywhere in that window — its band ends at 0.86 °C/s — so the
+ * sentence rendered only at rates outside the range it named.
+ *
+ * The search is a bisection, which is licensed by the ferrite fraction being
+ * monotone non-increasing in rate; that is asserted separately. Returns null
+ * for a steel that forms no proeutectoid ferrite at all.
+ */
+export function ferriteBand(steel: Steel, ttt: TttModel, startTemp: number): FerriteBand | null {
+  const ferriteAt = (rate: number) =>
+    predict(steel, ttt, startTemp, rate).fractions.find(
+      (f) => f.product === 'proeutectoid ferrite',
+    )?.fraction ?? 0;
+
+  const slowFraction = ferriteAt(RATE_RANGE.min);
+  if (slowFraction <= 0) return null;
+
+  let lo: number = RATE_RANGE.min; // forms ferrite
+  let hi = RATE_MAX; // does not
+  for (let i = 0; i < 60; i++) {
+    const mid = Math.sqrt(lo * hi);
+    if (ferriteAt(mid) > 0) lo = mid;
+    else hi = mid;
+  }
+  return { slowRate: RATE_RANGE.min, fastRate: lo, slowFraction, fastFraction: ferriteAt(lo) };
 }
 
 /**

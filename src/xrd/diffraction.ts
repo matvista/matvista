@@ -154,7 +154,174 @@ export function dSpacing(a: number, h: number, k: number, l: number): number {
 }
 
 /**
+ * Domain limit on the enumeration, as a defence against an absurd a/λ.
+ *
+ * `braggIndexBound` is the physically correct bound, but it is driven by
+ * caller-supplied numbers: a tiny λ or a huge `a` would ask for a loop of
+ * unbounded size. The bound is `ceil(2a/λ)`, so a ceiling of 64 admits every
+ * ratio up to **2a/λ = 64**, i.e. a/λ = 32. The widest shipped combination is
+ * silicon with Mo Kα at 2a/λ ≈ 15.28, needing index 16, so the margin is
+ * **four times** — a figure a test asserts rather than a comment claims.
+ * (An earlier version of this comment said "2a/λ ≥ 128", which was wrong by a
+ * factor of two and contradicted the "four times" in the same sentence.)
+ *
+ * Enumerating sorted triples to 64 is C(67,3) = 47 905 iterations, so the
+ * guard costs nothing when it is not needed.
+ *
+ * The comparison in `computePattern` is `>`, not `>=`: a ratio landing exactly
+ * on the ceiling is inside the domain. Past it `computePattern` **throws**.
+ * Clamping here would silently drop reflections and return a
+ * plausible-looking short pattern, which is the exact defect this whole change
+ * removed; a fixed cap is not an acceptable fallback for a fixed cap.
+ */
+export const INDEX_CEILING = 64;
+
+/**
+ * Largest reflection index that can satisfy Bragg's law.
+ *
+ * d = a/√(h²+k²+l²) and sinθ = λ/2d ≤ 1 give √(h²+k²+l²) ≤ 2a/λ, and no
+ * single index can exceed that root, so `ceil(2a/λ)` bounds every index from
+ * above. Equivalently: no spacing below d_min = λ/2 is reachable.
+ *
+ * **`ceil` rather than `floor`, and the reason is floating point, not
+ * algebra.** For an exact integer ratio the two agree, so "so that an exact
+ * ratio is still enumerated" — which is what this comment said — is not a
+ * reason and would lead a reader to simplify it away. The real case is a ratio
+ * that is mathematically an integer but evaluates just under one:
+ * 2 × 0.53921 / 0.15406 is 6.999999999999999, and `floor` drops the (700)
+ * family sitting precisely on sinθ = 1. Rounding up costs one empty index
+ * shell, which the sinθ ≤ 1 filter discards anyway.
+ *
+ * Returns 0 for a non-physical argument, which yields an empty pattern rather
+ * than a NaN-bounded loop.
+ */
+export function braggIndexBound(a: number, lambda: number): number {
+  if (!(a > 0) || !(lambda > 0)) return 0;
+  return Math.ceil((2 * a) / lambda);
+}
+
+/**
+ * The index sweep both the pattern and the reach summary run over.
+ *
+ * Shared so the two can never disagree about how far to look, and so the
+ * refusal past `INDEX_CEILING` is written once.
+ */
+function sweepBound(a: number, lambda: number): number {
+  const maxIndex = braggIndexBound(a, lambda);
+  if (maxIndex > INDEX_CEILING) {
+    throw new RangeError(
+      `computePattern: 2a/λ = ${((2 * a) / lambda).toFixed(1)} needs indices to ${maxIndex}, ` +
+        `past the ${INDEX_CEILING} ceiling. Truncating would drop real reflections silently, ` +
+        `so this refuses instead — raise INDEX_CEILING deliberately if the domain really extends.`,
+    );
+  }
+  return maxIndex;
+}
+
+/** How much of a lattice's pattern a given wavelength can actually reach. */
+export interface BraggReach {
+  /**
+   * The closest plane spacing any angle can reach, λ/2 nm. sin θ = λ/2d and
+   * sin θ ≤ 1, so a plane spaced below this cannot diffract at all — which is
+   * why X-rays and not visible light, and why the anode choice deletes peaks.
+   */
+  dMin: number;
+  /** Allowed {hkl} families with d ≥ λ/2, i.e. reachable somewhere in 2θ ≤ 180°. */
+  reachable: number;
+  /** The smallest spacing among those, nm. Null when nothing is reachable. */
+  smallestD: number | null;
+}
+
+/**
+ * Counts what the wavelength can reach, without computing intensities.
+ *
+ * `computePattern` already drops `sinTheta > 1` with a bare `continue`, so the
+ * information exists and is thrown away; this returns it. Same index bound and
+ * same one-representative-per-family enumeration, so the count agrees with
+ * `computePattern(lattice, a, lambda, 180).length` for every shipped
+ * combination — asserted for all 28 of them.
+ *
+ * Note this is the whole hemisphere, not the 2θ ≤ 140° window the chart draws.
+ * The two differ (copper under Cu Kα: 8 against 7) and the caption says which
+ * is which.
+ */
+export function braggReach(lattice: XrdLattice, a: number, lambda: number): BraggReach {
+  const maxIndex = sweepBound(a, lambda);
+  const dMin = lambda / 2;
+  let reachable = 0;
+  let smallestD: number | null = null;
+  for (let h = 0; h <= maxIndex; h++) {
+    for (let k = 0; k <= h; k++) {
+      for (let l = 0; l <= k; l++) {
+        if (h + k + l === 0) continue;
+        if (!isAllowed(lattice, h, k, l)) continue;
+        const d = dSpacing(a, h, k, l);
+        if (d < dMin) continue;
+        reachable++;
+        if (smallestD == null || d < smallestD) smallestD = d;
+      }
+    }
+  }
+  return { dMin, reachable, smallestD };
+}
+
+/**
+ * The reflection rule in words, per lattice.
+ *
+ * Lives here rather than in a component because two modules name it: the XRD
+ * extinction panel, and the Miller module when it reports an entered (hkl) as
+ * extinct.
+ */
+export const REFLECTION_RULES: Record<XrdLattice, string> = {
+  sc: 'All reflections present.',
+  bcc: '(h + k + l) must be even.',
+  fcc: 'h, k, l must be all odd or all even.',
+  diamond: 'FCC rule, plus all-even reflections require h + k + l ≡ 0 (mod 4).',
+};
+
+/**
+ * Bragg's law solved for the angle: 2θ = 2·asin(λ/2d), degrees.
+ *
+ * Null where λ > 2d — there is no angle whose sine exceeds 1, which is the
+ * same limit `braggReach` counts — and null for a non-physical spacing.
+ * Asserted equal to `computePattern`'s own angle for every peak of every
+ * shipped sample × source.
+ */
+export function braggTwoTheta(d: number, lambda: number): number | null {
+  if (!(d > 0) || !(lambda > 0)) return null;
+  const sinTheta = lambda / (2 * d);
+  if (!(sinTheta <= 1)) return null;
+  return (2 * Math.asin(sinTheta) * 180) / Math.PI;
+}
+
+/**
+ * Crystal-structure id → the lattice whose reflection rule applies.
+ *
+ * Only the four monatomic cubic structures have rules of the form `isAllowed`
+ * implements. Rock salt, CsCl and perovskite carry two or more species with
+ * different scattering factors, so their systematic absences are not these —
+ * MgO's differ from NaCl's — and HCP is not cubic at all. Those return null
+ * and the caller shows nothing, rather than a confident wrong answer.
+ */
+export function xrdLatticeFor(structureId: string): XrdLattice | null {
+  switch (structureId) {
+    case 'sc':
+    case 'bcc':
+    case 'fcc':
+    case 'diamond':
+      return structureId;
+    default:
+      return null;
+  }
+}
+
+/**
  * Generates the powder pattern.
+ *
+ * The index sweep is bounded by `braggIndexBound`, not by a constant: the
+ * reachable index depends on both the lattice parameter and the wavelength,
+ * so a fixed cap truncates short-wavelength patterns. A cap of 8 returned 38
+ * of silicon's 79 lines under Mo Kα.
  *
  * @param lattice  cubic lattice type
  * @param a        lattice parameter, nm
@@ -168,18 +335,14 @@ export function computePattern(
   maxTwoTheta = 140,
 ): Peak[] {
   const peaks: Peak[] = [];
-  const seenFamilies = new Set<string>();
-  const MAX_INDEX = 8;
+  const maxIndex = sweepBound(a, lambda);
 
-  for (let h = 0; h <= MAX_INDEX; h++) {
-    for (let k = 0; k <= MAX_INDEX; k++) {
-      for (let l = 0; l <= MAX_INDEX; l++) {
+  // Enumerating h ≥ k ≥ l visits each {hkl} family exactly once, so no
+  // separate seen-set is needed to deduplicate.
+  for (let h = 0; h <= maxIndex; h++) {
+    for (let k = 0; k <= h; k++) {
+      for (let l = 0; l <= k; l++) {
         if (h + k + l === 0) continue;
-        // One representative per family: sorted descending.
-        const fam = [h, k, l].sort((x, y) => y - x);
-        const key = fam.join(',');
-        if (seenFamilies.has(key)) continue;
-        if (h !== fam[0] || k !== fam[1] || l !== fam[2]) continue;
         if (!isAllowed(lattice, h, k, l)) continue;
 
         const d = dSpacing(a, h, k, l);
@@ -189,7 +352,6 @@ export function computePattern(
         const twoTheta = (2 * theta * 180) / Math.PI;
         if (twoTheta > maxTwoTheta) continue;
 
-        seenFamilies.add(key);
         const m = multiplicity(h, k, l);
         const raw =
           m *
@@ -204,6 +366,42 @@ export function computePattern(
   peaks.sort((p, q) => p.twoTheta - q.twoTheta);
   const max = Math.max(...peaks.map((p) => p.intensity), 1);
   return peaks.map((p) => ({ ...p, intensity: (p.intensity / max) * 100 }));
+}
+
+/**
+ * Label for an {hkl} family.
+ *
+ * Bare juxtaposition — "311" — is the crystallographic convention and it
+ * works only while every index is a single digit. Once the Bragg bound lets
+ * the sweep past 9 (silicon under Mo Kα reaches 14, the largest index any
+ * shipped combination returns) it stops identifying the family: (11,1,1) and (1,1,1) both render "1111"/"111" in a way that reads
+ * as the low-index reflection, and (10,0,0) renders "1000", which reads as
+ * (100). Commas are the standard separator for exactly this case.
+ *
+ * Single-digit families are left untouched, so every label the module has
+ * ever shown is unchanged.
+ */
+export function familyLabel(h: number, k: number, l: number): string {
+  return h > 9 || k > 9 || l > 9 ? `${h},${k},${l}` : `${h}${k}${l}`;
+}
+
+/**
+ * Relative intensity as the table shows it.
+ *
+ * The pattern is normalised so the strongest line is 100, and the angular
+ * damping term falls by orders of magnitude across a wide pattern — 62 of
+ * silicon's 79 lines under Mo Kα have a normalised intensity that rounds to
+ * zero.
+ * They are real: `isAllowed` passed them and Bragg reaches them. Printing "0"
+ * would file them alongside the systematic absences this module explains at
+ * length, when the whole point is that an absence and an unmeasurably weak
+ * reflection are different things. Anything present but under half a unit
+ * reads "<1"; a true zero, which normalisation cannot produce for a peak that
+ * was emitted at all, still reads "0".
+ */
+export function formatIntensity(intensity: number): string {
+  if (intensity <= 0) return '0';
+  return intensity < 0.5 ? '<1' : intensity.toFixed(0);
 }
 
 /**

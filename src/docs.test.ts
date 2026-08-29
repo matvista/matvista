@@ -2,17 +2,19 @@ import { describe, expect, it } from 'vitest';
 // Read as text through Vite's `?raw`, not `node:fs`: the app tsconfig sets
 // `types: ["vite/client"]`, so Node's built-ins are not in this program.
 import landingSource from './components/Landing.tsx?raw';
+import roadmapSource from '../ROADMAP.md?raw';
 import fatiguePlate from './assets/figures/FatigueFigure.tsx?raw';
 import { NAV_GROUPS, findItem, findItemOrNull } from './nav';
 import { STRUCTURES } from './crystal/structures';
 import { SLIP_MODES, slipSystems } from './crystal/miller';
 import { MECH_MATERIALS } from './mechanical/materials';
 import { INDICES, SELECTION_MATERIALS } from './selection/materials';
-import { XRD_SAMPLES, XRD_SOURCES } from './xrd/diffraction';
+import { XRD_SAMPLES, XRD_SOURCES, braggReach } from './xrd/diffraction';
 import { CEMENTITE_X, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS, lever, steelMicrostructure } from './phase/systems';
 import { JOMINY_DISTANCES, JOMINY_RATES, STEELS } from './heattreat/steels';
 import { DIFFUSION_SYSTEMS } from './diffusion/model';
 import { BRITTLE_SOLIDS, FATIGUE_BEHAVIOUR, FRACTURE_ALLOYS, GROWTH_CLASSES } from './failure/materials';
+import { CRACK_GEOMETRIES, geometryFactor } from './failure/model';
 import { EMF_SERIES, GALVANIC_SERIES, POURBAIX } from './corrosion/data';
 import { DOPABLE, SEMICONDUCTORS } from './electronic/materials';
 import elementsRaw from './data/elements.json';
@@ -62,6 +64,62 @@ describe('documented counts', () => {
     expect(DOPABLE).toHaveLength(4);
     expect(DOPABLE.map((s) => s.id).sort()).toEqual(['gaas', 'ge', 'insb', 'si']);
   });
+  /**
+   * The bundle table's per-module chunk count is one per lazy route, and it had
+   * drifted to "eleven" with twelve modules shipped — the same drift the table
+   * itself records having had at eleven modules. A count nothing checks is the
+   * class this file exists to close, so this one is checked.
+   *
+   * The sizes beside it cannot be asserted here: they come from a real build,
+   * which vitest has no access to. This guards the count alone, and says so.
+   */
+  it('the ROADMAP bundle table counts one per-module chunk per module', () => {
+    const WORDS = [
+      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+      'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+    ];
+    const n = NAV_GROUPS.flatMap((g) => g.items).length;
+    expect(WORDS[n]).toBeDefined();
+    expect(roadmapSource).toContain(`| ${WORDS[n]} per-module chunks |`);
+    expect(roadmapSource).toContain(`(${WORDS[n]} of them total`);
+  });
+
+  /**
+   * The README says "five named crack geometries … plus a free-Y fallback".
+   * Named means the closed form is in the table, so the count is the number of
+   * entries that return a Y — not the length of the array, which would go on
+   * matching if a geometry lost its formula and became a second free slider.
+   */
+  it('5 named crack geometries with a closed-form Y, plus the custom fallback', () => {
+    const named = CRACK_GEOMETRIES.filter((g) => geometryFactor(g, 0.3) != null);
+    expect(named).toHaveLength(5);
+    expect(CRACK_GEOMETRIES).toHaveLength(6);
+    expect(CRACK_GEOMETRIES.filter((g) => geometryFactor(g, 0.3) == null).map((g) => g.id))
+      .toEqual(['custom']);
+  });
+
+  /**
+   * The README's link table offers `#/xrd?sample=fe&source=cr` as the case
+   * "where the λ ≤ 2d limit bites". That is a claim about the physics, not a
+   * spelling of a URL, so it is checked as one: the ids must exist, and the
+   * chromium anode must actually reach fewer of iron's families than the
+   * copper anode the module opens on. A link that no longer demonstrated
+   * anything would be worse than no link.
+   */
+  it('the README’s λ ≤ 2d link is a sample and anode where peaks are lost', () => {
+    const fe = XRD_SAMPLES.find((s) => s.id === 'fe');
+    const cr = XRD_SOURCES.find((s) => s.id === 'cr');
+    const cu = XRD_SOURCES.find((s) => s.id === 'cu');
+    expect(fe).toBeDefined();
+    expect(cr).toBeDefined();
+    expect(cu).toBeDefined();
+    const onCr = braggReach(fe!.lattice, fe!.a, cr!.lambda);
+    const onCu = braggReach(fe!.lattice, fe!.a, cu!.lambda);
+    expect(onCr.reachable).toBeLessThan(onCu.reachable);
+    expect(onCr.smallestD).not.toBeNull();
+    expect(onCr.smallestD!).toBeGreaterThanOrEqual(onCr.dMin);
+  });
+
   it('fatigue behaviour is defined for every mechanical metal', () => {
     expect(FATIGUE_BEHAVIOUR).toHaveLength(MECH_MATERIALS.length);
     for (const f of FATIGUE_BEHAVIOUR) {

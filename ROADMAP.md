@@ -24,13 +24,21 @@ the deferred Materials Project integration below, which does not hold under
 static hosting. Product-level work is tracked in
 [docs/GAUNTLET.md](docs/GAUNTLET.md).
 
+Since then one further pass has shipped that is not a module — three correctness
+fixes and twelve features across the modules that already existed. It is recorded
+[below](#correctness-pass-and-twelve-module-features--shipped) in the same form,
+because two of the fixes changed what the app teaches and three of the departures
+are worth not rediscovering.
+
 ---
 
 ## 1. Miller indices & slip systems — shipped
 
 Built in `crystal/miller.ts`, `components/MillerScene.tsx` and
-`components/MillerIndices.tsx`; costs 5.0 kB gzipped, plus a 2.3 kB chunk of index
-arithmetic shared with the XRD module. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
+`components/MillerIndices.tsx`; costs 5.5 kB gzipped, plus a 4.2 kB `diffraction` chunk
+shared with the XRD module. (It was a 2.3 kB `miller` chunk until `be91ef6` put the
+allowed-reflection readout on this page; `xrd/diffraction.ts` then had two importers,
+rollup lifted it, and `crystal/miller.ts` went into this module instead.) Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
 with intercepts drawn and the reciprocal arithmetic shown step by step. Adds the
 12 FCC / 48 BCC slip systems, Schmid factor for a chosen loading axis, and
 resolved shear stress.
@@ -181,6 +189,140 @@ Concrete and design-relevant — it answers "why did this bolt dissolve".
 
 ---
 
+## Correctness pass and twelve module features — shipped
+
+Not a new module: three correctness fixes and twelve features spread across ten
+of the twelve existing modules, with the accessibility and documentation work
+that came with them. Periodic Trends and Mechanical Properties were untouched.
+
+### The three correctness fixes
+
+Each of these had the app print a number that teaches something false, which is
+the one class `docs/GAUNTLET.md` says to stop for.
+
+- **The TTT model could not form proeutectoid ferrite.** A slow-cooled 5140 or
+  4340 came out as 100% pearlite where the lever rule gives roughly half
+  ferrite, with the hardness inflated to match. This one fix took three of the
+  five review rounds, because the fault was correctly identified in round 1 and
+  then looked for in `splitProeutectoid` for three more rounds while it sat in
+  `productAt`.
+- **The XRD reflection sweep was capped at index 8.** Silicon on a molybdenum
+  anode silently dropped 41 of its 79 peaks. The sweep is bounded by Bragg now —
+  no plane spaced closer than λ/2 can diffract at any angle — which is the same
+  limit the extinction panel was then able to show the reader, so the fix and
+  the feature are the same physics.
+- **3D auto-rotate could not be stopped**, a WCAG 2.2.2 failure on `#/crystals`
+  and `#/defects`. Both views own a checkbox for it now, off by default under
+  `prefers-reduced-motion`.
+
+### The twelve features
+
+The README says what each does for a reader. In plan order:
+
+| | Module | Shipped as |
+|---|---|---|
+| S7 | Crystal structures | packing factor and coordination number derived from the cell, not tabulated |
+| S12 | Miller indices | is this (hkl) allowed, and at what 2θ — with the link into XRD |
+| M2 | Defects & diffusion | the equal-`Dt` locus: every treatment giving the same profile |
+| M7 | Phase diagrams | the Gibbs phase rule read off the point being dragged |
+| M8 | Phase diagrams | microconstituents for Pb–Sn, not Fe–C alone |
+| M12 | Heat treatment | austenitising temperature, read against Fe–Fe₃C |
+| P8 | Failure analysis | named crack geometries, and leak before break |
+| P10 | Semiconductors | a band gap is a wavelength, and sometimes a colour |
+| A2 | XRD | why the anode choice deletes peaks — the λ ≤ 2d limit |
+| A8 | Ashby selection | where the index comes from, not just what it is |
+| A10 | Corrosion | from a measured current density to millimetres per year |
+| A12 | Corrosion | concentration cells — one metal, no couple, still corroding |
+
+### Three departures worth writing down
+
+**1. M12's austenitising temperature does not move the prediction, and saying so
+was the work.** The plan assumed a start-temperature slider would change the
+answer. `predict` is independent of it: every C-curve in this model is anchored
+at A₁ and nothing above A₁ transforms, so the products and the hardness are
+identical whether you austenitise at 730 °C or at 1050 °C. Only the tangent
+construction — where the cooling path first touches a curve — moves with it.
+
+Manufacturing a dependence to justify the control would have been the worst
+available option. Instead the invariance is *asserted*, per steel, in
+`components/heattreat-austt.behaviour.test.tsx`, and the one place it is not
+benign is flagged in the headline: below A₃ the section never fully became
+austenite, so part of it cannot transform and stays soft whatever the quench,
+and the model hardens it anyway.
+
+**2. The ferrite work needed two boundaries, not one.** The plan treated the
+proeutectoid-ferrite fix as a single boundary. Moving the *pearlite* floor to
+the TTT nose appeared to fix it — but only because the proeutectoid split fires
+on pearlitic labels, so one boundary was doing two jobs, and the cost was larger
+than first admitted. It moved the ferrite→bainite flip from a trace to a tenth
+of the sample: across two adjacent real slider detents, one step changed the
+product name, the bar colour, the headline hardness and three diagram lines. It
+also made `fine pearlite` unreachable for both hypoeutectoid grades, with a test
+asserting the deletion as intended behaviour.
+
+They are independent boundaries and are separate now. `pearliteFloor` takes a
+measured bainite start — 510 °C for 5140 and 478 °C for 4340, each the midpoint
+of a published band; 1080 has none and needs none, forming no proeutectoid phase
+— and the ferrite floor is its own guard at the nose.
+
+The second half of this departure is that **three invariants committed to
+earlier are narrower than they were stated**, and they are now stated in their
+narrowed form at the code that claims them:
+
+- *Total pearlite is not monotone in cooling rate.* The floor relabels the
+  product, so pearlite steps **up** as cooling gets faster. The monotonicity
+  claim now rests on ferrite and on the diffusional total, which do hold.
+- *The austenite is not always enriched.* Below the floor the model reports
+  pearlite with no proeutectoid ferrite, and eutectoid pearlite drawn from a
+  leaner bulk leaves the remainder leaner still. Global carbon conservation
+  holds everywhere without exception; only the direction is scoped.
+- *"Pearlite only after ferrite saturates"* holds above the floor, which is the
+  only place ferrite leads at all.
+
+The floor is a real discontinuity and is bounded by assertion rather than by
+description: under 2.6 HRC, measured at 1.7572 for 5140 and 1.467 for 4340.
+
+**3. Callister's K = 534 wants square inches — a factor of 6.096, not 39.37.**
+CPR = KW/(ρAt) is given with K = 87.6 for mm/yr and K = 534 for mils/yr, and the
+pair reads like one equation with the units constant swapped. It is not: K = 87.6
+takes the area in cm² and **K = 534 takes it in square inches**. Handing K = 534
+an area in cm² gives an answer 6.096 times too large — and 6.096 is 534/87.6, not
+the 39.37 mils/mm a reader reaching for a length conversion would reach for. The
+two are related, which is what makes the trap convincing — but only through the
+*exact* constants, not the published ones. The exact pair is 534.934 and 87.66,
+whose ratio 6.1024 times 6.4516 cm²/in² is 39.3701, the mils in a millimetre.
+The rounded pair that actually appears in the book gives 6.096 × 6.4516 =
+**39.328**, which is close enough to 39.37 to look like a confirmation and is
+not one. `corrosion/model.test.ts` asserts both products separately for exactly
+that reason.
+
+Both this plan and a comment already in `corrosion/model.ts` had it wrong; the
+comment said only that K = 534 "gives mils per year" and named no area unit.
+Nothing in the app passes K = 534. The constant is exported so the trap can be
+asserted in `corrosion/model.test.ts` rather than only described — including the
+exact 534.934 that the published rounded pair stands in for.
+
+The separate ASTM G102 constants the shipped penetration rate actually uses,
+3.27 × 10⁻³ for mm/yr and 1.288 × 10⁻¹ for mils/yr, do both take cm², so those
+two really do differ by nothing but 1 mm = 39.37 mils — asserted to a tenth of a
+percent, which is what the rounding in the published pair leaves.
+
+### Descoped, deliberately
+
+Tier 2 (interstitial site geometry, cold work, Ashby screening, the Goodman
+diagram, austempering, the Hall effect and the rest) and the shared UI
+primitives — one `Slider`, a typeable number box beside every slider,
+generalised worked-substitution tables, presets and a copy-link button — are
+**not** in this pass. The shipped unit is the correctness fixes plus the twelve
+features.
+
+Descoping the primitives means the twelve panels ship with per-module controls.
+They were written to migrate without rework: `Corrosion.tsx`'s `Slider` already
+carries `display` and `aria-valuetext`, and three worked-substitution blocks
+already share `.mi-deriv-table`, so they can be lifted together later.
+
+---
+
 ## Deferred: Materials Project integration
 
 Browsing 150k+ computed materials is the one candidate that does not hold under
@@ -205,20 +347,24 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 215 kB | 68.2 kB | always |
-| stylesheet | 24.5 kB | 5.2 kB | always |
-| `geometry` — three.js + drei + fiber | 904 kB | 241.5 kB | only on a 3D module |
+| `index` — React, shell, landing page | 301.1 kB | 85.2 kB | always |
+| stylesheet | 37.3 kB | 7.8 kB | always |
+| `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| eleven per-module chunks | — | 49.8 kB total | one per module opened |
-| shared helpers (`miller`, `metals`, `materials`, `color`, `CrystalScene`) | — | 7.1 kB total | with whichever module needs them |
+| twelve per-module chunks | — | 72.5 kB total | one per module opened |
+| shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
+
+The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
+`2218d7b` and is `OrbitControls-*.js` now, without any file being renamed.
 
 The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — 73.4 kB gzipped, measured at **72 kB over the wire**. three.js is
-reachable from only three modules and is no longer part of first paint.
+stylesheet — the stylesheet is render-blocking, so both count — **92.95 kB gzipped**,
+measured at **93.6 kB over the wire** with the document and its headers. three.js is
+reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.8–8.6 kB gzipped** (eleven of them total
-49.8 kB), so the one remaining module adds roughly 5 kB — negligible beside the
-3D library, and none of it in first paint since each arrives in its own chunk.
+A module of the existing kind costs **1.95–12.04 kB gzipped** (twelve of them total
+72.5 kB) — negligible beside the 3D library, and none of it in first paint since each
+arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the
 three.js chunk at 904 kB raw, so there is a wide margin.

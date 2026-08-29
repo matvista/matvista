@@ -15,6 +15,12 @@ interface Props {
   showBonds: boolean;
   showCoordination: boolean;
   defect?: DefectKind;
+  /**
+   * Whether the cell turns on its own. A prop, not a literal: auto-updating
+   * motion has to be stoppable (WCAG 2.2.2), and both views that render this
+   * scene now own a checkbox for it.
+   */
+  autoRotate: boolean;
 }
 
 export function CrystalScene({
@@ -24,6 +30,7 @@ export function CrystalScene({
   showBonds,
   showCoordination,
   defect,
+  autoRotate,
 }: Props) {
   return (
     <div className="canvas-wrap">
@@ -45,13 +52,26 @@ export function CrystalScene({
           showCoordination={showCoordination}
           defect={defect}
         />
-        <OrbitControls enablePan={false} minDistance={1.6} maxDistance={7} autoRotate autoRotateSpeed={0.6} />
+        <OrbitControls
+          enablePan={false}
+          minDistance={1.6}
+          maxDistance={7}
+          autoRotate={autoRotate}
+          autoRotateSpeed={0.6}
+        />
       </Canvas>
     </div>
   );
 }
 
-function Cell({ structure, mode, showCell, showBonds, showCoordination, defect }: Props) {
+function Cell({
+  structure,
+  mode,
+  showCell,
+  showBonds,
+  showCoordination,
+  defect,
+}: Omit<Props, 'autoRotate'>) {
   const defectResult = useMemo(
     () => (defect && defect !== 'none' ? applyDefect(structure, defect) : null),
     [structure, defect],

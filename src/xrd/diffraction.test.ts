@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  XRD_SAMPLES, XRD_SOURCES, computePattern, isAllowed, latticeParameter,
-  multiplicity, structureFactorSquared,
+  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, braggReach, braggTwoTheta,
+  computePattern, familyLabel, formatIntensity, isAllowed, latticeParameter, multiplicity,
+  structureFactorSquared, xrdLatticeFor,
 } from './diffraction';
+import { METALS } from '../crystal/metals';
+import { STRUCTURES, getStructure } from '../crystal/structures';
+import { dSpacing as millerDSpacing } from '../crystal/miller';
 
 /**
  * The module's own doc comment claims specific peak positions against
@@ -124,3 +128,751 @@ describe('domain guard', () => {
     }
   });
 });
+
+/**
+ * The reachable reflection index is set by the Bragg limit, not by a constant.
+ * d = a/√(h²+k²+l²) and sin θ = λ/2d ≤ 1 together give
+ *
+ *     √(h²+k²+l²) ≤ 2a/λ,
+ *
+ * so no index can exceed 2a/λ. A fixed cap truncates the pattern whenever
+ * 2a/λ runs past it — measured: silicon (a = 0.5431 nm) with Mo Kα
+ * (λ = 0.07107 nm) has 2a/λ ≈ 15.3, so a cap of 8 silently drops 41 of its
+ * 79 lines.
+ */
+describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
+  /**
+   * A second enumeration, used as the oracle for completeness.
+   *
+   * **What it does and does not check.** It shares `isAllowed` with the module
+   * under test and repeats the same cubic d-spacing and the same
+   * one-representative-per-family rule, so it cannot catch an error in the
+   * reflection conditions or in d = a/√(h²+k²+l²). What it is independent of
+   * is the thing that was wrong: the *bound*. It sweeps well past any index
+   * either the old constant or the new bound would reach and lets the physical
+   * filters (sinθ ≤ 1, 2θ ≤ max) decide what survives.
+   *
+   * Its own limit is derived from the Bragg reach rather than hardcoded —
+   * hardcoding it would reintroduce, in the test, exactly the defect being
+   * fixed in the source — with slack on top, and `notBinding` below asserts
+   * the slack was never needed.
+   */
+  function bruteForceFamilies(
+    lattice: 'sc' | 'bcc' | 'fcc' | 'diamond',
+    a: number,
+    lambda: number,
+    maxTwoTheta = 140,
+  ): Set<string> {
+    // √(h²+k²+l²) ≤ 2a/λ bounds every index; +6 is slack the oracle proves
+    // it never uses.
+    const BRUTE_INDEX = Math.ceil((2 * a) / lambda) + 6;
+    const fams = new Set<string>();
+    for (let h = 0; h <= BRUTE_INDEX; h++) {
+      for (let k = 0; k <= h; k++) {
+        for (let l = 0; l <= k; l++) {
+          if (h + k + l === 0) continue;
+          if (!isAllowed(lattice, h, k, l)) continue;
+          const d = a / Math.sqrt(h * h + k * k + l * l);
+          const sinTheta = lambda / (2 * d);
+          if (sinTheta > 1) continue;
+          const twoTheta = (2 * Math.asin(sinTheta) * 180) / Math.PI;
+          if (twoTheta > maxTwoTheta) continue;
+          fams.add(`${h},${k},${l}`);
+        }
+      }
+    }
+    return fams;
+  }
+
+  for (const sample of XRD_SAMPLES) {
+    for (const source of XRD_SOURCES) {
+      it(`${sample.id} × ${source.id}: every Bragg-reachable family is returned`, () => {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda);
+        const keys = peaks.map((p) => `${p.h},${p.k},${p.l}`);
+        const got = new Set(keys);
+        const want = bruteForceFamilies(sample.lattice, sample.a, source.lambda);
+        // Comparing sets alone cannot see a family emitted twice, so check the
+        // count before collapsing.
+        expect(got.size).toBe(peaks.length);
+        // Same set, both directions — no misses and no spurious extras.
+        expect([...got].sort()).toEqual([...want].sort());
+        // The oracle's slack was never load-bearing: nothing survives at or
+        // near its own ceiling, so it did not truncate either.
+        const reach = Math.max(...peaks.map((p) => p.h), 0);
+        expect(reach).toBeLessThan(Math.ceil((2 * sample.a) / source.lambda) + 6);
+      });
+    }
+  }
+
+  it('recovers silicon’s 79 lines under Mo Kα (shipped cap of 8 returned 38)', () => {
+    const si = XRD_SAMPLES.find((s) => s.id === 'si')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    expect(computePattern(si.lattice, si.a, mo.lambda)).toHaveLength(79);
+  });
+
+  it('recovers copper’s (911) and (931) under Mo Kα', () => {
+    const cu = XRD_SAMPLES.find((s) => s.id === 'cu')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    const peaks = computePattern(cu.lattice, cu.a, mo.lambda);
+    const fams = peaks.map((p) => `${p.h}${p.k}${p.l}`);
+    expect(fams).toContain('911');
+    expect(fams).toContain('931');
+    expect(peaks).toHaveLength(40);
+  });
+
+  it('never returns a spacing below the Bragg limit d_min = λ/2', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda, 180);
+        for (const p of peaks) {
+          expect(p.d).toBeGreaterThanOrEqual(source.lambda / 2);
+        }
+      }
+    }
+  });
+
+  it('reaches d_min = λ/2 exactly when a family lands on it', () => {
+    // sinθ = 1 requires d = λ/2 exactly. Simple cubic with a = λ/2 puts
+    // (100) precisely on the limit, so the pattern must still contain it.
+    const lambda = 0.15406;
+    const peaks = computePattern('sc', lambda / 2, lambda, 180);
+    const first = peaks.find((p) => `${p.h}${p.k}${p.l}` === '100')!;
+    expect(first).toBeDefined();
+    expect(first.d).toBeCloseTo(lambda / 2, 15);
+    expect(first.twoTheta).toBeCloseTo(180, 6);
+  });
+});
+
+/**
+ * Labelling families once the index can exceed 9.
+ *
+ * `${h}${k}${l}` is fine while every index is a single digit and was fine
+ * while the sweep stopped at 8. It is not fine now: silicon under Mo Kα
+ * reaches index 15, so 28 of its 79 rows printed something that reads as a
+ * different reflection — "1111" for (11,1,1), sitting in the same column as
+ * the genuine (111), and aluminium's (10,0,0) printing as "1000", which reads
+ * as (100).
+ */
+describe('family labels', () => {
+  it('leaves single-digit families exactly as they were', () => {
+    expect(familyLabel(1, 1, 1)).toBe('111');
+    expect(familyLabel(3, 1, 1)).toBe('311');
+    expect(familyLabel(9, 3, 1)).toBe('931');
+  });
+
+  it('separates the moment any index reaches double digits', () => {
+    expect(familyLabel(11, 1, 1)).toBe('11,1,1');
+    expect(familyLabel(10, 0, 0)).toBe('10,0,0');
+    // (14,2,0) is real — it is the top of silicon's Mo Kα pattern.
+    expect(familyLabel(14, 2, 0)).toBe('14,2,0');
+    // and the formatter is not limited to families any shipped sample reaches
+    expect(familyLabel(15, 5, 3)).toBe('15,5,3');
+  });
+
+  it('never collides — a label identifies exactly one family', () => {
+    expect(familyLabel(11, 1, 1)).not.toBe(familyLabel(1, 1, 1));
+    expect(familyLabel(10, 0, 0)).not.toBe(familyLabel(1, 0, 0));
+    expect(familyLabel(1, 11, 1)).not.toBe(familyLabel(11, 1, 1));
+  });
+
+  it('is injective across every shipped sample × source', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda);
+        const labels = peaks.map((p) => familyLabel(p.h, p.k, p.l));
+        expect(new Set(labels).size).toBe(peaks.length);
+      }
+    }
+  });
+});
+
+/**
+ * Guards on the bound itself.
+ *
+ * The completeness test above proves the pattern is not truncated, but it
+ * cannot fail a bound that is merely *too generous* — mutation testing
+ * confirmed that `braggIndexBound` returning a constant 25, or a constant 16,
+ * or using `floor`, all passed it. These assertions reach the function
+ * directly so the claim in that block's title ("bounded by Bragg, not by a
+ * fixed index cap") is actually gated.
+ */
+describe('braggIndexBound is derived from λ and a, not fixed', () => {
+  it('is exactly ceil(2a/λ) across four decades of a/λ', () => {
+    for (const a of [0.05, 0.2, 0.3615, 0.5431, 1.2]) {
+      for (const lambda of [0.02, 0.07107, 0.15406, 0.22897, 0.4]) {
+        const exact = (2 * a) / lambda;
+        const bound = braggIndexBound(a, lambda);
+        // At or above the physical reach — this is what `floor` fails.
+        expect(bound).toBeGreaterThanOrEqual(exact);
+        // And no more generous than it has to be — this is what a constant
+        // 25 or 16 fails.
+        expect(bound).toBeLessThan(exact + 1);
+      }
+    }
+  });
+
+  it('rejects a non-physical lattice parameter or wavelength', () => {
+    expect(braggIndexBound(0, 0.15406)).toBe(0);
+    expect(braggIndexBound(0.3615, 0)).toBe(0);
+    expect(braggIndexBound(-1, 0.15406)).toBe(0);
+    expect(braggIndexBound(0.3615, Number.NaN)).toBe(0);
+  });
+
+  /**
+   * The real reason the bound rounds up. `floor` is not wrong by the algebra —
+   * for an exact integer ratio floor and ceil agree — it is wrong in floating
+   * point: 2 × 0.53921 / 0.15406 evaluates to 6.999999999999999, so `floor`
+   * drops the (700) family that sits precisely on sinθ = 1.
+   */
+  it('keeps a family that lands on sinθ = 1 through a floating-point shortfall', () => {
+    const a = 0.53921;
+    const lambda = 0.15406;
+    expect((2 * a) / lambda).toBeLessThan(7); // 6.999999999999999
+    expect(Math.floor((2 * a) / lambda)).toBe(6);
+    expect(braggIndexBound(a, lambda)).toBe(7);
+    const fams = computePattern('sc', a, lambda, 180).map((p) => familyLabel(p.h, p.k, p.l));
+    expect(fams).toContain('700');
+  });
+
+  /**
+   * The defensive ceiling must not become the defect it guards against. A
+   * fixed cap that silently drops reflections is exactly what this whole
+   * change removed, so past the ceiling the module refuses rather than
+   * returning a plausible-looking short pattern.
+   */
+  it('refuses rather than truncating past the defensive ceiling', () => {
+    // 2a/λ = 200, far past any laboratory combination.
+    expect(() => computePattern('sc', 0.1, 0.001)).toThrow(/ceiling/i);
+    // and the message says what it saw, so the failure is diagnosable
+    expect(() => computePattern('sc', 0.1, 0.001)).toThrow(/200/);
+  });
+
+  /**
+   * The ceiling itself has to be gated. Mutating it to 16 — the exact index
+   * silicon with Mo Kα needs — passed the whole suite, leaving the widest
+   * shipped combination sitting on the limit with no margin at all.
+   */
+  it('keeps real headroom over the widest shipped combination', () => {
+    const widest = Math.max(
+      ...XRD_SAMPLES.flatMap((s) => XRD_SOURCES.map((src) => (2 * s.a) / src.lambda)),
+    );
+    expect(widest).toBeCloseTo(15.284, 3); // silicon × Mo Kα
+    expect(INDEX_CEILING).toBeGreaterThanOrEqual(4 * Math.ceil(widest));
+    // and behaviourally: twice the widest shipped ratio is still fine
+    expect(() => computePattern('sc', 0.3615, 0.3615 * 2 / (2 * widest))).not.toThrow();
+  });
+
+  /**
+   * The comparison is `>`, not `>=`: a ratio landing exactly on the ceiling is
+   * inside the domain. Mutating it to `>=` passed the whole suite.
+   */
+  it('admits a ratio sitting exactly on the ceiling, and refuses one past it', () => {
+    // 2a/λ = 64 exactly → bound 64, which is the ceiling and must be allowed.
+    expect(braggIndexBound(3.2, 0.1)).toBe(INDEX_CEILING);
+    expect(() => computePattern('sc', 3.2, 0.1, 180)).not.toThrow();
+    // 2a/λ = 65 → bound 65, one past.
+    expect(braggIndexBound(3.25, 0.1)).toBe(INDEX_CEILING + 1);
+    expect(() => computePattern('sc', 3.25, 0.1, 180)).toThrow(/ceiling/i);
+  });
+
+  it('lets every shipped sample × source through untouched', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        expect(() => computePattern(sample.lattice, sample.a, source.lambda)).not.toThrow();
+        // The widest shipped case is silicon with Mo Kα at 2a/λ ≈ 15.3.
+        expect((2 * sample.a) / source.lambda).toBeLessThan(16);
+      }
+    }
+  });
+});
+
+/**
+ * Reporting a vanishingly weak reflection.
+ *
+ * Lifting the index cap recovered 50 real reflections whose intensity, once
+ * normalised against the (111) line, rounds to zero — the angular damping
+ * term falls by orders of magnitude across the pattern. Printing "0" in the
+ * intensity column puts them in the same visual class as the systematic
+ * absences the module goes out of its way to explain, which is the opposite
+ * of what they are: present, and too weak to see.
+ */
+describe('intensity formatting', () => {
+  it('rounds normally above the floor', () => {
+    expect(formatIntensity(100)).toBe('100');
+    expect(formatIntensity(49.6)).toBe('50');
+    expect(formatIntensity(1.2)).toBe('1');
+    expect(formatIntensity(0.5)).toBe('1');
+  });
+
+  it('never prints a present reflection as absent', () => {
+    expect(formatIntensity(0.4)).toBe('<1');
+    expect(formatIntensity(1e-9)).toBe('<1');
+    expect(formatIntensity(0)).toBe('0');
+  });
+
+  it('marks silicon’s weak Mo Kα lines as weak, not missing', () => {
+    const si = XRD_SAMPLES.find((s) => s.id === 'si')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    const peaks = computePattern(si.lattice, si.a, mo.lambda);
+    const shown = peaks.map((p) => formatIntensity(p.intensity));
+    // Every one is a real reflection, so none may read as a bare zero.
+    expect(shown).not.toContain('0');
+    expect(shown.filter((x) => x === '<1').length).toBe(62);
+    // and the strongest line is still 100.
+    expect(shown).toContain('100');
+  });
+});
+
+/**
+ * No Miller label may be built by bare concatenation.
+ *
+ * 11ea25d claimed both remaining call sites had been converted and named this
+ * one; it had not been touched. The form is `${p.h}${p.k}` — two adjacent
+ * index expressions with nothing between them — which renders (11,1,1) as
+ * "1111". A repo-wide scan rather than a list of files, because the list is
+ * what went stale.
+ *
+ * **This scan cannot close the class, and does not claim to.** A source regex
+ * enumerates spellings, and there are unboundedly many; the repo's own
+ * iteration-16 lesson is that enumerating hiding mechanisms is the same losing
+ * game as enumerating source patterns, and that what works is asserting on
+ * what is rendered. The rendering gate is the block below this one. This scan
+ * is kept because it reaches every file in `src` and `scripts`, including the
+ * eight modules the rendering gate does not paint, and because it fails at the
+ * call site rather than at the far end of a route.
+ *
+ * What it covers is stated pattern by pattern; what it still misses is stated
+ * at the end, with the examples that defeat it.
+ *
+ * LABEL GUARD EXEMPTION: this file names the broken forms deliberately.
+ */
+describe('Miller labels are always formatted, never concatenated', () => {
+  /**
+   * LABEL GUARD EXEMPTION: this file names the broken forms deliberately.
+   *
+   * Split across the concatenation so the marker's own definition is not the
+   * marker, or every file quoting this comment would exempt itself.
+   */
+  const GUARD_MARKER = 'LABEL GUARD ' + 'EXEMPTION: this file names the broken forms deliberately.';
+
+  /**
+   * An index expression: `h`, `p.h`, `peak.idx.h`. Any depth of dotted path,
+   * because the single optional prefix the first version allowed made
+   * `${peak.idx.h}${peak.idx.k}` invisible.
+   */
+  const IDX = String.raw`(?:[A-Za-z_$][\w$]*\s*\.\s*)*`;
+  const idx = (name: string) => String.raw`${IDX}${name}`;
+
+  // Eight ways to build the same broken label, all of which render (11,1,1)
+  // as "1111". The first version of this guard matched only the first, while
+  // claiming to catch "any file interpolating two adjacent Miller indices
+  // with nothing between them". The count is asserted below, so an entry
+  // added without updating this sentence fails rather than reads wrong.
+  const FORMS: [string, RegExp][] = [
+    // `${p.h}${p.k}`, the destructured `${h}${k}`, and — the evasion that
+    // beat the first version — any adjacent pair that does not start at h,
+    // such as the `${k}${l}` inside `` `${h}·${k}${l}` ``. Anchored on the
+    // *left* index of the pair, whichever of h, k or l that is.
+    ['adjacent interpolation', new RegExp(String.raw`\$\{\s*${idx('[hkl]')}\s*\}\$\{`)],
+    // `"c" + p.h + p.k + p.l`. Anchored on the string literal, because
+    // `(h + k + l) % 2` is the reflection rule and must not be flagged —
+    // in JS the addition is only a concatenation if something in the chain
+    // is a string. A chain whose string-ness comes from a variable rather
+    // than a literal is not caught; that is a real gap, and narrower than
+    // flagging every sum of three indices in the file.
+    [
+      'string concatenation',
+      new RegExp(String.raw`(['"])[^'"]*\1\s*\+\s*${idx('h')}\s*\+\s*${idx('k')}\s*\+`),
+    ],
+    // `String(h) + String(k) + String(l)` — string-ness from the call, so
+    // there is no literal for the pattern above to anchor on.
+    [
+      'String() concatenation',
+      new RegExp(String.raw`String\(\s*${idx('h')}\s*\)\s*\+\s*String\(\s*${idx('k')}\s*\)`),
+    ],
+    // `''.concat(h, k, l)`.
+    [
+      'concat call',
+      new RegExp(String.raw`(['"])\1\s*\.\s*concat\(\s*${idx('h')}\s*,\s*${idx('k')}\s*,`),
+    ],
+    // `<span>{h}{k}{l}</span>` — adjacent JSX children, no template literal
+    // and no operator. This is the form that was actually in the repo, in
+    // the extinction panel's visible text, and none of the others catch it.
+    [
+      'adjacent JSX children',
+      new RegExp(String.raw`\{\s*${idx('[hkl]')}\s*\}\s*\{\s*${idx('[hkl]')}\s*\}`),
+    ],
+    // `<span>{[h, k, l]}</span>` — React renders an array child by
+    // concatenating its elements with no separator, so this prints "1111"
+    // with no operator, no template literal and no adjacent braces
+    // anywhere. Confirmed in situ against the shipped panel.
+    [
+      'array as a JSX child',
+      /\{\s*\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\}/,
+    ],
+    // `[h, k, l].join('')`, and the same through any chain that keeps it an
+    // array first — `[h, k, l].map(String).join('')`.
+    [
+      'array join',
+      /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\](?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*join\(\s*(['"])\1\s*\)/,
+    ],
+    // `[h, k, l].reduce((a, b) => a + b, '')` — a join by another name.
+    [
+      'array reduce',
+      /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\.\s*reduce\s*\(/,
+    ],
+  ];
+    const matchesAny = (source: string) => FORMS.some(([, p]) => p.test(source));
+
+  it('finds no bare index concatenation anywhere in src or scripts', () => {
+    const modules = import.meta.glob('/{src,scripts}/**/*.{ts,tsx}', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    const paths = Object.keys(modules);
+    // The glob is load-bearing: an empty match would pass vacuously.
+    expect(paths.length).toBeGreaterThan(30);
+
+    // Two scanned files necessarily contain the broken forms: `familyLabel`,
+    // which exists to replace them, and the rendering gate that names them as
+    // samples. Both are identified by their content, and the exempt set is
+    // pinned below, so a third file cannot quietly excuse itself — which is
+    // the weakness of any exemption rule, this one included.
+    const exempt = (path: string) =>
+      /export function familyLabel/.test(modules[path]) || modules[path].includes(GUARD_MARKER);
+    // `import.meta.glob` excludes the module doing the globbing, so this file
+    // is not among them — which makes the `/diffraction\.test\.ts$/`
+    // exemption the first version carried dead code, and worth stating rather
+    // than deleting silently, because it means this file is the one place in
+    // the repo the scan cannot see.
+    expect(paths).not.toContain('/src/xrd/diffraction.test.ts');
+    expect(paths.filter(exempt).sort()).toEqual([
+      '/src/components/xrd-labels.behaviour.test.tsx',
+      '/src/xrd/diffraction.ts',
+    ]);
+    // Each pattern is checked against a sample of the form it is named for,
+    // in the suite rather than by hand at the time it was written. A regex
+    // that silently stopped matching would otherwise report a clean repo
+    // forever, which is the failure mode this whole guard exists to prevent.
+    const SAMPLES: Record<string, string> = {
+      'adjacent interpolation': 'key={`${h}·${k}${l}`}',
+      'string concatenation': "key={'c' + p.h + p.k + p.l}",
+      'String() concatenation': 'key={String(h) + String(k) + String(l)}',
+      'concat call': "key={''.concat(h, k, l)}",
+      'adjacent JSX children': '<span>{peak.idx.h}{peak.idx.k}{peak.idx.l}</span>',
+      'array as a JSX child': '<span>{[h, k, l]}</span>',
+      'array join': 'key={[h, k, l].map(String).join("")}',
+      'array reduce': "key={[h, k, l].reduce((a, b) => a + b, '')}",
+    };
+    expect(Object.keys(SAMPLES).sort()).toEqual(FORMS.map(([n]) => n).sort());
+    // The count the comment above states. Kept as an assertion because this
+    // series has now corrected a miscounted list in a comment three times.
+    expect(FORMS).toHaveLength(8);
+
+    for (const [name, pattern] of FORMS) {
+      expect(pattern.test(SAMPLES[name]), `${name}: pattern no longer matches its own sample`).toBe(
+        true,
+      );
+      const offenders = paths.filter((path) => !exempt(path) && pattern.test(modules[path]));
+      expect(offenders, `${name}`).toEqual([]);
+    }
+  });
+
+  /**
+   * Every evasion the previous version fell to, kept as its own case so a
+   * pattern that stops matching one of them is named rather than lost among
+   * the eight.
+   *
+   * The first two are the ones confirmed against the shipped suite: both
+   * passed all 882 assertions while rendering (11,1,1) as "1111".
+   */
+  it.each([
+    ['an array child, which React joins with nothing', '<span>{[h, k, l]}</span>'],
+    ['an adjacent pair that does not begin at h', 'key={`${h}·${k}${l}`}'],
+    ['String() around each index', 'const id = String(h) + String(k) + String(l);'],
+    ['concat on an empty literal', "const id = ''.concat(h, k, l);"],
+    ['map then join', "const id = [h, k, l].map(String).join('');"],
+    ['reduce as a join', "const id = [h, k, l].reduce((a, b) => a + b, '');"],
+    ['a nested path', 'key={`${peak.idx.h}${peak.idx.k}${peak.idx.l}`}'],
+    ['nested paths as JSX children', '<span>{peak.idx.h}{peak.idx.k}{peak.idx.l}</span>'],
+  ])('catches %s', (_why, source) => {
+    expect(matchesAny(source)).toBe(true);
+  });
+
+  /**
+   * And the things a source scan must *not* flag, because they are the
+   * physics. `(h + k + l) % 2` is the BCC reflection rule.
+   */
+  it.each([
+    'const sum = h + k + l;',
+    'if ((h + k + l) % 2 !== 0) return false;',
+    'const [h, k, l] = idx;',
+    'return Math.hypot(h, k, l);',
+    'familyLabel(h, k, l)',
+    '{h}{" "}{k}',
+  ])('leaves %s alone', (source) => {
+    expect(matchesAny(source)).toBe(false);
+  });
+
+  /**
+   * **What this scan still misses**, so the class is not reported closed.
+   *
+   * These are checked to *not* match, deliberately: writing them down as
+   * failing cases is the honest form of "not covered", and it means a later
+   * pattern that happens to catch one will fail here and be noticed rather
+   * than quietly widening the claim.
+   *
+   *  - a helper that concatenates parameters named something else —
+   *    `const cat = (a, b, c) => `${a}${b}${c}`` called as `cat(h, k, l)`;
+   *  - a spread, `[...idx].join('')`, where the indices never appear by name;
+   *  - `+` chains whose string-ness comes from a variable rather than a
+   *    literal, which the "string concatenation" note above already records;
+   *  - anything assembled at runtime out of a data structure the scan cannot
+   *    see through.
+   *
+   * The first two of those DO render "1111", and only the rendering gate
+   * below stops them — and only on the route it paints.
+   */
+  it.each([
+    ['a helper with different parameter names', 'const cat = (a, b, c) => `${a}${b}${c}`;'],
+    ['a spread of the index tuple', "const id = [...idx].join('');"],
+    ['string-ness from a variable', 'const id = prefix + h + k + l;'],
+  ])('does not catch %s — stated, not claimed', (_why, source) => {
+    expect(matchesAny(source)).toBe(false);
+  });
+});
+
+/**
+ * A2 — the source selector silently changes how many reflections exist. The
+ * reason is Bragg's own inequality: sin θ = λ/2d ≤ 1, so no plane spaced
+ * closer than λ/2 can diffract at any angle. This is the number the caption
+ * under the chart quotes and the reason the extinction chips grey out.
+ */
+describe('the λ ≤ 2d diffraction limit', () => {
+  const PAIRS = XRD_SAMPLES.flatMap((s) => XRD_SOURCES.map((src) => [s.id, src.id] as const));
+  const sample = (id: string) => XRD_SAMPLES.find((s) => s.id === id)!;
+  const source = (id: string) => XRD_SOURCES.find((s) => s.id === id)!;
+
+  it.each(XRD_SOURCES.map((s) => s.id))('%s: the floor is exactly λ/2', (id) => {
+    const src = source(id);
+    const cu = sample('cu');
+    expect(braggReach(cu.lattice, cu.a, src.lambda).dMin).toBe(src.lambda / 2);
+  });
+
+  /**
+   * The oracle is `computePattern` opened to the full 2θ ≤ 180° hemisphere —
+   * a separate implementation that also computes multiplicities, structure
+   * factors and intensities, and which the rest of this file already pins to
+   * published peak positions. `braggReach` walks the same index bound with
+   * none of that arithmetic, so agreement across all 28 combinations is a
+   * real cross-check rather than a restatement.
+   */
+  it.each(PAIRS)('%s under %s: the reachable count matches the full pattern', (sid, srcid) => {
+    const s = sample(sid);
+    const lambda = source(srcid).lambda;
+    const full = computePattern(s.lattice, s.a, lambda, 180);
+    const reach = braggReach(s.lattice, s.a, lambda);
+    expect(reach.reachable).toBe(full.length);
+    expect(reach.smallestD).toBeCloseTo(Math.min(...full.map((p) => p.d)), 12);
+  });
+
+  it.each(PAIRS)('%s under %s: nothing reachable sits below the floor', (sid, srcid) => {
+    const s = sample(sid);
+    const lambda = source(srcid).lambda;
+    const reach = braggReach(s.lattice, s.a, lambda);
+    expect(reach.smallestD).not.toBeNull();
+    expect(reach.smallestD!).toBeGreaterThanOrEqual(reach.dMin);
+  });
+
+  /**
+   * The spread the caption is there to explain, measured against this model:
+   * one copper specimen, four anodes, an order of magnitude in how much of
+   * the pattern exists. `reachable` counts the whole hemisphere; the second
+   * column is what the module actually plots, inside its 2θ ≤ 140° window.
+   */
+  it('reproduces copper’s source spread', () => {
+    const cu = sample('cu');
+    const counts = XRD_SOURCES.map((src) => [
+      src.id,
+      braggReach(cu.lattice, cu.a, src.lambda).reachable,
+      computePattern(cu.lattice, cu.a, src.lambda, 140).length,
+    ]);
+    expect(counts).toEqual([
+      ['cu', 8, 7],
+      ['mo', 46, 40],
+      ['cr', 3, 3],
+      ['co', 6, 5],
+    ]);
+  });
+
+  /**
+   * Cr Kα on copper is the case the extinction panel has to grey: λ/2 =
+   * 0.1145 nm sits above (311), (222) and (400), which are allowed by the FCC
+   * rule and still cannot be measured. An absence and an unreachable
+   * reflection are different things, and the panel must not conflate them.
+   */
+  it('separates “forbidden” from “out of reach” for copper under Cr Kα', () => {
+    const cu = sample('cu');
+    const lambda = source('cr').lambda;
+    const reach = braggReach(cu.lattice, cu.a, lambda);
+    expect(reach.dMin).toBeCloseTo(0.11449, 5);
+    const d = (h: number, k: number, l: number) => cu.a / Math.sqrt(h * h + k * k + l * l);
+    // allowed and measurable
+    for (const [h, k, l] of [[1, 1, 1], [2, 0, 0], [2, 2, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(true);
+      expect(d(h, k, l)).toBeGreaterThan(reach.dMin);
+    }
+    // allowed but past the limit
+    for (const [h, k, l] of [[3, 1, 1], [2, 2, 2], [4, 0, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(true);
+      expect(d(h, k, l)).toBeLessThan(reach.dMin);
+    }
+    // forbidden, and would be even with an infinitely short wavelength
+    for (const [h, k, l] of [[1, 0, 0], [1, 1, 0], [2, 1, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(false);
+    }
+  });
+
+  /**
+   * Past the point where λ exceeds twice the largest allowed spacing there is
+   * no pattern at all. It must come back empty rather than clamped — the same
+   * refusal the index ceiling makes.
+   */
+  it('reports nothing reachable when the wavelength outruns the lattice', () => {
+    const cu = sample('cu');
+    const dMax = cu.a / Math.sqrt(3); // FCC's largest allowed spacing, (111)
+    const reach = braggReach(cu.lattice, cu.a, 2 * dMax + 0.01);
+    expect(reach.reachable).toBe(0);
+    expect(reach.smallestD).toBeNull();
+    expect(computePattern(cu.lattice, cu.a, 2 * dMax + 0.01, 180)).toHaveLength(0);
+  });
+
+  it('refuses past the defensive index ceiling, exactly as computePattern does', () => {
+    const a = 0.3615;
+    const lambda = (2 * a) / (INDEX_CEILING + 10);
+    expect(braggIndexBound(a, lambda)).toBeGreaterThan(INDEX_CEILING);
+    expect(() => braggReach('fcc', a, lambda)).toThrow(RangeError);
+  });
+});
+
+/**
+ * S12 — the Miller module asks two questions of this one: is this (hkl) an
+ * allowed reflection, and if so at what 2θ. Both are answered from code that
+ * already existed; what is new is that the Miller module's own route to `a` —
+ * `metal.R × structure.aOverR`, the same route its d-spacing box takes — has
+ * to land on the published angles.
+ */
+describe('Bragg angle from a plane spacing', () => {
+  it('is null past the λ ≤ 2d limit, and defined exactly on it', () => {
+    expect(braggTwoTheta(0.1, 0.25)).toBeNull();
+    expect(braggTwoTheta(0.1, 0.2)).toBeCloseTo(180, 9);
+    expect(braggTwoTheta(0, 0.15406)).toBeNull();
+  });
+
+  it('agrees with computePattern for every peak of every shipped combination', () => {
+    for (const s of XRD_SAMPLES) {
+      for (const src of XRD_SOURCES) {
+        for (const p of computePattern(s.lattice, s.a, src.lambda, 180)) {
+          expect(braggTwoTheta(p.d, src.lambda)).toBeCloseTo(p.twoTheta, 9);
+        }
+      }
+    }
+  });
+
+  /**
+   * The Miller module's numbers, taken end to end: copper's R from Callister
+   * table 3.1, a = 2R√2 from the FCC structure, d = a/√(h²+k²+l²) from
+   * `crystal/miller`, then Bragg. These must be the published 43.32 and 50.45°
+   * that `computePattern` already reproduces, or the two modules disagree about
+   * the same crystal.
+   */
+  it('reproduces copper’s 111 and 200 through the Miller module’s own route', () => {
+    const cu = METALS.find((m) => m.symbol === 'Cu')!;
+    const a = cu.R * getStructure('fcc').aOverR!;
+    const lambda = XRD_SOURCES.find((s) => s.id === 'cu')!.lambda;
+    expect(a).toBeCloseTo(XRD_SAMPLES.find((s) => s.id === 'cu')!.a, 12);
+    expect(braggTwoTheta(millerDSpacing([1, 1, 1], a), lambda)).toBeCloseTo(43.32, 2);
+    expect(braggTwoTheta(millerDSpacing([2, 0, 0], a), lambda)).toBeCloseTo(50.45, 2);
+  });
+
+  /**
+   * The (100)-versus-(200) puzzle the Miller module already raises in prose.
+   * (100) is extinct in FCC; (200) is the second peak. Same planes, different
+   * indexing, and only one of them diffracts.
+   */
+  it('separates FCC’s extinct (100) from its measurable (200)', () => {
+    expect(isAllowed('fcc', 1, 0, 0)).toBe(false);
+    expect(isAllowed('fcc', 1, 1, 0)).toBe(false);
+    expect(isAllowed('fcc', 2, 0, 0)).toBe(true);
+    expect(isAllowed('fcc', 1, 1, 1)).toBe(true);
+    // BCC is the mirror image, which is the eyeball test between the two.
+    expect(isAllowed('bcc', 1, 1, 1)).toBe(false);
+    expect(isAllowed('bcc', 1, 1, 0)).toBe(true);
+  });
+
+  /**
+   * The rule is a parity test, so a negative index must give the same answer
+   * as its positive twin — otherwise (1̄11), which the Miller module accepts
+   * and which is one of its presets, would be reported extinct in FCC.
+   */
+  it('is unchanged by the sign of an index', () => {
+    for (const lattice of ['sc', 'bcc', 'fcc', 'diamond'] as const) {
+      for (const [h, k, l] of [[1, 1, 1], [2, 0, 0], [1, 1, 0], [3, 1, 1], [2, 1, 0]]) {
+        for (const signs of [[-1, 1, 1], [1, -1, 1], [-1, -1, -1]]) {
+          expect(isAllowed(lattice, h * signs[0], k * signs[1], l * signs[2])).toBe(
+            isAllowed(lattice, h, k, l),
+          );
+        }
+      }
+    }
+  });
+});
+
+describe('structure ids map to reflection-rule lattices', () => {
+  it('covers exactly the four monatomic cubic structures', () => {
+    for (const id of ['sc', 'bcc', 'fcc', 'diamond']) expect(xrdLatticeFor(id)).toBe(id);
+  });
+
+  /**
+   * Rock salt, CsCl and perovskite have two or more species with different
+   * scattering factors, so the monatomic rules in `isAllowed` do not describe
+   * them — MgO's and NaCl's absences differ from each other. They return null
+   * and the panel is absent, rather than a confident wrong answer.
+   */
+  it('refuses the compound structures, whose rules are not these', () => {
+    for (const s of STRUCTURES.filter((x) => Object.keys(x.species).length > 1)) {
+      expect(xrdLatticeFor(s.id)).toBeNull();
+    }
+    expect(xrdLatticeFor('hcp')).toBeNull();
+    expect(xrdLatticeFor('nonsense')).toBeNull();
+  });
+
+  /**
+   * The Miller module's spacing calculator offers the cubic metals of
+   * Callister table 3.1. Every one of them must land on a lattice, or the new
+   * rows would blank out for part of a selector that already works.
+   */
+  it('covers every cubic metal the Miller module offers', () => {
+    const cubic = METALS.filter((m) => m.structure !== 'hcp');
+    expect(cubic.length).toBeGreaterThan(0);
+    for (const m of cubic) expect(xrdLatticeFor(m.structure)).not.toBeNull();
+  });
+
+  /**
+   * Both cross-links match a metal to a sample by symbol. If the two carried
+   * different lattice parameters the link would land on a different crystal
+   * from the one whose d-spacing was just displayed, and the 2θ on each side
+   * would disagree. Five metals overlap; all five must agree exactly.
+   */
+  it('links only samples that are the same crystal as the metal', () => {
+    const matched = METALS.filter((m) => XRD_SAMPLES.some((x) => x.id === m.symbol.toLowerCase()));
+    expect(matched.map((m) => m.symbol)).toEqual(['Al', 'Cr', 'Cu', 'Fe', 'W']);
+    for (const m of matched) {
+      const sample = XRD_SAMPLES.find((x) => x.id === m.symbol.toLowerCase())!;
+      expect(sample.lattice).toBe(m.structure);
+      expect(sample.a).toBeCloseTo(m.R * getStructure(m.structure).aOverR!, 12);
+    }
+  });
+});
+

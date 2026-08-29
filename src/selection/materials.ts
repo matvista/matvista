@@ -152,6 +152,43 @@ export interface PerformanceIndex {
   /** Slope of the guide line on log–log axes, = 1/a. */
   slope: number;
   scenario: string;
+  derivation: IndexDerivation;
+}
+
+/**
+ * Where an index comes from — objective, constraint, free variable, and the
+ * elimination that turns three of them into one number.
+ *
+ * Students memorise "E^⅓/ρ for panels" without knowing why the exponent
+ * changes, and so cannot derive an index for a function that is not on the
+ * list — which is precisely what an exam asks. Every entry below is one method
+ * applied to a different section:
+ *
+ *   objective   the mass goes as x^p in the free dimension x
+ *   constraint  the constrained property goes as x^q
+ *   eliminate   x ∝ P^(−1/q), so the mass ∝ ρ·P^(−p/q)
+ *   result      minimise that ⟹ maximise P^(p/q)/ρ
+ *
+ * So **the exponent is p/q**, not a remembered number, and the log–log guide
+ * line's slope is its reciprocal q/p. A test asserts both for every index, and
+ * performs the elimination numerically against `indexValue` rather than
+ * restating it.
+ */
+export interface IndexDerivation {
+  /** The component and what is held fixed about it. */
+  functionName: string;
+  /** What is being minimised. */
+  objective: string;
+  /** What must not be violated. */
+  constraint: string;
+  /** The dimension free to be chosen. */
+  freeVar: string;
+  /** Power of the free variable in the mass. */
+  massPower: number;
+  /** Power of the free variable in the constrained property. */
+  constraintPower: number;
+  /** The algebra, one line per step. */
+  steps: string[];
 }
 
 export const INDICES: PerformanceIndex[] = [
@@ -162,6 +199,19 @@ export const INDICES: PerformanceIndex[] = [
     exponent: 1,
     slope: 1,
     scenario: 'Stiff tie rod loaded in tension — minimise mass for a given stiffness.',
+    derivation: {
+      functionName: 'Tie rod of fixed length L, loaded in tension',
+      objective: 'minimise the mass  m = A·L·ρ',
+      constraint: 'stiffness  S = A·E / L  ≥  S*',
+      freeVar: 'the section area A',
+      massPower: 1,
+      constraintPower: 1,
+      steps: [
+        'The constraint fixes the area:  A = S*·L / E',
+        'Put that back in the mass:  m = S*·L² · (ρ / E)',
+        'L and S* are given, so minimising m means maximising E / ρ',
+      ],
+    },
   },
   {
     id: 'e12-rho',
@@ -169,7 +219,20 @@ export const INDICES: PerformanceIndex[] = [
     property: 'modulus',
     exponent: 0.5,
     slope: 2,
-    scenario: 'Stiff beam in bending. The square root appears because you may thicken the beam, and bending stiffness grows as the cube of depth.',
+    scenario: 'Stiff beam in bending. The square root appears because the section is square and free to grow: mass goes as b² while bending stiffness goes as b⁴, and ½ is that ratio.',
+    derivation: {
+      functionName: 'Beam of fixed length L and square section b × b, loaded in bending',
+      objective: 'minimise the mass  m = b²·L·ρ',
+      constraint: 'bending stiffness  S = C·E·I / L³  ≥  S*,  with  I = b⁴/12',
+      freeVar: 'the section depth b',
+      massPower: 2,
+      constraintPower: 4,
+      steps: [
+        'The constraint fixes the fourth power:  b⁴ = 12·S*·L³ / (C·E)',
+        'So  b² ∝ E^−½,  and the mass  m = b²·L·ρ ∝ ρ / E^½',
+        'Mass goes as b², stiffness as b⁴ — the exponent is 2/4 = ½',
+      ],
+    },
   },
   {
     id: 'e13-rho',
@@ -178,6 +241,19 @@ export const INDICES: PerformanceIndex[] = [
     exponent: 1 / 3,
     slope: 3,
     scenario: 'Stiff panel in bending — the flattest guide line, and the one that most favours light materials such as wood and foams.',
+    derivation: {
+      functionName: 'Panel of fixed length L and width w, thickness t free, loaded in bending',
+      objective: 'minimise the mass  m = w·L·t·ρ',
+      constraint: 'bending stiffness  S = C·E·I / L³  ≥  S*,  with  I = w·t³/12',
+      freeVar: 'the thickness t',
+      massPower: 1,
+      constraintPower: 3,
+      steps: [
+        'The constraint fixes the cube:  t³ = 12·S*·L³ / (C·E·w)',
+        'So  t ∝ E^−⅓,  and the mass  m = w·L·t·ρ ∝ ρ / E^⅓',
+        'The width is fixed here, so mass goes as t and stiffness as t³ — the exponent is 1/3',
+      ],
+    },
   },
   {
     id: 's-rho',
@@ -186,6 +262,19 @@ export const INDICES: PerformanceIndex[] = [
     exponent: 1,
     slope: 1,
     scenario: 'Strong tie in tension — specific strength.',
+    derivation: {
+      functionName: 'Tie of fixed length L carrying a load F',
+      objective: 'minimise the mass  m = A·L·ρ',
+      constraint: 'it must not yield:  F / A  ≤  σ_f',
+      freeVar: 'the section area A',
+      massPower: 1,
+      constraintPower: 1,
+      steps: [
+        'The constraint fixes the area:  A = F / σ_f',
+        'Put that back in the mass:  m = F·L · (ρ / σ_f)',
+        'Minimising m means maximising σ / ρ — specific strength',
+      ],
+    },
   },
   {
     id: 's23-rho',
@@ -194,6 +283,19 @@ export const INDICES: PerformanceIndex[] = [
     exponent: 2 / 3,
     slope: 1.5,
     scenario: 'Strong beam in bending.',
+    derivation: {
+      functionName: 'Beam of fixed length L and square section b × b, carrying a moment M',
+      objective: 'minimise the mass  m = b²·L·ρ',
+      constraint: 'it must not yield:  M / Z  ≤  σ_f,  with  Z = b³/6',
+      freeVar: 'the section depth b',
+      massPower: 2,
+      constraintPower: 3,
+      steps: [
+        'The constraint fixes the cube:  b³ = 6·M / σ_f',
+        'So  b² ∝ σ_f^−⅔,  and the mass  m = b²·L·ρ ∝ ρ / σ_f^⅔',
+        'Mass goes as b², the moment it carries as b³ — the exponent is 2/3',
+      ],
+    },
   },
 ];
 

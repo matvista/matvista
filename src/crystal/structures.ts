@@ -237,3 +237,37 @@ export const STRUCTURES: StructureDef[] = [
 export function getStructure(id: string): StructureDef {
   return STRUCTURES.find((s) => s.id === id) ?? STRUCTURES[1];
 }
+
+/** The arithmetic behind an atomic packing factor, in units of R³. */
+export interface PackingDerivation {
+  /** Atoms per unit cell. */
+  N: number;
+  /** Lattice parameter as a multiple of R. */
+  aOverR: number;
+  /** Total hard-sphere volume in the cell, N·(4/3)πR³, as a multiple of R³. */
+  sphereVolume: number;
+  /** Unit-cell volume as a multiple of R³. */
+  cellVolume: number;
+  /** The quotient. R cancels, so this is a property of the packing alone. */
+  apf: number;
+}
+
+/**
+ * APF derived rather than recalled: N × (4/3)πR³ ÷ V꜀, with the a↔R relation
+ * supplying V꜀. Returns null for the compound structures, which have no single
+ * radius and therefore no hard-sphere derivation — their `APF` field stays a
+ * tabulated value. The same `aOverR == null` boundary `theoreticalDensity`
+ * respects.
+ */
+export function packingFactor(s: StructureDef): PackingDerivation | null {
+  if (s.aOverR == null) return null;
+  const sphereVolume = s.N * (4 / 3) * Math.PI;
+  const cellVolume = s.volumeOverA3 * s.aOverR ** 3;
+  return {
+    N: s.N,
+    aOverR: s.aOverR,
+    sphereVolume,
+    cellVolume,
+    apf: sphereVolume / cellVolume,
+  };
+}

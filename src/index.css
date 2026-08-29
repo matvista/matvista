@@ -593,6 +593,21 @@ button.nav-menu-item:focus-visible {
   }
 }
 
+/* Hidden from view, kept for assistive technology. Used where a symbol
+   carries meaning a screen reader announces inconsistently — the "≤" on the
+   proeutectoid-ferrite fraction, which is a bound rather than a measurement. */
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ------------------------------------------------------------ narrow ------ */
 @media (max-width: 620px) {
   /* Hidden from view, kept for assistive technology: `display: none` would
@@ -2299,4 +2314,294 @@ input[type='range'] {
 .theme-option:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* S7 — the APF derivation reuses the Miller derivation table's typography.
+   U10 is slated to lift that into a shared worked-substitution block; this
+   rule is the only structure-module-specific part and goes with it. */
+.apf-deriv {
+  width: 100%;
+}
+
+.apf-deriv td {
+  text-align: right;
+  padding-right: 0;
+}
+
+/* A2 — allowed by the lattice, out of reach of this wavelength. Distinct from
+   `.xrd-off`, which is a systematic absence and never comes back. The dashed
+   border and the λ/2d text carry the state; colour alone does not. */
+.xrd-far {
+  color: var(--muted);
+  border-style: dashed;
+  border-color: var(--muted);
+  background: none;
+}
+
+/* M8 — the two lever segments drawn on the invariant isotherm. They overlap
+   along their whole shared length, so they differ in colour *and* dash, and
+   each is labelled in the panel key. */
+.pd-lever-total line {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.pd-lever-micro line {
+  stroke: #eb6834;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.pd-lever-mark {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.pd-lever-key {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.pd-lever-key li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pd-lever-key svg {
+  flex: none;
+  width: 24px;
+  height: 6px;
+}
+
+/* S12 — the spacing box now carries two selectors. */
+.mi-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mi-source-row select {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* An allowed extinction chip is a link into the Miller module. */
+.xrd-chip-link {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.xrd-chip-link:hover {
+  border-color: var(--accent);
+}
+
+/* M2 — the equal-Dt locus, under the concentration profile it explains. */
+.dd-equaldt {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.dd-equaldt h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dd-now {
+  fill: #eb6834;
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+/* P10 — emission colour swatches beside the wavelength that names them. */
+.sc-photon {
+  stroke: #eb6834;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.sc-swatches {
+  list-style: none;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.sc-swatches li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sc-swatch {
+  flex: none;
+  width: 1.6rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  border: 1px solid var(--hairline);
+}
+
+.sc-swatch-none {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--surface),
+    var(--surface) 3px,
+    var(--hairline) 3px,
+    var(--hairline) 5px
+  );
+}
+
+/* Absorbing / transparent is a threshold, not a pass or a fail, so it does not
+   borrow the err-ok / err-off pair. */
+.sc-absorbs {
+  color: var(--accent-ink);
+}
+
+.sc-transparent {
+  color: var(--muted);
+}
+
+/* P8 — named crack geometries with a sketch, replacing the bare Y slider. */
+.fa-geom {
+  margin: 0.6rem 0 0.4rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.fa-geom-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fa-geom-head > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.fa-geom-head select {
+  width: 100%;
+}
+
+.fa-geom-y {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.fa-sketch {
+  flex: none;
+  width: 92px;
+  height: 74px;
+}
+
+.fa-sk-body {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 2;
+}
+
+.fa-sk-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.fa-sk-crack {
+  stroke: #e34948;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.fa-sk-dim {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.fa-sk-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+}
+
+/* A12 — the crevice / waterline sketch. The anode and cathode labels reuse the
+   measured --bad-ink / --ok-ink pair rather than fresh hexes, so they clear AA
+   on both themes; each also carries the word, so colour is supplementary. */
+.co-crevice {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0.6rem 0;
+}
+
+.co-water {
+  fill: var(--accent);
+  opacity: 0.08;
+}
+
+.co-waterline {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
+.co-metal {
+  fill: var(--muted);
+  opacity: 0.45;
+}
+
+.co-gap {
+  fill: var(--page);
+}
+
+.co-anode-text {
+  fill: var(--bad-ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+}
+
+.co-cathode-text {
+  fill: var(--ok-ink);
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+}
+
+/* A8 — the index derivation, under the chart. Reuses the Miller derivation
+   table's typography, as the APF panel does; U10 lifts all three together. */
+.ab-deriv-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ab-deriv .mi-deriv-table {
+  width: 100%;
+}
+
+.ab-deriv .mi-deriv-table td {
+  padding-right: 0;
+}
+
+/* M12 — the Fe–Fe₃C strip beside the TTT chart. */
+.ht-strip {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 0.3rem 0 0.5rem;
 }

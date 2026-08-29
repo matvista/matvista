@@ -9,7 +9,7 @@ import { MECH_MATERIALS } from '../../mechanical/materials';
 import { FATIGUE_BEHAVIOUR, getFatigueBehaviour } from '../../failure/materials';
 import { fatigueStrength, fitSn } from '../../failure/model';
 import { INDICES, SELECTION_MATERIALS, indexValue } from '../../selection/materials';
-import { XRD_SAMPLES, XRD_SOURCES, computePattern } from '../../xrd/diffraction';
+import { XRD_SAMPLES, XRD_SOURCES, computePattern, familyLabel } from '../../xrd/diffraction';
 
 /**
  * The landing page's figures are *generated* from the app's models and then
@@ -151,8 +151,11 @@ describe('each figure carries the model output it claims to', () => {
     const svg = sourceFor('src/assets/figures/XrdFigure.tsx');
     // The strongest lines must all be indexed; weak ones may lose their label
     // to a collision, which is why the threshold is on intensity.
+    // Through `familyLabel`, the same formatter the generator uses — asserting
+    // the raw concatenation here would have accepted a generator that changed
+    // to a sample with double-digit indices and started printing "(1111)".
     for (const p of peaks.filter((q) => q.intensity >= 3)) {
-      expect(svg).toContain(`(${p.h}${p.k}${p.l})`);
+      expect(svg).toContain(`(${familyLabel(p.h, p.k, p.l)})`);
     }
     expect(svg).toContain(`a = ${sample.a.toFixed(4)} nm`);
     expect(svg).toContain(source.label);

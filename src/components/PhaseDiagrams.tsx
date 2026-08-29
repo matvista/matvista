@@ -5,7 +5,10 @@ import {
   FERRITE_MAX,
   GAMMA_MAX,
   PHASE_SYSTEMS,
-  steelMicrostructure,
+  gibbsPhaseRule,
+  microconstituents,
+  type MicroconstituentResult,
+  type PhaseRuleResult,
   type PhaseSystem,
 } from '../phase/systems';
 
@@ -92,10 +95,23 @@ export function PhaseDiagrams() {
     if (e.key === 'ArrowUp') setPointT(clamp(clamped.T + dT, system.tMin, system.tMax));
   }
 
-  const steel =
-    system.id === 'fe-c' && clamped.x >= FERRITE_MAX && clamped.x <= GAMMA_MAX
-      ? steelMicrostructure(clamped.x)
-      : null;
+  const rule = useMemo(
+    () => gibbsPhaseRule(system, clamped.x, clamped.T),
+    [system, clamped.x, clamped.T],
+  );
+
+  /**
+   * The microconstituent split, now for any system whose invariant leaves two
+   * solid phases behind — Pb–Sn as well as Fe–C.
+   *
+   * The Fe–C gate stays: past 2.14 wt% C the primary constituent comes from
+   * the 1147 °C eutectic rather than the eutectoid, and the alloy is a cast
+   * iron with a microstructure this panel does not describe.
+   */
+  const micro = useMemo(() => {
+    if (system.id === 'fe-c' && (clamped.x < FERRITE_MAX || clamped.x > GAMMA_MAX)) return null;
+    return microconstituents(system, clamped.x);
+  }, [system, clamped.x]);
 
   const xTicks = tickValues(system.xMin, system.xMax);
   const tTicks = tickValues(system.tMin, system.tMax);
@@ -212,6 +228,36 @@ export function PhaseDiagrams() {
             </g>
           )}
 
+          {/* M8 — the three lever rules, drawn at the invariant isotherm so it
+              is visible that they are taken over different segments of one tie
+              line. Offset above and below the isotherm, and given different
+              strokes, because they overlap along their whole shared length. */}
+          {micro && (
+            <g>
+              <LeverSegment
+                from={micro.left.composition}
+                to={micro.right.composition}
+                y={sy(micro.invariant.T) - 8}
+                sx={sx}
+                className="pd-lever-total"
+              />
+              <LeverSegment
+                from={micro.primary === micro.right.name ? micro.invariant.x : micro.left.composition}
+                to={micro.primary === micro.right.name ? micro.right.composition : micro.invariant.x}
+                y={sy(micro.invariant.T) + 8}
+                sx={sx}
+                className="pd-lever-micro"
+              />
+              <line
+                x1={sx(clamped.x)}
+                x2={sx(clamped.x)}
+                y1={sy(micro.invariant.T) - 13}
+                y2={sy(micro.invariant.T) + 13}
+                className="pd-lever-mark"
+              />
+            </g>
+          )}
+
           {/* The point of interest. */}
           <line x1={sx(clamped.x)} x2={sx(clamped.x)} y1={PAD.t} y2={PAD.t + plotH} className="pd-cross" />
           <circle cx={sx(clamped.x)} cy={sy(clamped.T)} r={6} className="pd-point" />
@@ -253,27 +299,39 @@ export function PhaseDiagrams() {
         </p>
       </section>
 
-      <aside className="detail" aria-live="polite">
-        <h2 className="crystal-title">{result.region}</h2>
-        <p className="detail-meta">
-          {clamped.x.toFixed(2)} {system.xLabel} · {clamped.T.toFixed(0)} °C
-        </p>
+      <aside className="detail">
+        {/* The live region is the *answer*, not the whole aside.
+            `aria-live` used to sit on the aside, which was fine when it held a
+            heading, a composition and a two-row table. M7 and M8 then added the
+            Gibbs phase rule, the invariant list and the microconstituent panel
+            inside it, and the announced text went from 436 to 1688 characters —
+            all of which differs between x = 40 and x = 42, so every step of the
+            temperature spin box read the whole Gibbs table and microconstituent
+            split aloud again. Scoped here it announces the field, the point and
+            the phase fractions: what changed, and what the reader asked for. The
+            rest is still reachable in reading order, it is simply not shouted. */}
+        <div aria-live="polite" aria-atomic="true">
+          <h2 className="crystal-title">{result.region}</h2>
+          <p className="detail-meta">
+            {clamped.x.toFixed(2)} {system.xLabel} · {clamped.T.toFixed(0)} °C
+          </p>
 
-        <table className="detail-props">
-          <tbody>
-            {result.phases.map((p) => (
-              <tr key={p.name}>
-                <th scope="row">
-                  <span className="pd-swatch" style={{ background: PHASE_COLOR[p.name] ?? '#898781' }} />
-                  {p.name}
-                </th>
-                <td>
-                  {(p.fraction * 100).toFixed(1)}% · C = {p.composition.toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          <table className="detail-props">
+            <tbody>
+              {result.phases.map((p) => (
+                <tr key={p.name}>
+                  <th scope="row">
+                    <span className="pd-swatch" style={{ background: PHASE_COLOR[p.name] ?? '#898781' }} />
+                    {p.name}
+                  </th>
+                  <td>
+                    {(p.fraction * 100).toFixed(1)}% · C = {p.composition.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {result.phases.length > 1 && (
           <>
@@ -298,6 +356,8 @@ export function PhaseDiagrams() {
           </>
         )}
 
+        <PhaseRuleBox rule={rule} />
+
         {system.invariants.length > 0 && (
           <div className="density-box">
             <h3>Invariant reactions</h3>
@@ -311,51 +371,204 @@ export function PhaseDiagrams() {
           </div>
         )}
 
-        {steel && (
-          <div className="density-box">
-            <h3>Microstructure below 727 °C</h3>
-            <table className="detail-props">
-              <tbody>
-                <tr>
-                  <th scope="row">Classification</th>
-                  <td>{steel.kind}</td>
-                </tr>
-                {steel.proeutectoid && (
-                  <tr>
-                    <th scope="row">Proeutectoid phase</th>
-                    <td>{steel.proeutectoid}</td>
-                  </tr>
-                )}
-                <tr>
-                  <th scope="row">Pearlite</th>
-                  <td>{(steel.pearlite * 100).toFixed(1)}%</td>
-                </tr>
-                {steel.proeutectoid && (
-                  <tr>
-                    <th scope="row">Proeutectoid</th>
-                    <td>{(steel.proeutectoidFraction * 100).toFixed(1)}%</td>
-                  </tr>
-                )}
-                <tr>
-                  <th scope="row">Total α (ferrite)</th>
-                  <td>{(steel.totalFerrite * 100).toFixed(1)}%</td>
-                </tr>
-                <tr>
-                  <th scope="row">Total Fe₃C</th>
-                  <td>{(steel.totalCementite * 100).toFixed(1)}%</td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="density-note">
-              Note the two sets of numbers differ. <strong>Microconstituent</strong> fractions
-              (pearlite vs proeutectoid) describe what you see under a microscope;{' '}
-              <strong>phase</strong> fractions (total ferrite vs cementite) describe what the alloy
-              is made of. Pearlite is not a phase — it is a two-phase lamellar mixture, so its
-              ferrite counts toward the total.
-            </p>
-          </div>
-        )}
+        {micro && <MicroPanel micro={micro} x={clamped.x} unit={system.xLabel} />}
+
       </aside>
+    </div>
+  );
+}
+
+/**
+ * The phase rule, attached to the point the reader is already dragging.
+ *
+ * The rule is memorised and not understood: students recite P + F = C + N and
+ * cannot say why a eutectic is a point. Reading F off the field you are
+ * standing in makes it a consequence of where you are. The tie line the chart
+ * already draws *is* the degree of freedom that two-phase costs you.
+ */
+function PhaseRuleBox({ rule }: { rule: PhaseRuleResult }) {
+  const noun = rule.P === 1 ? 'phase' : 'phases';
+  return (
+    <div className="density-box">
+      <h3>Gibbs phase rule</h3>
+      <p className="density-eq">
+        P + F = C + N &nbsp;→&nbsp; {rule.P} + <strong>{rule.F}</strong> = {rule.C} + {rule.N}
+      </p>
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Phases P</th>
+            <td>
+              {rule.P} {noun}
+              {rule.invariant ? ` (on the ${rule.invariant.label.toLowerCase()})` : ''}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Components C</th>
+            <td>{rule.C} — a binary</td>
+          </tr>
+          <tr>
+            <th scope="row">Non-compositional N</th>
+            <td>{rule.N} — temperature; pressure is fixed</td>
+          </tr>
+          <tr>
+            <th scope="row">Degrees of freedom F</th>
+            <td>{rule.F}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="density-note">
+        {rule.F === 2 && (
+          <>
+            Two degrees of freedom. Temperature and composition move
+            independently and you are still in the same single-phase field —
+            which is why single-phase regions are areas.
+          </>
+        )}
+        {rule.F === 1 && (
+          <>
+            One degree of freedom. Choose the temperature and the composition of{' '}
+            <em>both</em> phases is already decided — you cannot pick them, you
+            can only read them off the tie line drawn above. Only the
+            proportions still vary, and the lever rule fixes those from the
+            overall composition. That lost freedom is the tie line.
+          </>
+        )}
+        {rule.F === 0 && (
+          <>
+            No degrees of freedom. Three phases coexist, so the temperature and
+            all three compositions are fixed by the system itself — nothing is
+            left to choose. That is why{' '}
+            {rule.invariant ? <code>{rule.invariant.reaction}</code> : 'an invariant reaction'}{' '}
+            runs at one temperature rather than over a range, and why a cooling
+            curve holds flat here until the reaction has finished. This is true
+            all along the isotherm, not only at the reaction’s own composition:
+            an alloy to either side of it arrives at this line with some primary
+            phase already grown, and it is what is left over that transforms —
+            only at the reaction composition is there no primary phase at all.
+            The panel above still names one of the two fields the line
+            separates, because that is where the point lands the instant the
+            temperature moves off it.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** One lever-rule segment with end caps, drawn along the invariant isotherm. */
+function LeverSegment({
+  from, to, y, sx, className,
+}: {
+  from: number; to: number; y: number; sx: (v: number) => number; className: string;
+}) {
+  return (
+    <g className={className}>
+      <line x1={sx(from)} x2={sx(to)} y1={y} y2={y} />
+      <line x1={sx(from)} x2={sx(from)} y1={y - 4} y2={y + 4} />
+      <line x1={sx(to)} x2={sx(to)} y1={y - 4} y2={y + 4} />
+    </g>
+  );
+}
+
+/**
+ * Microconstituent vs phase, for any eutectic or eutectoid system.
+ *
+ * This panel used to exist for Fe–C alone. The distinction it draws — what you
+ * see down a microscope against what the alloy is made of — is the single most
+ * reliable exam trap in eutectic systems, and students who have understood
+ * pearlite-versus-ferrite routinely fail to transfer it to Pb–Sn because the
+ * two are taught with different vocabulary. Showing the same construction on
+ * both diagrams is what makes the transfer happen.
+ */
+function MicroPanel({
+  micro, x, unit,
+}: {
+  micro: MicroconstituentResult;
+  x: number;
+  unit: string;
+}) {
+  const inv = micro.invariant;
+  const mixture = inv.microconstituent ?? `${inv.type === 'eutectoid' ? 'Eutectoid' : 'Eutectic'} constituent`;
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="density-box">
+      <h3>Microstructure just below {inv.T} °C</h3>
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Classification</th>
+            <td>{micro.kind}</td>
+          </tr>
+          {micro.primary && (
+            <tr>
+              <th scope="row">Primary phase</th>
+              <td>
+                {micro.primary} at {micro.primaryComposition} {unit}
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">{mixture}</th>
+            <td>{pct(micro.eutecticFraction)}</td>
+          </tr>
+          {micro.primary && (
+            <tr>
+              <th scope="row">Primary {micro.primary}</th>
+              <td>{pct(micro.primaryFraction)}</td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">Total {micro.left.name}</th>
+            <td>{pct(micro.left.fraction)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Total {micro.right.name}</th>
+            <td>{pct(micro.right.fraction)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ul className="pd-lever-key">
+        <li>
+          <svg viewBox="0 0 24 6" aria-hidden="true" className="pd-lever-total">
+            <line x1="1" x2="23" y1="3" y2="3" />
+          </svg>
+          <span>
+            <strong>Phases</strong> — {micro.left.composition} to {micro.right.composition} {unit}
+          </span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 6" aria-hidden="true" className="pd-lever-micro">
+            <line x1="1" x2="23" y1="3" y2="3" />
+          </svg>
+          <span>
+            <strong>Constituents</strong> —{' '}
+            {micro.primary === micro.right.name
+              ? `${inv.x} to ${micro.right.composition}`
+              : `${micro.left.composition} to ${inv.x}`}{' '}
+            {unit}
+          </span>
+        </li>
+      </ul>
+
+      <p className="density-note">
+        Both splits are lever rules, taken over <em>different segments of the same tie line</em> —
+        drawn on the isotherm above. The phase split runs the whole way,{' '}
+        {micro.left.composition} to {micro.right.composition} {unit}; the constituent split stops at
+        the invariant composition, {inv.x} {unit}. At {x.toFixed(2)} {unit} they give{' '}
+        {micro.primary
+          ? `${pct(micro.primaryFraction)} primary ${micro.primary} against ${pct(micro.left.name === micro.primary ? micro.left.fraction : micro.right.fraction)} total ${micro.primary}`
+          : 'no primary phase at all'}
+        .
+      </p>
+      <p className="density-note">
+        <strong>Microconstituent</strong> fractions describe what you see under a microscope;{' '}
+        <strong>phase</strong> fractions describe what the alloy is made of. The {mixture.toLowerCase()} is
+        not a phase — it is a two-phase lamellar mixture, so its {micro.left.name} counts toward the
+        total as well.
+      </p>
     </div>
   );
 }

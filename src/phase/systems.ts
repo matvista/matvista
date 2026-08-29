@@ -38,6 +38,23 @@ export interface Invariant {
   T: number;
   reaction: string;
   type: 'eutectic' | 'eutectoid';
+  /**
+   * The two **solid** phases the reaction leaves behind, with their
+   * compositions at the invariant temperature, left one first.
+   *
+   * Present only where the invariant bounds a fully solid two-phase field,
+   * which is what makes a microconstituent split meaningful. The Fe–C eutectic
+   * at 1147 °C does not qualify: it produces γ, and γ is gone by 727 °C.
+   *
+   * These are a second copy of numbers the boundary polylines already carry,
+   * so a test cross-checks them against `evaluate`'s own tie line.
+   */
+  products?: [
+    { name: string; composition: number },
+    { name: string; composition: number },
+  ];
+  /** What the eutectic/eutectoid mixture is called, where it has a name. */
+  microconstituent?: string;
 }
 
 export interface PhaseSystem {
@@ -208,6 +225,10 @@ export const PB_SN: PhaseSystem = {
       T: EUT_T,
       reaction: 'L (61.9 wt% Sn) ⇌ α (18.3 wt% Sn) + β (97.8 wt% Sn)',
       type: 'eutectic',
+      products: [
+        { name: 'α', composition: ALPHA_MAX },
+        { name: 'β', composition: BETA_MAX },
+      ],
     },
   ],
   regionLabels: [
@@ -336,6 +357,11 @@ export const FE_C: PhaseSystem = {
       T: EUTECTOID_T,
       reaction: 'γ (0.76 wt% C) ⇌ α (0.022 wt% C) + Fe₃C (6.70 wt% C)',
       type: 'eutectoid',
+      products: [
+        { name: 'α', composition: FERRITE_MAX },
+        { name: 'Fe₃C', composition: CEMENTITE_X },
+      ],
+      microconstituent: 'Pearlite',
     },
     {
       label: 'Eutectic',
@@ -420,6 +446,118 @@ export const FE_C: PhaseSystem = {
 
 export const PHASE_SYSTEMS: PhaseSystem[] = [CU_NI, PB_SN, FE_C];
 
+/**
+ * Temperature of a named boundary at a composition, °C — read off the polyline
+ * the diagram actually draws, by linear interpolation between its points.
+ *
+ * M12 needs A₁, A₃ and A_cm in the heat-treatment module, and reading them
+ * from `boundaries` rather than re-deriving them is what stops the two modules
+ * describing different steels. Null when the composition is off the end of the
+ * boundary, or when no boundary carries that label — an alloy past 0.76 wt% C
+ * has no A₃, and saying so is the point.
+ */
+export function boundaryTemperature(
+  system: PhaseSystem,
+  label: string,
+  x: number,
+): number | null {
+  const pts = system.boundaries.find((b) => b.label === label)?.points;
+  if (!pts || pts.length < 2) return null;
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, t1] = pts[i - 1];
+    const [x2, t2] = pts[i];
+    const lo = Math.min(x1, x2);
+    const hi = Math.max(x1, x2);
+    if (x < lo || x > hi) continue;
+    if (x1 === x2) return t1;
+    return t1 + ((t2 - t1) * (x - x1)) / (x2 - x1);
+  }
+  return null;
+}
+
+// ===================== the Gibbs phase rule =====================
+
+export interface PhaseRuleResult {
+  /** Phases present, P. */
+  P: number;
+  /** Components, C. Two, for a binary. */
+  C: number;
+  /** Non-compositional variables, N. One — temperature, at fixed pressure. */
+  N: number;
+  /** Degrees of freedom, F = C + N − P. */
+  F: number;
+  /** The invariant reaction the point is sitting on, when it is on one. */
+  invariant: Invariant | null;
+}
+
+/**
+ * Float slack on the invariant temperature. Not a band a reader can sit inside.
+ *
+ * This used to be 1% *of each axis*, which on Fe–C is ±0.067 wt% C and ±12.0 °C
+ * — so `?sys=fe-c&x=0.76&T=739` reported three phases and F = 0 while the
+ * region readout on the same screen said γ, one phase, and the temperature box
+ * stepping 1 °C walked a reader through eleven consecutive false readings. The
+ * justification was wrong as well: the arrow keys move 1% of the axis *from
+ * wherever the point already is*, so they never land on an invariant anyway,
+ * while the number boxes step 1 °C and 0.01 wt% and land on every shipped
+ * invariant temperature exactly. The band bought nothing and cost the false
+ * readings, so it is gone; reaching an invariant is the number box's job, or
+ * the link's.
+ */
+export const INVARIANT_T_EPSILON = 1e-9;
+
+/**
+ * The composition range over which an invariant reaction is under way.
+ *
+ * Three phases coexist along the **whole** invariant isotherm, not only at the
+ * invariant composition: at 40 wt% Sn and 183 °C the alloy holds α, β and the
+ * last of the liquid together exactly as it does at 61.9 wt% Sn, and F is 0 at
+ * both. What is special about the invariant composition is that the reaction
+ * consumes *everything* there — nowhere else on the line is the primary phase
+ * absent.
+ *
+ * The span is read off the isotherm the system already draws rather than
+ * declared a second time, so the set this module calls invariant is exactly
+ * the line the reader can see. An invariant with no isotherm drawn for it
+ * would therefore never be flagged, which `systems.test.ts` refuses.
+ */
+function isothermSpan(system: PhaseSystem, invariant: Invariant): [number, number] | null {
+  const line = system.boundaries.find(
+    (b) =>
+      b.kind === 'isotherm' &&
+      b.points.length > 1 &&
+      b.points.every(([, T]) => Math.abs(T - invariant.T) <= INVARIANT_T_EPSILON),
+  );
+  if (!line) return null;
+  const xs = line.points.map(([x]) => x);
+  return [Math.min(...xs), Math.max(...xs)];
+}
+
+/**
+ * Degrees of freedom at a point, by the Gibbs phase rule.
+ *
+ * P + F = C + N. Both components are condensed and pressure is fixed, so N
+ * counts temperature alone and F = 3 − P: two in a single-phase field, one
+ * inside a two-phase field, zero on an invariant isotherm.
+ *
+ * **The invariant case has to override the evaluator.** The evaluator draws
+ * fields, and an isotherm is the seam between two of them, so it reports
+ * whichever side it resolves to — the Pb–Sn eutectic composition at 183 °C
+ * evaluates as single-phase L, sitting exactly on the liquidus. Taking P from
+ * that would report F = 2 on the one line in the diagram where nothing at all
+ * can move.
+ */
+export function gibbsPhaseRule(system: PhaseSystem, x: number, T: number): PhaseRuleResult {
+  const invariant =
+    system.invariants.find((i) => {
+      if (Math.abs(T - i.T) > INVARIANT_T_EPSILON) return false;
+      const span = isothermSpan(system, i);
+      return span != null && x >= span[0] && x <= span[1];
+    }) ?? null;
+  const P = invariant ? 3 : system.evaluate(x, T).phases.length;
+  return { P, C: 2, N: 1, F: 2 + 1 - P, invariant };
+}
+
 // ===================== steel microconstituents =====================
 
 export interface SteelResult {
@@ -434,47 +572,119 @@ export interface SteelResult {
   totalCementite: number;
 }
 
+/** The microconstituent split of an alloy cooled just past an invariant. */
+export interface MicroconstituentResult {
+  /** The invariant the structure forms at. */
+  invariant: Invariant;
+  kind: 'hypoeutectic' | 'hypereutectic' | 'eutectic' | 'hypoeutectoid' | 'hypereutectoid' | 'eutectoid';
+  /** Name of the primary (proeutectic / proeutectoid) phase; null at the invariant composition. */
+  primary: string | null;
+  /** The primary phase's own composition — the terminal solubility limit on its side. */
+  primaryComposition: number;
+  primaryFraction: number;
+  /** Mass fraction of the eutectic / eutectoid microconstituent. */
+  eutecticFraction: number;
+  /** Total phase fractions, which are **not** the microconstituent fractions. */
+  left: { name: string; composition: number; fraction: number };
+  right: { name: string; composition: number; fraction: number };
+}
+
+/**
+ * Primary phase, eutectic constituent and total phase fractions for an alloy
+ * cooled to just below its invariant isotherm.
+ *
+ * Three lever rules over three different segments of the same tie line, which
+ * is the point: for 40 wt% Sn just below 183 °C the alloy is 50% primary α and
+ * 50% eutectic constituent, and yet **73%** α by phase, because the eutectic
+ * constituent contains α as well. Students who have understood
+ * pearlite-vs-ferrite very often fail to transfer it, because Fe–C is taught
+ * with different vocabulary.
+ *
+ * The invariant used is the **lowest-temperature one that declares solid
+ * products** — the eutectoid for Fe–C, whose 1147 °C eutectic produces γ that
+ * no longer exists by 727 °C.
+ *
+ * Returns null inside the terminal solid solutions, where there is no eutectic
+ * constituent to report. Absent, not zeroed: clamping a fraction to hide an
+ * out-of-domain computation is what hid the missing α field in iteration 9.
+ */
+export function microconstituents(
+  system: PhaseSystem,
+  x: number,
+): MicroconstituentResult | null {
+  const invariant = system.invariants
+    .filter((i) => i.products)
+    .reduce<Invariant | null>((best, i) => (best == null || i.T < best.T ? i : best), null);
+  if (!invariant?.products) return null;
+
+  const [a, b] = invariant.products;
+  if (x < a.composition || x > b.composition) return null;
+
+  const leftFraction = lever(x, a.composition, b.composition);
+  const left = { name: a.name, composition: a.composition, fraction: leftFraction };
+  const right = { name: b.name, composition: b.composition, fraction: 1 - leftFraction };
+
+  const eutectoid = invariant.type === 'eutectoid';
+  if (Math.abs(x - invariant.x) < 1e-9) {
+    return {
+      invariant,
+      kind: eutectoid ? 'eutectoid' : 'eutectic',
+      primary: null,
+      primaryComposition: x,
+      primaryFraction: 0,
+      eutecticFraction: 1,
+      left,
+      right,
+    };
+  }
+
+  // The mixture forms from whatever reached the invariant composition; the
+  // primary phase is what separated out before that, sitting at its own
+  // solubility limit.
+  const hypo = x < invariant.x;
+  const primaryComposition = hypo ? a.composition : b.composition;
+  const eutecticFraction = hypo
+    ? (x - a.composition) / (invariant.x - a.composition)
+    : (b.composition - x) / (b.composition - invariant.x);
+
+  return {
+    invariant,
+    kind: eutectoid
+      ? hypo
+        ? 'hypoeutectoid'
+        : 'hypereutectoid'
+      : hypo
+        ? 'hypoeutectic'
+        : 'hypereutectic',
+    primary: hypo ? a.name : b.name,
+    primaryComposition,
+    primaryFraction: 1 - eutecticFraction,
+    eutecticFraction,
+    left,
+    right,
+  };
+}
+
 /**
  * Microconstituent and total-phase fractions just below the eutectoid, for a
  * steel of overall composition C0 (Callister §9.19).
+ *
+ * A thin wrapper over `microconstituents` since M8 generalised it, keeping the
+ * shape `heattreat/model.ts` and the Fe–C panel read, and keeping the **steel**
+ * domain: past 2.14 wt% C the primary constituent comes from the 1147 °C
+ * eutectic instead, and the alloy is a cast iron rather than a steel.
  */
 export function steelMicrostructure(C0: number): SteelResult | null {
   if (C0 < FERRITE_MAX || C0 > GAMMA_MAX) return null;
-
-  const totalFerrite = (CEMENTITE_X - C0) / (CEMENTITE_X - FERRITE_MAX);
-  const totalCementite = 1 - totalFerrite;
-
-  if (Math.abs(C0 - EUTECTOID_X) < 1e-9) {
-    return {
-      kind: 'eutectoid',
-      proeutectoid: null,
-      pearlite: 1,
-      proeutectoidFraction: 0,
-      totalFerrite,
-      totalCementite,
-    };
-  }
-
-  if (C0 < EUTECTOID_X) {
-    // Pearlite forms from austenite that reached the eutectoid composition.
-    const pearlite = (C0 - FERRITE_MAX) / (EUTECTOID_X - FERRITE_MAX);
-    return {
-      kind: 'hypoeutectoid',
-      proeutectoid: 'α (ferrite)',
-      pearlite,
-      proeutectoidFraction: 1 - pearlite,
-      totalFerrite,
-      totalCementite,
-    };
-  }
-
-  const pearlite = (CEMENTITE_X - C0) / (CEMENTITE_X - EUTECTOID_X);
+  const m = microconstituents(FE_C, C0);
+  if (!m) return null;
   return {
-    kind: 'hypereutectoid',
-    proeutectoid: 'Fe₃C (cementite)',
-    pearlite,
-    proeutectoidFraction: 1 - pearlite,
-    totalFerrite,
-    totalCementite,
+    kind: m.kind as SteelResult['kind'],
+    proeutectoid:
+      m.primary == null ? null : m.primary === 'α' ? 'α (ferrite)' : 'Fe₃C (cementite)',
+    pearlite: m.eutecticFraction,
+    proeutectoidFraction: m.primaryFraction,
+    totalFerrite: m.left.fraction,
+    totalCementite: m.right.fraction,
   };
 }

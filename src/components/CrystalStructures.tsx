@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import elementsRaw from '../data/elements.json';
 import { useRouteString } from '../useRoute';
-import { STRUCTURES, getStructure } from '../crystal/structures';
+import { STRUCTURES, getStructure, packingFactor } from '../crystal/structures';
+import { coordinationShell } from '../crystal/geometry';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
+import { prefersReducedMotion } from '../motion';
 import { CrystalScene, type ViewMode } from './CrystalScene';
 import type { ElementData } from '../types';
 
@@ -16,10 +18,21 @@ export function CrystalStructures() {
   const [showCell, setShowCell] = useState(true);
   const [showBonds, setShowBonds] = useState(false);
   const [showCoordination, setShowCoordination] = useState(false);
+  // A cell that spins on its own is exactly what "reduce motion" is asking us
+  // not to do. There is a checkbox either way, so this only sets the default.
+  const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
   const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
 
   const structure = getStructure(id);
   const metal = METALS.find((m) => m.symbol === metalSymbol) ?? METALS[4];
+
+  // Both numbers the panel used to recite are now derived. APF comes from the
+  // a↔R relation; CN is the length of the neighbour list the "coordination
+  // shell" checkbox already highlights, so the label and the picture cannot
+  // disagree. `coordinationShell` tiles a 3×3×3 supercell, so it is memoised.
+  const packing = packingFactor(structure);
+  const shell = useMemo(() => coordinationShell(structure), [structure]);
+  const cn = shell?.neighbours.length ?? structure.CN;
 
   // Keep the density example in step with the structure on screen.
   useEffect(() => {
@@ -30,6 +43,22 @@ export function CrystalStructures() {
       return METALS.find((m) => m.structure === id)?.symbol ?? current;
     });
   }, [id, setMetalSymbol]);
+
+  /**
+   * One concrete substitution under the R-cancelling derivation, using the
+   * metal already selected below. Cubic only: the HCP metals carry a measured
+   * c/a that differs from the ideal 1.633 the structure's cell volume assumes,
+   * so substituting their R under it would print a number that is neither the
+   * ideal APF nor the metal's own.
+   */
+  const substitution = useMemo(() => {
+    if (!packing || structure.cell !== 'cubic') return null;
+    if (metal.structure !== structure.id) return null;
+    const a = packing.aOverR * metal.R;
+    const spheres = packing.sphereVolume * metal.R ** 3;
+    const cell = packing.cellVolume * metal.R ** 3;
+    return { name: metal.name, R: metal.R, a, spheres, cell, apf: spheres / cell };
+  }, [packing, structure, metal]);
 
   // The density calculator only applies to the elemental metal structures.
   const densityStructure = getStructure(metal.structure);
@@ -90,6 +119,7 @@ export function CrystalStructures() {
           showCell={showCell}
           showBonds={showBonds}
           showCoordination={showCoordination}
+          autoRotate={autoRotate}
         />
 
         <div className="crystal-checks">
@@ -107,7 +137,15 @@ export function CrystalStructures() {
               checked={showCoordination}
               onChange={(e) => setShowCoordination(e.target.checked)}
             />
-            Coordination shell (CN = {structure.CN})
+            Coordination shell (CN = {cn})
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={autoRotate}
+              onChange={(e) => setAutoRotate(e.target.checked)}
+            />
+            Rotate
           </label>
           <span className="drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
@@ -127,11 +165,11 @@ export function CrystalStructures() {
             </tr>
             <tr>
               <th scope="row">Coordination number</th>
-              <td>{structure.CN}</td>
+              <td>{cn}</td>
             </tr>
             <tr>
               <th scope="row">Packing factor (APF)</th>
-              <td>{structure.APF.toFixed(2)}</td>
+              <td>{packing ? packing.apf.toFixed(3) : `${structure.APF.toFixed(2)} (tabulated)`}</td>
             </tr>
             <tr>
               <th scope="row">Lattice parameter</th>
@@ -143,6 +181,59 @@ export function CrystalStructures() {
         <p className="detail-summary">
           <strong>Found in:</strong> {structure.examples}
         </p>
+
+        <div className="density-box">
+          <h3>Where the packing factor comes from</h3>
+          {packing ? (
+            <>
+              <table className="mi-deriv-table apf-deriv">
+                <tbody>
+                  <tr>
+                    <th scope="row">Atoms per cell N</th>
+                    <td>{packing.N}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">{structure.aFromR}</th>
+                    <td>a = {packing.aOverR.toFixed(3)} R</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Spheres N · (4/3)πR³</th>
+                    <td>{packing.sphereVolume.toFixed(3)} R³</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      Cell V꜀ = {structure.cell === 'hexagonal' ? '(3√3/2) a²c' : 'a³'}
+                    </th>
+                    <td>{packing.cellVolume.toFixed(3)} R³</td>
+                  </tr>
+                  <tr className="mi-deriv-result">
+                    <th scope="row">APF = spheres / cell</th>
+                    <td>{packing.apf.toFixed(3)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="density-note">
+                {substitution ? (
+                  <>
+                    Substituting {substitution.name}: R = {substitution.R.toFixed(4)} nm gives a ={' '}
+                    {substitution.a.toFixed(4)} nm, so {packing.N} × (4/3)π({substitution.R.toFixed(4)})³
+                    ÷ ({substitution.a.toFixed(4)})³ = {substitution.spheres.toFixed(5)} ÷{' '}
+                    {substitution.cell.toFixed(5)} = {substitution.apf.toFixed(3)}.{' '}
+                  </>
+                ) : null}
+                R cancels in the quotient, which is the point: the packing factor belongs to the
+                arrangement, not to the element. Every element that adopts this structure has the same
+                one, whatever its atoms measure.
+              </p>
+            </>
+          ) : (
+            <p className="density-note">
+              {structure.name} has no single atomic radius — two ion sizes set the cell — so there is
+              no hard-sphere derivation to show. Its stated APF of {structure.APF.toFixed(2)} is a
+              tabulated value, not one this page computes.
+            </p>
+          )}
+        </div>
 
         <div className="density-box">
           <h3>Theoretical density</h3>

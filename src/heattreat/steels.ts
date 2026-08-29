@@ -13,6 +13,12 @@
  *   diagrams (Callister & Rethwisch ch. 10–11; ASM atlas shapes) and are
  *   approximate — good to a few degrees and a factor of order 1.5 in time.
  *   They are teaching curves, not design data.
+ * - **The "1080" label is this repo's own.** Callister's eutectoid TTT figure
+ *   is captioned "eutectoid composition, 0.76 wt% C" and carries no AISI
+ *   designation; naming it 1080 and giving it 0.79 wt% C are choices made
+ *   here, and 0.79 is what makes the app's own phase module classify it as
+ *   hyper-eutectoid. The curve shape is Callister's; the grade identity is
+ *   not, and the attribution above should not be read as covering it.
  */
 
 export interface Steel {
@@ -20,7 +26,19 @@ export interface Steel {
   name: string;
   /** Weight percent of each alloying element. */
   composition: { C: number; Mn: number; Ni: number; Cr: number; Mo: number };
-  /** Eutectoid/A₁ temperature, °C. */
+  /**
+   * Eutectoid/A₁ temperature, °C — the equilibrium temperature the C-curve is
+   * anchored on, shared by all three grades and equal to the phase module's
+   * eutectoid.
+   *
+   * It is deliberately *not* composition-corrected, and nothing
+   * composition-corrected is displayed beside it. A per-steel Ac₁ from
+   * Andrews would be an on-heating temperature driving a cooling
+   * construction, and it moves every critical cooling rate — measured, at
+   * this austenitising temperature: 1080 233.4 → 221.6, 5140 36.5 → 36.8,
+   * 4340 2.13 → 1.84 °C/s. That is a larger decision than the display it was
+   * raised by, and it is recorded here rather than made in passing.
+   */
   a1: number;
   /**
    * Nose of the pearlite-start curve: the shortest incubation time and the
@@ -32,6 +50,24 @@ export interface Steel {
   finishFactor: number;
   /** Lower bound of the bainite field, °C — below this, only martensite forms. */
   bainiteFloor: number;
+  /**
+   * Bainite-start temperature, °C — the top of the bainite field, measured.
+   *
+   * Where a published dilatometric CCT gives one, this is it, and `productAt`
+   * uses it as the pearlite/bainite divide. Absent it falls back to the
+   * arithmetic midpoint of the sub-nose range, which has no metallurgical
+   * basis and is documented as such.
+   *
+   * 4340: 478 °C, the mid of a measured 476–480 (Materials 2020, 13, 5585;
+   * 0.40C dilatometry, austenitised 850 °C).
+   * 5140: 510 °C, the mid of a measured 500–520 for 42CrMo4 (Materials 2022,
+   * 15, 3076) — the same 0.4 wt% C proxy already relied on for the ferrite
+   * start, so no new licence is taken.
+   * 1080: none. Its 0.79 wt% C is outside the range of every 0.4C source
+   * here, and it forms no proeutectoid phase, so nothing downstream depends
+   * on the divide; changing it would move published output for no gain.
+   */
+  bainiteStart?: number;
   /** Hardness of each product for this carbon level, HRC. */
   hardness: {
     coarsePearlite: number;
@@ -65,7 +101,7 @@ export const STEELS: Steel[] = [
     bainiteFloor: 250,
     hardness: { coarsePearlite: 15, finePearlite: 30, bainite: 45, martensite: 65 },
     jominy: [62, 40, 30, 28, 27, 26, 26, 25, 25, 24, 24, 23, 23],
-    note: 'The classic teaching TTT diagram, and a cautionary one. Being eutectoid, it transforms to 100% pearlite or 100% martensite with no proeutectoid phase — but the nose sits at about one second, so anything short of a water quench misses martensite entirely. Hardness collapses within a few millimetres of the quenched end.',
+    note: 'The classic teaching TTT diagram, and a cautionary one. It is the eutectoid grade, so it transforms to essentially 100% pearlite or 100% martensite with no proeutectoid phase — its nominal 0.79 wt% C is a whisker above the 0.76 eutectoid, enough for well under 1% proeutectoid cementite, which this model does not track. The nose sits at about one second, so anything short of a water quench misses martensite entirely. Hardness collapses within a few millimetres of the quenched end.',
   },
   {
     id: '5140',
@@ -75,6 +111,7 @@ export const STEELS: Steel[] = [
     nose: { time: 6, temp: 550 },
     finishFactor: 12,
     bainiteFloor: 250,
+    bainiteStart: 510,
     hardness: { coarsePearlite: 12, finePearlite: 25, bainite: 40, martensite: 57 },
     jominy: [57, 54, 47, 40, 35, 33, 31, 30, 28, 27, 26, 25, 24 ],
     note: 'Under a percent of chromium moves the nose from one second to about six, and that is the whole story of alloy steel: the chromium does little for the hardness of martensite, but it buys the time needed to form martensite at all in a section of useful thickness.',
@@ -87,6 +124,7 @@ export const STEELS: Steel[] = [
     nose: { time: 100, temp: 560 },
     finishFactor: 15,
     bainiteFloor: 230,
+    bainiteStart: 478,
     hardness: { coarsePearlite: 14, finePearlite: 27, bainite: 42, martensite: 57 },
     jominy: [60, 59, 58, 57, 57, 56, 56, 55, 54, 53, 51, 48, 45],
     note: 'The deep-hardening benchmark. With the nose pushed out past a hundred seconds, even the slowly cooled centre of a thick section escapes pearlite — 4340 is still near 50 HRC 50 mm from the quenched end, where 1080 has fallen to 23. Same martensite hardness as 5140; vastly more of the part gets to be martensite.',
@@ -105,6 +143,15 @@ export function getSteel(id: string): Steel {
  * Carbon dominates by an order of magnitude. Push it high enough and Mˢ falls
  * below room temperature, which is why high-carbon steels keep untransformed
  * retained austenite after quenching.
+ *
+ * **Fitted range: 0.11–0.60 wt% C.** Two of the places this module uses it are
+ * outside that range and neither was flagged before. 1080's nominal 0.79 wt% C
+ * is one — and it produces the headline 233 °C/s critical rate, so the number
+ * this module is best known for rests on an extrapolation. The other is the
+ * enriched austenite on a ferrite-forming path, which reaches the eutectoid
+ * 0.76 wt% C. Both are modest extrapolations of a linear fit and the equation
+ * is monotone and well-behaved there, but they are extrapolations, and a
+ * caller quoting Mˢ for a high-carbon steel should know it.
  */
 export function martensiteStart(c: Steel['composition']): number {
   return 539 - 423 * c.C - 30.4 * c.Mn - 17.7 * c.Ni - 12.1 * c.Cr - 7.5 * c.Mo;

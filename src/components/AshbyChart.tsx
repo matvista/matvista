@@ -6,6 +6,7 @@ import {
   SELECTION_MATERIALS,
   indexValue,
   type MaterialClass,
+  type PerformanceIndex,
   type SelectionMaterial,
 } from '../selection/materials';
 
@@ -228,6 +229,8 @@ export function AshbyChart() {
         </label>
 
         <p className="trend-note">{index.scenario}</p>
+
+        <IndexDerivationBox index={index} />
       </section>
 
       <aside className="detail">
@@ -289,6 +292,82 @@ export function AshbyChart() {
           design a tensile member from them.
         </p>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * A8 — objective, constraint, free variable, and the elimination between them.
+ *
+ * The chart taught the guide line, which is one third of the Ashby method, and
+ * the index itself arrived as five memorised expressions. Making the ⅓ come
+ * visibly from I ∝ t³ turns five rules into one method — and it is what lets a
+ * student derive an index for a function that is not on the list, which is
+ * exactly what an exam asks.
+ *
+ * The slope of the guide line is 1/a, which `materials.ts` states in a comment
+ * and nothing on screen showed until now.
+ */
+function IndexDerivationBox({ index }: { index: PerformanceIndex }) {
+  const d = index.derivation;
+  return (
+    <div className="mi-derivation ab-deriv">
+      {/* No index label in the heading: the shared heading style uppercases,
+          and `σ^⅔ / ρ` uppercases to `Σ^⅔ / Ρ`, which is a different letter.
+          The label is on the Index row below, in its own case. */}
+      <h3 className="ab-deriv-title">Where the index comes from</h3>
+      <table className="mi-deriv-table">
+        <tbody>
+          <tr>
+            <th scope="row">Function</th>
+            <td>{d.functionName}</td>
+          </tr>
+          <tr>
+            <th scope="row">Objective</th>
+            <td>{d.objective}</td>
+          </tr>
+          <tr>
+            <th scope="row">Constraint</th>
+            <td>{d.constraint}</td>
+          </tr>
+          <tr>
+            <th scope="row">Free variable</th>
+            <td>{d.freeVar}</td>
+          </tr>
+          {d.steps.map((step, i) => (
+            <tr key={step}>
+              <th scope="row">{i === 0 ? 'Eliminate' : ''}</th>
+              <td>{step}</td>
+            </tr>
+          ))}
+          <tr className="mi-deriv-result">
+            <th scope="row">Index</th>
+            <td>
+              maximise {index.label} · guide line slope 1/a = {index.slope}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="density-note">
+        The exponent is not a fifth thing to remember. The mass goes as the{' '}
+        {d.massPower === 1 ? 'first' : d.massPower === 2 ? 'second' : `${d.massPower}th`} power of{' '}
+        {d.freeVar.replace(/^the /, '')} and the constraint as the{' '}
+        {d.constraintPower === 1
+          ? 'first'
+          : d.constraintPower === 3
+            ? 'third'
+            : d.constraintPower === 4
+              ? 'fourth'
+              : `${d.constraintPower}th`}{' '}
+        — so a = {d.massPower}/{d.constraintPower}. Change the section and the exponent changes
+        with it, which is why a panel gets ⅓ where a beam of the same material gets ½: a panel may
+        only grow in thickness, a beam in both depth and breadth.
+      </p>
+      <p className="density-note">
+        On log–log axes a line of constant P<sup>a</sup>/ρ has slope 1/a, so this index's guide
+        line is drawn at <strong>{index.slope}</strong>. That is why the three stiffness indices
+        pick different winners from the same 54 materials — same chart, three different questions.
+      </p>
     </div>
   );
 }

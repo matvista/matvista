@@ -41,7 +41,16 @@ built at all.
   - Prefer SVG and CSS over raster images; when a raster is unavoidable, size it for its
     largest real display size and keep it well under the file limit.
 - **Record the measurement.** Any claim about bundle size, first paint or payload must
-  come from an actual `npm run build`, quoted with the number, not estimated.
+  come from an actual `npm run build`, quoted with the number, not estimated. Three rules
+  that this repo has now got wrong six times between them, so they are written down:
+  - **First paint is the index chunk *plus* the stylesheet.** `dist/index.html` loads the
+    stylesheet render-blocking, so a claim about "first paint" that quotes the JS alone is
+    understated by the whole stylesheet. If you mean the JS, say "first-paint chunk".
+  - **Quote against the commit's own parent**, never against the branch base and never
+    against HEAD. A chunk that grew twice reads as unchanged if you compare the wrong pair.
+  - **Quote every chunk the route now fetches**, not only the ones you edited. A module
+    that gains a shared dependency has grown by it, even though nothing in its own chunk
+    moved. `__vite__mapDeps` in the index chunk is the list.
 
 ### Deciding without asking
 
@@ -80,10 +89,13 @@ Last shipped lens: **product gap** (iteration 17). Next lens: **performance**.
 Materials Project integration remains, and it cannot hold under static hosting. Future
 iterations come from the product/debt backlog below, not from `ROADMAP.md`.
 
-**Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
-modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
-AshbyChart's dead memos, which recompute 54 points in microseconds. That is tidying, not
-performance, and the lens rules say to say so rather than invent work to fill it.
+**Performance was skipped at iteration 11 on purpose.** First paint was 67.9 kB gzip
+then, modules were 3.5–8.6 kB each and three.js was already deferred; the only candidate
+left was AshbyChart's dead memos, which recompute 54 points in microseconds. That is
+tidying, not performance, and the lens rules say to say so rather than invent work to
+fill it. (Re-measured since: first paint is **92.95 kB gzip** — index 85.17 plus a
+render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–12.04 kB. The
+reasoning stands; the figures were four modules out of date.)
 
 **Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write
 assertions as `*.test.ts` beside the module and run `npm test`. Physics still gets verified
@@ -134,7 +146,7 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Lazy-load three.js | 4 | 2 | 2.0 | three.js is ~73% of the bundle (910 kB raw / 244 kB gzip of ~354 kB). `CrystalStructures.tsx` **and** `DefectsDiffusion.tsx` both import `CrystalScene` eagerly — lazy-loading only one changes nothing. Both together cut first paint to ~97 kB gzip for the seven non-3D modules. **Unmeasured since ship 1; re-measure before quoting.** |
+| ~~Lazy-load three.js~~ — **shipped at iteration 3** | 4 | 2 | 2.0 | The estimate here (910 kB raw / 244 kB gzip, first paint down to ~97 kB) was never re-measured after it shipped, and the row read as outstanding work. Re-measured: the 3D chunk is **904.45 kB raw / 241.51 kB gzip**, it is reached only from `crystals`, `miller` and `defects`, and first paint is **92.95 kB gzip** with none of it inside. `CrystalStructures.tsx` and `DefectsDiffusion.tsx` both go through the lazy `CrystalScene`, which was the point — lazy-loading only one would have changed nothing. |
 | `AshbyChart.tsx` exhaustive-deps ×4 | 2 | 1 | 2.0 | The only lint warnings in the repo (baseline 4). **Investigated in iteration 9: it cannot go stale.** `yProp` is in the deps, and `visible` is rebuilt every render so the memos recompute every render regardless — they are dead memos, not a correctness risk. Downgraded from a correctness item to tidying: memoise `visible`, lift the accessor out of the closure, and the baseline drops to 0. |
 | Shared `<Canvas>` shell | 2 | 2 | 1.0 | `MillerScene.tsx` duplicates `CrystalScene.tsx`'s camera/dpr/lights/OrbitControls bounds and re-derives the cylinder-orientation helper. |
 
@@ -218,9 +230,18 @@ the **production** build served by `npm run preview` (launch config `matvista-pr
 the dev server does not chunk the same way, so never quote sizes from it.
 
 - First paint: **355.68 → 84.18 kB gzip**, one chunk, 82 kB over the wire.
-- three.js lands in a chunk named `geometry-*.js` (904 kB / 241 kB gzip) because
-  `crystal/geometry.ts` anchors that chunk's graph. **The name does not say "three" — do
-  not assume it is dead weight and do not rename the file expecting the chunk to follow.**
+- three.js lands in one chunk with the rest of the 3D stack (904 kB / 241 kB gzip). Its
+  *name* is whichever of the modules in that graph rollup happens to pick, so it does not
+  say "three" — do not assume it is dead weight.
+  **Updated: the name moved on its own, and the warning that used to stand here had the
+  causality backwards.** It read "do not rename the file expecting the chunk to follow",
+  on the premise that the name tracked `crystal/geometry.ts`. It does not. No file has
+  been renamed and the chunk is now `OrbitControls-*.js`: the rename lands at `2218d7b`,
+  where deriving APF and CN moved another cross-chunk binding out of `crystal/geometry.ts`.
+  Measured — `geometry-DlAICOkR.js` at `6818158`, 904,271 B raw, 14 exports;
+  `OrbitControls-0BwuMUTe.js` at `2218d7b`, 904,457 B raw, 15 exports. **Not a pure
+  rename either**: +186 B raw, +30 B by `gzip -9` (241.45 → 241.51 kB by the build's own
+  gzip figure). Never match this chunk by name in a script or a doc — find it by size.
 - Browsing all five non-3D modules costs **108 kB** cumulative. Opening `crystals` adds
   three.js and jumps to 349 kB; `miller` and `defects` then add only 5 and 4 kB, so the
   cost is paid once.
@@ -485,7 +506,12 @@ failed:
 - ROADMAP's bundle table had drifted with two modules added: index 213 → 215 kB raw
   (67.5 → 68.2 gzip), stylesheet 22.7 → 24.5 kB, "nine per-module chunks totalling 35.5 kB"
   → eleven totalling 49.8 kB, and a per-module range of 3.5–5.6 kB → **1.8–8.6 kB**. First
-  paint is now 73.4 kB gzip, 72 kB over the wire. A new shared-helpers row was added.
+  paint was 73.4 kB gzip then, 72 kB over the wire. A new shared-helpers row was added.
+  (Those figures were correct at iteration 14 and are not now: two modules and twelve
+  Tier-1 commits later, first paint is **92.95 kB gzip** — index 85.17 + stylesheet 7.78 —
+  and **93.6 kB over the wire**, document and headers included, from
+  `performance.getEntriesByType('resource')` against `npm run preview`. ROADMAP's table
+  carries the current set; this line records what iteration 14 measured.)
 - ROADMAP claimed "this file only covers what is next" while containing four shipped
   write-ups. Reframed as the build record, which is what it had become.
 - **Verifying the README's four example links found a real bug.** After visiting Miller and
@@ -583,6 +609,97 @@ Both items came from the user, and both were fair.
   Replaced with "8 crystal structures in 3D", and all four strip values are now asserted in
   `docs.test.ts`.
 
+### Corrections to size claims already committed
+
+Recorded here rather than by rewriting the commits. Each was re-measured with one
+`npm run build` per commit, at the named commit and at its own parent.
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `be91ef6` | XRD "11.10 + 5.25 = 16.35 → 7.63 + 9.53, **+0.32 kB** gzip" | The route also fetches `metals-QYkHP7hv.js` from this commit on: `__vite__mapDeps` went `[XrdSimulator, miller]` at `8bd636a` to `[XrdSimulator, metals, diffraction]`. Really 16.35 → **18.17 kB raw** and 6.79 → **7.53 kB gzip**, i.e. **+0.74**, not +0.32. The two chunks it did list are quoted correctly; the third is missing. |
+| `a834086` | "First-paint chunk unchanged at 301.10 kB raw / **85.16 kB gzip**" | At its parent `2218d7b` the index chunk is **85.17 kB** gzip, so it fell by 0.01 rather than being unchanged. The raw length really is unchanged at 301,106 B, though the content is not — md5 `3016a627…` → `bb296c13…`. |
+| `948a81d` | Corrosion "20.60 → 25.04 kB raw, **6.59** → 8.01 gzip" | At its parent `a834086` the Corrosion chunk is **6.60 kB** gzip. Raw and the after-figure are right. |
+| `d294681` | Corrosion "25.04 → 32.83 kB raw, **8.01** → 9.99 gzip" | At its parent `4f6b14a` it is **8.00 kB** gzip. Raw and the after-figure are right. |
+
+Mine, found by re-measuring the index chunk at every commit in the audited window after
+writing the table above — which is the point of having it. It was headed "two of my own"
+when it had two rows and carries six; it is not given a count any more, because the count
+is what kept going stale:
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `56037ff` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | The raw length is unchanged at 301,121 B, but the gzip figure went 85.17 → **85.18 kB**. |
+| `7c1161b` | the same sentence | 301,121 B again, gzip 85.17 → **85.16 kB**. |
+| `bd9de77` | "First-paint chunk 301,121 B raw / 85.16 kB gzip … unchanged from the parent's own build" | 301,121 B again, gzip 85.16 → **85.17 kB**. Written after the two rows above, which is the point of the rule below. |
+| `96b386c` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | Its parent `56037ff` is **85.18**, so it fell. Fourth of the same shape. |
+| `abce31d` | "the index chunk is byte-identical at 301,121 B" | The *length* is identical; the bytes are not — md5 `f1e4f657…` → `3570614e…`. Its gzip figure did hold at 85.17. |
+| `234672c` | MillerIndices "17.59 → 17.62 kB raw (5.53 → 5.54 gzip)", HeatTreatment "28.40 → **28.43**", DefectsDiffusion "5.40 → **5.41** gzip" | 17.59 → **17.63** kB raw and 5.53 → **5.55** gzip; **28.42**; **5.42**. Three figures written from what the change looked like it would cost rather than from the build sitting in the same shell. |
+
+`56037ff`, `7c1161b`, `bd9de77` and `96b386c` are the `a834086` shape exactly — all four
+claiming an index figure "unchanged" on the strength of a raw length that genuinely had
+not moved — and the mechanism is worth stating as a rule of its own:
+
+> **The index chunk's raw length is stable; its gzip figure is not.** The lazy-chunk
+> filename table lives inside that chunk, so any commit that changes *any* module chunk
+> changes the index chunk's bytes without changing its length, and the reported gzip
+> figure wobbles by ±0.01 kB. Quote it as a pair — parent value and commit value, both
+> from a build — and never write "unchanged" for it on the strength of the raw length
+> holding.
+
+**The audit's own count did not close, and the correction is the same lesson again.**
+`5b702f8` said "twenty-two of the twenty-six … the four in that group", and no reading
+gives four: it recorded three commits itself (`abce31d`, `96b386c`, `234672c`), three more
+were already in the table above it, and 22 + 3 ≠ 26. Recounted against the window, one
+build per commit:
+
+- **Twenty-six** commits in `3f79182..234672c`, and every one of them quotes an index or
+  first-paint figure, so none of them holds vacuously.
+- **Six** carry a figure that moved — the six rows of the table above, all inside that
+  window. The other four errata rows (`be91ef6`, `a834086`, `948a81d`, `d294681`) are
+  outside it.
+- **Twenty** hold at 301,121 B / 85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet.
+
+`5b702f8`'s subject also says "every size claim on this branch". It audited twenty-six
+commits; the branch has ninety-two, of which fifty quote a size figure at all. The window
+is about half the size-quoting commits and under a third of the branch — accurate for what
+it checked, overbroad for what it says. Recorded rather than amended, for the reason that
+row gives itself.
+
+**Found after that window closed.** Kept separate so the twenty/six count above stays a
+statement about `3f79182..234672c` and does not have to be recounted every time a later
+commit joins the table:
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `4c65d70` | "the guard is **20 bytes** raw and does not move the gzip figure" | **24 bytes**: 301,121 → 301,145 B, measured as an A/B on `useRoute.ts` alone with every other chunk identical. 301.12 → 301.14 kB is what the reporter prints, and I took the difference from the rounded pair instead of the bytes I had. |
+
+The gzip half of that sentence did hold at `4c65d70` — 85.17 both sides — but it is the
+claim the rule above says not to make, and it no longer holds: the same A/B run at today's
+HEAD reports 85.17 → **85.18**. The figure did not change because the guard changed; it
+changed because a different chunk's hash did. A gzip claim about the index chunk is only
+ever true of the tree it was measured on.
+
+**Two rules that would have caught all of these, both from writing them and then
+breaking them again:**
+
+> Never write a size into a commit body before the build that produced it has printed.
+> Every one of these came from composing the sentence while the change was fresh and
+> pasting the build output afterwards without re-reading the sentence against it.
+
+> "Byte-identical" is a claim about an md5, not about a length. If you have only compared
+> lengths, say "the same length".
+
+And two in the branch's own summary report, which is not a commit and cannot be corrected
+in place:
+
+- "**no new first-paint cost**" is false. Under the rule above, first paint at `6818158`
+  is 85.16 + 7.22 = **92.38 kB gzip** and at HEAD 85.17 + 7.78 = **92.95** — the
+  stylesheet grew 34.39 → 37.32 kB raw. The twelve Tier-1 commit bodies each report their
+  own stylesheet delta and are honest; only the summary over them was wrong, which is why
+  they are left alone.
+- "**index chunk untouched**" is false: 301,101 → 301,121 B, md5 `488cd9a6…` →
+  `6bc92d56…` at the time of writing.
+
 ### Standing hazards (unverified, worth checking when touched)
 
 - The XRD module's `dSpacing` delegates to the cubic formula in `crystal/miller.ts`. Every
@@ -591,3 +708,22 @@ Both items came from the user, and both were fair.
 - `crystal/metals.ts` carries measured `coa` per HCP metal while `crystal/structures.ts`
   hardcodes the ideal 1.633 in `volumeOverA3`. Confirm which one the density readout uses
   before trusting HCP densities (Zn and Cd deviate ~15%).
+- **`useRoute`'s debounced write depends on nothing else touching `history`.** The guard
+  added in `4c65d70` drops a queued write whenever `location.hash` differs from the last
+  hash the store wrote, on the assumption that the difference will be explained by a
+  `hashchange` or `popstate` that `adopt` is about to receive. That holds today —
+  `useRoute.ts` is the only writer in the app, and every external hash move fires one of
+  those events — but it is load-bearing and nothing asserts it. If a second writer is ever
+  added, or a hash moves without an event, the guard drops that write and every later
+  debounced write with it, until some event arrives to resynchronise `urlHash`. Assert the
+  single-writer property before adding a second one.
+- **`f4c529d`'s region-name oracle is vacuous for single-phase points.** `singlePhase()`
+  sets the region and the phase name from the same identifier, so those rows compare a
+  value against itself and would survive any mutation of it. The two-phase half is
+  genuinely independent — mutating `twoPhase` gives 16 failures — so the sweep is not
+  worthless, but its single-phase rows prove nothing and should not be counted as coverage.
+- **The Gibbs readout flags F = 0 at the endpoints of an invariant isotherm**, where no
+  reaction occurs: Fe–Fe₃C at x = 6.70 for both 727 and 1147 °C, and Pb–Sn at 18.3 and
+  97.8 for 183 °C. The set is measure-zero and the endpoint is the terminus of the
+  reaction line, so it is defensible rather than wrong — but it is a deliberate reading,
+  not an accident, and anyone tightening the invariant test should know it is there.

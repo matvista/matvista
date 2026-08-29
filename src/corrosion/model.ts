@@ -97,8 +97,24 @@ export function areaRatioFactor(cathodeArea: number, anodeArea: number): number 
  *
  *   CPR = K·W / (ρ·A·t)
  *
- * with K = 87.6 giving mm/yr for W in mg, ρ in g/cm³, A in cm², t in hours.
- * (K = 534 gives mils per year, the unit most US corrosion data is quoted in.)
+ * with K = 87.6 giving mm/yr for W in mg, ρ in g/cm³, **A in cm²** and t in
+ * hours.
+ *
+ * **K = 534 is not the same equation with a different constant.** It gives
+ * mils per year — the unit most US corrosion data is quoted in — but it wants
+ * **A in square inches**. This comment used to say only "K = 534 gives mils
+ * per year", which reads as "same units, swap K", and that is the trap: feed
+ * K = 534 an area in cm², which is all this signature offers, and the answer
+ * is 6.4516× short.
+ *
+ * Both constants are an 8766-hour year carrying mg/(g·cm³·cm²) into a depth:
+ * 10 × 8766 × 10⁻³ = 87.66 mm/yr, and 393.7008 × 8766 × 10⁻³ / 6.4516 =
+ * 534.934 mils/yr. Their exact ratio times 6.4516 is 39.370, which is
+ * 1 mm in mils; the published pair rounds to 87.6 and 534 and leaves 39.328,
+ * so the shortfall a reader would see is the unit error, not the rounding.
+ *
+ * Nothing in the app passes K = 534. The constant is exported so the
+ * assertion that documents the trap can name it.
  */
 export const CPR_K_MM_PER_YEAR = 87.6;
 export const CPR_K_MILS_PER_YEAR = 534;
@@ -112,6 +128,47 @@ export function penetrationRate(
 ): number {
   if (density_g_cm3 <= 0 || area_cm2 <= 0 || hours <= 0) return 0;
   return (K * massLoss_mg) / (density_g_cm3 * area_cm2 * hours);
+}
+
+/**
+ * Corrosion rate from a **measured** corrosion current density —
+ * ASTM G102 eq. 1, Callister eq. 17.24:
+ *
+ *   CR = K · (i_corr / ρ) · EW
+ *
+ * with i_corr in µA/cm², EW in grams per mole of electrons and ρ in g/cm³.
+ * K = 3.27 × 10⁻³ gives mm/yr and K = 1.288 × 10⁻¹ gives mils per year; unlike
+ * Callister's pair for eq. 17.23, both of these take the area in cm², so the
+ * two differ by nothing but 1 mm = 39.37 mils.
+ *
+ * **i_corr is an input, never an output.** It is not predictable from the
+ * couple: the driving voltage sets the direction, and the kinetics of the
+ * electrolyte set the rate. Anything calling this must present the current
+ * density as a measurement the reader supposes, not as something the module
+ * derived.
+ */
+export const G102_K_MM_PER_YEAR = 3.27e-3;
+export const G102_K_MILS_PER_YEAR = 1.288e-1;
+
+export function currentDensityToCPR(
+  i_uA_cm2: number,
+  equivalentWeight_g: number,
+  density_g_cm3: number,
+  K = G102_K_MM_PER_YEAR,
+): number {
+  if (density_g_cm3 <= 0 || i_uA_cm2 < 0 || equivalentWeight_g <= 0) return 0;
+  return K * (i_uA_cm2 / density_g_cm3) * equivalentWeight_g;
+}
+
+/**
+ * Grams dissolved per mole of electrons, for an element going to a single
+ * ionic species: EW = A/n. A multi-phase or multi-element alloy needs a
+ * composition-weighted average instead, which is why the shipped table covers
+ * only entries where this form holds.
+ */
+export function equivalentWeight(atomicMass: number, valence: number): number {
+  if (valence <= 0) return 0;
+  return atomicMass / valence;
 }
 
 /* ------------------------------------------------------- Pourbaix boundaries */
@@ -136,3 +193,69 @@ export function oxygenLine(pH: number, T_K = T25): number {
 
 /** Standard potential of the O₂/H₂O couple in acid, V vs SHE. */
 export const OXYGEN_E0 = 1.229;
+
+/* ------------------------------------------------------ concentration cells */
+
+export interface ConcentrationCellResult {
+  /**
+   * Potential of the electrode at the **first** activity given, relative to
+   * the standard state, V.
+   *
+   * Named for the argument it arrived as, not for how concentrated it is.
+   * These were once `eHigh`/`eLow`, sorted by activity, while `anode` was
+   * `'high' | 'low'` meaning the first or second argument — two meanings of
+   * high and low in one four-field result, which is exactly how the panel came
+   * to print each electrode's potential on the other one's row. There is one
+   * ordering here now, and it is the caller's: the caller is the only party
+   * that knows which electrode is the crevice and which is the open surface.
+   */
+  eFirst: number;
+  /** Potential of the electrode at the **second** activity given, same reference, V. */
+  eSecond: number;
+  /** Cell voltage, V. Never negative. */
+  emf: number;
+  /** Which of the two electrodes corrodes, named by the argument it arrived as. */
+  anode: 'first' | 'second' | 'neither';
+}
+
+/**
+ * Two electrodes of the **same** metal at different activity.
+ *
+ * The commonest misconception in corrosion is that two different metals are
+ * needed. They are not: crevice corrosion, pitting, waterline attack,
+ * under-deposit attack and a buried pipe crossing two soil types are all this
+ * cell. The EMF panel already explains the mechanism in prose, which is a
+ * paragraph students skim.
+ *
+ *   E_cell = (RT/nF)·ln(a_high/a_low) = (0.0592/n)·log₁₀(a_high/a_low) at 25 °C
+ *
+ * E° cancels — it is the same metal on both sides — so this is exactly the
+ * difference of two `nernstPotential` readings and carries no data of its own.
+ * The **depleted** side is the anode: dilute the metal ion and that metal
+ * becomes more active, so it corrodes against its own twin.
+ *
+ * The same arithmetic with n = 4 over the oxygen half-cell is differential
+ * aeration, where "activity" is the dissolved-oxygen level instead.
+ *
+ * The two activities may be given in either order. `emf` is the magnitude of
+ * the difference and `anode` names the argument that corrodes, so nothing
+ * downstream has to know which of the two was the larger.
+ */
+export function concentrationCell(
+  n: number,
+  activityA: number,
+  activityB: number,
+  T_K = T25,
+): ConcentrationCellResult | null {
+  if (!(n > 0) || !(activityA > 0) || !(activityB > 0)) return null;
+  const shift = (a: number) => (nernstSlope(T_K) / n) * Math.log10(a);
+  const eFirst = shift(activityA);
+  const eSecond = shift(activityB);
+  return {
+    eFirst,
+    eSecond,
+    emf: Math.abs(eFirst - eSecond),
+    // The more active electrode — the lower potential — is the one consumed.
+    anode: eFirst === eSecond ? 'neither' : eFirst < eSecond ? 'first' : 'second',
+  };
+}

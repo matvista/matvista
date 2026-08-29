@@ -97,6 +97,73 @@ export const GALVANIC_SERIES: GalvanicEntry[] = [
   { name: 'Magnesium', potential: -1.6, note: 'The most active metal in normal engineering use, and the usual sacrificial anode where the driving voltage needs to be large.' },
 ];
 
+/**
+ * What a rate calculation needs on top of the galvanic series: how much metal
+ * one mole of electrons removes, and how much space that mass occupies.
+ *
+ * **Deliberately partial.** Every entry here is a single element dissolving to
+ * a single ionic species, so its equivalent weight is exactly A/n and can be
+ * checked against the shipped `elements.json` — which the test does, rather
+ * than this file becoming a second copy of that data that drifts from it. The
+ * multi-phase alloys in the series (brass, bronze, Monel, the cupronickels,
+ * the stainless steels, 2024) have a composition-weighted equivalent weight
+ * that is not A/n and is not derivable from anything shipped here; the noble
+ * entries and graphite do not dissolve at a measurable rate at all. For all of
+ * those the rate panel is **absent**, which is the honest answer, rather than
+ * showing a fabricated number.
+ *
+ * Atomic masses and densities are the values in `src/data/elements.json`.
+ */
+export interface ElectrochemistryEntry {
+  /** Name exactly as it appears in `GALVANIC_SERIES`. */
+  name: string;
+  /** Element symbol, for the cross-check against `elements.json`. */
+  symbol: string;
+  /** Relative atomic mass. */
+  atomicMass: number;
+  /** Electrons per atom dissolved. */
+  valence: number;
+  /** Density, g/cm³. */
+  density: number;
+  /** Why this entry is allowed to use EW = A/n. */
+  basis: string;
+}
+
+const PURE = 'The metal dissolves to a single ion, so EW = A/n exactly.';
+
+export const ELECTROCHEMISTRY: ElectrochemistryEntry[] = [
+  {
+    name: 'Carbon steel',
+    symbol: 'Fe',
+    atomicMass: 55.845,
+    valence: 2,
+    density: 7.874,
+    basis: 'Plain carbon steel is over 98% iron, so its equivalent weight and density are iron\u2019s to well inside the accuracy of the rate model.',
+  },
+  { name: 'Silver', symbol: 'Ag', atomicMass: 107.868, valence: 1, density: 10.49, basis: PURE },
+  { name: 'Nickel (passive)', symbol: 'Ni', atomicMass: 58.693, valence: 2, density: 8.908, basis: PURE },
+  { name: 'Nickel (active)', symbol: 'Ni', atomicMass: 58.693, valence: 2, density: 8.908, basis: PURE },
+  { name: 'Copper', symbol: 'Cu', atomicMass: 63.546, valence: 2, density: 8.96, basis: PURE },
+  { name: 'Tin', symbol: 'Sn', atomicMass: 118.711, valence: 2, density: 7.365, basis: PURE },
+  { name: 'Lead', symbol: 'Pb', atomicMass: 207.21, valence: 2, density: 11.34, basis: PURE },
+  { name: 'Cadmium', symbol: 'Cd', atomicMass: 112.414, valence: 2, density: 8.65, basis: PURE },
+  { name: 'Zinc', symbol: 'Zn', atomicMass: 65.382, valence: 2, density: 7.14, basis: PURE },
+  {
+    name: 'Aluminium (commercially pure)',
+    symbol: 'Al',
+    atomicMass: 26.982,
+    valence: 3,
+    density: 2.7,
+    basis: PURE,
+  },
+  { name: 'Magnesium', symbol: 'Mg', atomicMass: 24.305, valence: 2, density: 1.738, basis: PURE },
+];
+
+/** The rate data for a galvanic-series entry, or null where there is none. */
+export function electrochemistryFor(name: string): ElectrochemistryEntry | null {
+  return ELECTROCHEMISTRY.find((e) => e.name === name) ?? null;
+}
+
 export interface PourbaixRegion {
   label: string;
   kind: 'immunity' | 'corrosion' | 'passivation';

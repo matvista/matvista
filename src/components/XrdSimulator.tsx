@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useRouteString } from '../useRoute';
+import { METALS } from '../crystal/metals';
 import {
+  REFLECTION_RULES,
   XRD_SAMPLES,
   XRD_SOURCES,
+  braggReach,
   computePattern,
   dSpacing,
+  familyLabel,
+  formatIntensity,
   isAllowed,
   multiplicity,
-  type XrdLattice,
+  type XrdSample,
+  type XrdSource,
 } from '../xrd/diffraction';
 
 const W = 760;
@@ -35,6 +41,10 @@ export function XrdSimulator() {
   const comparePeaks = useMemo(
     () => (compare ? computePattern(compare.lattice, compare.a, source.lambda, MAX_2THETA) : []),
     [compare, source],
+  );
+  const reach = useMemo(
+    () => braggReach(sample.lattice, sample.a, source.lambda),
+    [sample, source],
   );
 
   const sx = (twoTheta: number) => PAD.l + (twoTheta / MAX_2THETA) * plotW;
@@ -83,7 +93,7 @@ export function XrdSimulator() {
           {compare &&
             comparePeaks.map((p) => (
               <line
-                key={`c${p.h}${p.k}${p.l}`}
+                key={`c${familyLabel(p.h, p.k, p.l)}`}
                 x1={sx(p.twoTheta)}
                 x2={sx(p.twoTheta)}
                 y1={sy(0)}
@@ -93,7 +103,7 @@ export function XrdSimulator() {
             ))}
 
           {peaks.map((p) => {
-            const id = `${p.h}${p.k}${p.l}`;
+            const id = familyLabel(p.h, p.k, p.l);
             const isSel = selected === id;
             return (
               <g key={id} className="xrd-peak-group" onClick={() => setSelected(isSel ? null : id)}>
@@ -138,6 +148,19 @@ export function XrdSimulator() {
 
         <p className="trend-note">{sample.note}</p>
         <p className="density-note">
+          <strong>Why the source changes how many peaks exist.</strong> Bragg’s law gives
+          sin θ = λ/2d, and a sine cannot exceed 1, so no plane spaced closer than{' '}
+          <strong>d = λ/2 = {reach.dMin.toFixed(4)} nm</strong> can diffract at any angle. At{' '}
+          λ = {source.lambda} nm, {sample.name.replace(/ \(.*\)/, '')} has {reach.reachable}{' '}
+          reflection {reach.reachable === 1 ? 'family' : 'families'} above that floor, of which{' '}
+          {peaks.length} {peaks.length === 1 ? 'falls' : 'fall'} inside the 2θ ≤ {MAX_2THETA}°
+          window drawn here.
+          {reach.smallestD != null && (
+            <> The closest spacing this anode reaches is d = {reach.smallestD.toFixed(4)} nm.</>
+          )}{' '}
+          Nothing about the crystal changed; the ruler did.
+        </p>
+        <p className="density-note">
           Peak <strong>positions</strong> come straight from Bragg’s law and are exact — copper’s
           first four lines land at 43.32, 50.45, 74.13 and 89.95° against published values of 43.3,
           50.4, 74.1 and 90.0°. <strong>Intensities are indicative</strong>: multiplicity, structure
@@ -164,7 +187,7 @@ export function XrdSimulator() {
           </thead>
           <tbody>
             {peaks.map((p) => {
-              const id = `${p.h}${p.k}${p.l}`;
+              const id = familyLabel(p.h, p.k, p.l);
               return (
                 <tr
                   key={id}
@@ -175,14 +198,14 @@ export function XrdSimulator() {
                   <td>{p.twoTheta.toFixed(2)}°</td>
                   <td>{p.d.toFixed(4)}</td>
                   <td>{p.multiplicity}</td>
-                  <td>{p.intensity.toFixed(0)}</td>
+                  <td>{formatIntensity(p.intensity)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
 
-        <ExtinctionPanel lattice={sample.lattice} a={sample.a} />
+        <ExtinctionPanel sample={sample} source={source} />
       </aside>
     </div>
   );
@@ -193,32 +216,68 @@ export function XrdSimulator() {
  * absences are what identify the structure, so they deserve to be visible
  * rather than merely missing from the pattern.
  */
-function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
+function ExtinctionPanel({ sample, source }: { sample: XrdSample; source: XrdSource }) {
+  const { lattice, a } = sample;
+  const lambda = source.lambda;
+  /**
+   * The reverse of S12's link: an allowed reflection opens in the Miller
+   * module, on the same metal, so `a` — and therefore d, the verdict and the
+   * angle — agree.
+   *
+   * **Only where that metal exists.** The Miller module answers "is this
+   * reflection allowed" for its *selected metal*, reading the lattice off the
+   * metal and not off the `s` param this link also sets. Silicon and polonium
+   * are shipped samples with no entry in `crystal/metals.ts`, so a link from
+   * them arrived with no metal, fell back to copper, and answered a different
+   * question: six of polonium's twelve chips read "allowed" here and
+   * "extinct" on arrival, and silicon's (111) went from 28.44° to copper's
+   * 43.32°. Those chips are no longer links. The `hcp` filter mirrors the
+   * Miller module's own metal list, which is cubic-only.
+   */
+  const metal = METALS.find(
+    (m) => m.symbol.toLowerCase() === sample.id && m.structure !== 'hcp',
+  );
   const CANDIDATES: [number, number, number][] = [
     [1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 0, 0], [2, 1, 0], [2, 1, 1],
     [2, 2, 0], [3, 0, 0], [3, 1, 0], [3, 1, 1], [2, 2, 2], [4, 0, 0],
   ];
 
-  const RULES: Record<XrdLattice, string> = {
-    sc: 'All reflections present.',
-    bcc: '(h + k + l) must be even.',
-    fcc: 'h, k, l must be all odd or all even.',
-    diamond: 'FCC rule, plus all-even reflections require h + k + l ≡ 0 (mod 4).',
-  };
-
   return (
     <div className="density-box">
       <h3>Reflection rule</h3>
-      <p className="density-eq">{RULES[lattice]}</p>
+      <p className="density-eq">{REFLECTION_RULES[lattice]}</p>
       <div className="xrd-extinct">
         {CANDIDATES.map(([h, k, l]) => {
           const ok = isAllowed(lattice, h, k, l);
-          return (
-            <span key={`${h}${k}${l}`} className={`xrd-chip ${ok ? 'xrd-on' : 'xrd-off'}`}>
-              {h}
-              {k}
-              {l}
-              {ok && <em> · d {dSpacing(a, h, k, l).toFixed(3)}</em>}
+          const d = dSpacing(a, h, k, l);
+          // λ/2d is sin θ. Above 1 there is no angle to measure at — the
+          // reflection is allowed by the lattice and out of reach of this
+          // anode, which is a different thing from being extinct.
+          const sinTheta = lambda / (2 * d);
+          const outOfReach = ok && sinTheta > 1;
+          const cls = !ok ? 'xrd-off' : outOfReach ? 'xrd-far' : 'xrd-on';
+          const label = familyLabel(h, k, l);
+          const body = (
+            <>
+              {label}
+              {ok && <em> · d {d.toFixed(3)}</em>}
+              {outOfReach && <em> · λ/2d {sinTheta.toFixed(2)}</em>}
+            </>
+          );
+          // Forbidden families are not linked: there is nothing to look at.
+          // Nor is anything, when the sample is not a metal the Miller module
+          // can select — see above.
+          return ok && metal ? (
+            <a
+              key={label}
+              className={`xrd-chip xrd-chip-link ${cls}`}
+              href={`#/miller?plane=${label}&s=${lattice}&metal=${metal.symbol}&source=${source.id}`}
+            >
+              {body}
+            </a>
+          ) : (
+            <span key={label} className={`xrd-chip ${cls}`}>
+              {body}
             </span>
           );
         })}
@@ -228,6 +287,28 @@ function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
         by destructive interference. Those absences are the fingerprint: an FCC pattern opens on
         111, a BCC pattern on 110, and the diamond lattice additionally kills 200 and 222. Reading
         which peaks are <em>missing</em> is how a structure is identified.
+      </p>
+      <p className="density-note">
+        {metal ? (
+          <>
+            Every reachable index above is a link into the Miller module, which draws that plane in
+            the cell and shows where its spacing comes from — on {metal.name.toLowerCase()}, at this
+            same anode, so the verdict and the angle there are the ones in the table.
+          </>
+        ) : (
+          <>
+            These indices are not links. The Miller module answers the same question against a
+            metal from its own list, and {sample.name.replace(/\s*\(.*\)$/, '').toLowerCase()} is
+            not on it — the link would silently answer for copper instead, which is a different
+            lattice and a different spacing.
+          </>
+        )}
+      </p>
+      <p className="density-note">
+        Indices marked <span className="xrd-chip xrd-far">λ/2d &gt; 1</span> are the other kind of
+        missing: the lattice allows them, but sin θ would have to exceed 1, so this wavelength
+        cannot reach them. Change the anode and they come back. A systematic absence never does —
+        that is the difference, and it is why a pattern is indexed against a stated λ.
       </p>
       <p className="density-note">
         Multiplicity m counts the symmetry-equivalent planes in a family — 8 for {'{111}'}, 6 for{' '}

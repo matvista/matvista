@@ -439,10 +439,34 @@ describe('Miller labels are always formatted, never concatenated', () => {
     // The glob is load-bearing: an empty match would pass vacuously.
     expect(paths.length).toBeGreaterThan(30);
 
-    const bare = /\$\{[A-Za-z_$][\w$]*\.h\}\$\{/;
-    const offenders = paths.filter(
-      (path) => !/diffraction\.test\.ts$/.test(path) && bare.test(modules[path]),
-    );
-    expect(offenders).toEqual([]);
+    // Three ways to build the same broken label, all of which render
+    // (11,1,1) as "1111". The first version of this guard matched only the
+    // first, while claiming to catch "any file interpolating two adjacent
+    // Miller indices with nothing between them".
+    const forms: [string, RegExp][] = [
+      // `${p.h}${p.k}…` and the destructured `${h}${k}…`
+      ['adjacent interpolation', /\$\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\$\{/],
+      // `"c" + p.h + p.k + p.l`. Anchored on the string literal, because
+      // `(h + k + l) % 2` is the reflection rule and must not be flagged —
+      // in JS the addition is only a concatenation if something in the chain
+      // is a string. A chain whose string-ness comes from a variable rather
+      // than a literal is not caught; that is a real gap, and narrower than
+      // flagging every sum of three indices in the file.
+      [
+        'string concatenation',
+        /(['"])[^'"]*\1\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\+/,
+      ],
+      // `[p.h, p.k, p.l].join('')`
+      ['array join', /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\.join\(\s*(['"])\1\s*\)/],
+    ];
+    // `familyLabel` itself necessarily contains the raw form — it is the
+    // formatter — so the file that defines it is the one exemption, and it is
+    // identified by that definition rather than by name.
+    const exempt = (path: string) =>
+      /diffraction\.test\.ts$/.test(path) || /export function familyLabel/.test(modules[path]);
+    for (const [name, pattern] of forms) {
+      const offenders = paths.filter((path) => !exempt(path) && pattern.test(modules[path]));
+      expect(offenders, `${name}`).toEqual([]);
+    }
   });
 });

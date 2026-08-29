@@ -216,10 +216,8 @@ function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
         {CANDIDATES.map(([h, k, l]) => {
           const ok = isAllowed(lattice, h, k, l);
           return (
-            <span key={`${h}${k}${l}`} className={`xrd-chip ${ok ? 'xrd-on' : 'xrd-off'}`}>
-              {h}
-              {k}
-              {l}
+            <span key={familyLabel(h, k, l)} className={`xrd-chip ${ok ? 'xrd-on' : 'xrd-off'}`}>
+              {familyLabel(h, k, l)}
               {ok && <em> · d {dSpacing(a, h, k, l).toFixed(3)}</em>}
             </span>
           );

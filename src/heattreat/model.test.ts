@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { STEELS, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
-  ferriteBand, productCarbon, tangentCoolingRate, untransformedAusteniteCarbon,
+  ferriteBand, productCarbon, RATE_RANGE, rateDetents, tangentCoolingRate,
+  untransformedAusteniteCarbon,
 } from './model';
 import { EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 
@@ -1070,25 +1071,22 @@ describe('untransformed austenite carbon refuses outside its domain', () => {
  */
 describe('the near-complete branch is as rare as the comment says', () => {
   /**
-   * The slider's own detents, derived from its bounds rather than counted by
-   * hand. `min={log10(0.01)}`, `max={log10(5000)}`, `step={0.01}`, so the
-   * reachable positions are i = 0 … floor((3.69897 − (−2)) / 0.01) = 569, and
-   * there are **570**. An earlier version hardcoded 571 and generated a 571st
-   * at 10^3.70 = 5011.87 °C/s, above the slider maximum — and asserted the
-   * count against its own construction, so nothing could have caught it.
+   * The slider's own detents, from the module that owns them.
+   *
+   * These were retyped here from the component's JSX, so changing the slider
+   * would not have failed this test — and an earlier version hardcoded the
+   * count at 571 and generated a 571st detent at 10^3.70 = 5011.87 °C/s, above
+   * the maximum, asserting the count against its own construction.
    */
-  const SLIDER = { min: Math.log10(0.01), max: Math.log10(5000), step: 0.01 };
-  const DETENTS = Array.from(
-    { length: Math.floor((SLIDER.max - SLIDER.min) / SLIDER.step) + 1 },
-    (_, i) => 10 ** (SLIDER.min + i * SLIDER.step),
-  );
+  const DETENTS = rateDetents();
 
   it('covers the slider and stops at its maximum', () => {
     expect(DETENTS).toHaveLength(570);
-    expect(DETENTS[0]).toBeCloseTo(0.01, 12);
-    expect(DETENTS[DETENTS.length - 1]).toBeLessThanOrEqual(5000);
+    expect(DETENTS[0]).toBeCloseTo(RATE_RANGE.min, 12);
+    expect(DETENTS[DETENTS.length - 1]).toBeLessThanOrEqual(RATE_RANGE.max);
     // The next step would overshoot, which is what makes 570 the count.
-    expect(10 ** (SLIDER.min + DETENTS.length * SLIDER.step)).toBeGreaterThan(5000);
+    const next = 10 ** (Math.log10(RATE_RANGE.min) + DETENTS.length * RATE_RANGE.step);
+    expect(next).toBeGreaterThan(RATE_RANGE.max);
   });
 
   it('is reachable at exactly one detent, and only on 1080', () => {

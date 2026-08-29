@@ -14,6 +14,7 @@ import {
   ferriteBand,
   criticalCoolingRate,
   predict,
+  RATE_RANGE,
   tangentCoolingRate,
   untransformedAusteniteCarbon,
   TRACE_FRACTION,
@@ -107,7 +108,7 @@ export function HeatTreatment() {
   // The steel and the cooling rate are the scenario; the Jominy panel is just
   // whether a section is expanded, so it stays out of the URL.
   const [steelId, setSteelId] = useRouteString('steel', '1080');
-  const [rate, setRate] = useRouteNumber('rate', 50, 0.01, 5000);
+  const [rate, setRate] = useRouteNumber('rate', 50, RATE_RANGE.min, RATE_RANGE.max);
   const [showJominy, setShowJominy] = useState(true);
 
   const steel = getSteel(steelId);
@@ -193,9 +194,9 @@ export function HeatTreatment() {
             </span>
             <input
               type="range"
-              min={Math.log10(0.01)}
-              max={Math.log10(5000)}
-              step={0.01}
+              min={Math.log10(RATE_RANGE.min)}
+              max={Math.log10(RATE_RANGE.max)}
+              step={RATE_RANGE.step}
               value={Math.log10(rate)}
               onChange={(e) => setRate(10 ** Number(e.target.value))}
               aria-label="Cooling rate, °C per second"

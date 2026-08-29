@@ -754,8 +754,27 @@ function hardnessOf(steel: Steel, product: Product): number {
   }
 }
 
-/** The slowest rate the cooling-rate slider offers, °C/s. */
-const SLOWEST_RATE = 0.01;
+/**
+ * The cooling rates the module offers, and the granularity it offers them at.
+ *
+ * Owned here rather than in the component because three places need to agree
+ * on them — the range input, the URL parameter's clamp, and the tests that
+ * reason about "reachable detents". They were retyped in all three, so
+ * changing the slider would have left the tests asserting a range the reader
+ * could no longer select.
+ *
+ * `step` is in decades: the input is logarithmic, so a detent is
+ * `10 ** (log10(min) + i · step)`.
+ */
+export const RATE_RANGE = { min: 0.01, max: 5000, step: 0.01 } as const;
+
+/** The reachable slider positions, slowest first. 570 of them. */
+export function rateDetents(): number[] {
+  const lo = Math.log10(RATE_RANGE.min);
+  const hi = Math.log10(RATE_RANGE.max);
+  const count = Math.floor((hi - lo) / RATE_RANGE.step) + 1;
+  return Array.from({ length: count }, (_, i) => 10 ** (lo + i * RATE_RANGE.step));
+}
 
 export interface FerriteBand {
   /** Slowest rate on the slider, °C/s. */
@@ -785,17 +804,17 @@ export function ferriteBand(steel: Steel, ttt: TttModel, startTemp: number): Fer
       (f) => f.product === 'proeutectoid ferrite',
     )?.fraction ?? 0;
 
-  const slowFraction = ferriteAt(SLOWEST_RATE);
+  const slowFraction = ferriteAt(RATE_RANGE.min);
   if (slowFraction <= 0) return null;
 
-  let lo = SLOWEST_RATE; // forms ferrite
+  let lo: number = RATE_RANGE.min; // forms ferrite
   let hi = RATE_MAX; // does not
   for (let i = 0; i < 60; i++) {
     const mid = Math.sqrt(lo * hi);
     if (ferriteAt(mid) > 0) lo = mid;
     else hi = mid;
   }
-  return { slowRate: SLOWEST_RATE, fastRate: lo, slowFraction, fastFraction: ferriteAt(lo) };
+  return { slowRate: RATE_RANGE.min, fastRate: lo, slowFraction, fastFraction: ferriteAt(lo) };
 }
 
 /**

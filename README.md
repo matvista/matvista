@@ -81,7 +81,7 @@ Then open http://localhost:5173.
 npm test
 ```
 
-**1038 tests across 28 files** — the count `npm test` prints, not an estimate. They are not
+**1041 tests across 29 files** — the count `npm test` prints, not an estimate. They are not
 smoke tests: the ones that matter check computed values against published worked examples —
 Callister's 8.2 µm Griffith flaw in soda-lime glass, his S-590 creep rupture at 800 °C and
 140 MPa, the 0.35 wt% carbon steel that comes out 44% pearlite, the carburising problem

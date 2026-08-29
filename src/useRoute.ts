@@ -12,7 +12,10 @@
  *
  * Back/forward is handled by adopting the route from the event and cancelling
  * any pending write, so a queued write cannot overwrite where the reader just
- * navigated to.
+ * navigated to. Cancelling on the event is not sufficient on its own: the event
+ * is delivered as a task, so a due timer can fire in the gap between the URL
+ * changing and the event arriving. The write checks the address bar itself
+ * before touching it, and that is the half that closes the gap.
  */
 import { useCallback, useSyncExternalStore } from 'react';
 import {
@@ -113,6 +116,15 @@ function setRoute(next: Route, mode: 'push' | 'replace') {
   cancelPending();
   timer = setTimeout(() => {
     timer = null;
+    // The address bar is not what we last wrote, so something outside this
+    // module moved it and the `hashchange` saying so has not been delivered
+    // yet — the event is a task, and this timer can come due first. Writing
+    // now would replace the reader's navigation with ours *and* set `urlHash`
+    // to match it, after which `adopt` compares the two, finds nothing to
+    // adopt, and the navigation is lost with no trace that it happened.
+    // Dropping the write instead costs only the pending change, which the
+    // reader has already navigated away from; `adopt` then does its job.
+    if (canonical(location.hash) !== urlHash) return;
     write(buildHash(current.tab, current.params), 'replace');
   }, WRITE_DELAY);
 }

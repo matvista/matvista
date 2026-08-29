@@ -56,6 +56,146 @@ export function criticalStress(kic: number, a: number, Y: number): number {
   return kic / (Y * Math.sqrt(Math.PI * a));
 }
 
+/* ------------------------------------------------------- crack geometries */
+
+/**
+ * The geometry factor Y is not a fudge factor, and offering it as a bare
+ * slider taught that it was. It encodes where the crack sits and how the
+ * section constrains it, and it is where a hand calculation goes wrong.
+ *
+ * Every expression below is a standard handbook closed form — Tada, Paris &
+ * Irwin's stress-analysis handbook for the free-surface and elliptical
+ * corrections, Feddersen's secant for the finite-width panel. Nothing new is
+ * shipped; what is new is that the number is computed rather than dialled.
+ */
+export interface CrackGeometry {
+  id: string;
+  name: string;
+  /** What the crack size `a` means in this configuration. */
+  aMeaning: string;
+  /** True when Y depends on the crack-to-width ratio. */
+  finiteWidth: boolean;
+  /**
+   * Y for a crack-to-width ratio 2a/W. Null outside the expression's validity.
+   * Width-independent geometries ignore the argument entirely.
+   */
+  Y(ratio: number): number | null;
+  note: string;
+}
+
+/**
+ * Validity limit on Feddersen's secant, as 2a/W.
+ *
+ * Past this the expression is outside its fit and running toward its
+ * singularity at 2a/W = 1. It **refuses** rather than extrapolating: a
+ * confident number for a case the formula does not describe is the failure
+ * mode this whole module is written against.
+ */
+export const SECANT_MAX_RATIO = 0.7;
+
+export const CRACK_GEOMETRIES: CrackGeometry[] = [
+  {
+    id: 'centre',
+    name: 'Centre crack, wide plate',
+    aMeaning: 'a is the half-length of the crack',
+    finiteWidth: false,
+    Y: () => 1,
+    note: 'The reference case Y = 1 is defined against: an internal crack of length 2a in a plate wide enough that the edges do not know it is there. Note that a is the HALF-length — the commonest arithmetic slip in the whole subject.',
+  },
+  {
+    id: 'edge',
+    name: 'Single-edge notch, wide plate',
+    aMeaning: 'a is the notch depth from the free edge',
+    finiteWidth: false,
+    Y: () => 1.12,
+    note: 'A crack that breaks the surface has nothing holding one flank shut, so it opens more than a buried crack of the same size: 12% more K for the same stress and depth. That 1.12 is the free-surface correction, and it reappears in the surface flaw below.',
+  },
+  {
+    id: 'surface',
+    name: 'Semicircular surface flaw',
+    aMeaning: 'a is the flaw depth, at the deepest point',
+    finiteWidth: false,
+    // Y = 1.12/Φ, with Φ the complete elliptic integral of the second kind.
+    // For a semicircular flaw (a/c = 1) that integral is exactly π/2.
+    Y: () => 1.12 / (Math.PI / 2),
+    note: 'The same 1.12 free-surface term, divided by the elliptical crack front Φ — exactly π/2 for a semicircular flaw. The result, 0.713, is smaller than the edge notch: a rounded flaw of a given depth is less severe than a notch of that depth, because the curved front shares the load.',
+  },
+  {
+    id: 'finite',
+    name: 'Through-crack, finite-width plate',
+    aMeaning: 'a is the half-length; the slider sets 2a/W',
+    finiteWidth: true,
+    Y: (ratio: number) => {
+      if (!(ratio >= 0) || ratio > SECANT_MAX_RATIO) return null;
+      return Math.sqrt(1 / Math.cos((Math.PI * ratio) / 2));
+    },
+    note: 'Feddersen’s secant correction. Once the crack is a real fraction of the width the remaining ligament is carrying the load, and Y climbs: 1.19 at 2a/W = 0.5 and 1.48 at 0.7. Past 0.7 the expression is outside its fit and this panel refuses rather than extrapolating toward its singularity.',
+  },
+  {
+    id: 'vessel',
+    name: 'Thin-walled pressure vessel',
+    aMeaning: 'a is the half-length of a through-wall crack',
+    finiteWidth: false,
+    Y: () => 1,
+    note: 'A through-wall crack in a thin shell behaves as a centre crack in a wide sheet, so Y = 1; what changes is that the stress is not chosen but set by the pressure, σ = pr/t. That is what makes leak-before-break a wall-thickness question.',
+  },
+  {
+    id: 'custom',
+    name: 'Custom Y — no named geometry',
+    aMeaning: 'a is whatever the chosen Y is defined against',
+    finiteWidth: false,
+    Y: () => null,
+    note: 'The free slider this panel used to offer, kept so that links written against ?Y= keep working. It is the only entry here that is not a closed form, and it is deliberately last: a number with no geometry behind it is exactly what the rest of this list exists to replace.',
+  },
+];
+
+export function getCrackGeometry(id: string): CrackGeometry {
+  return CRACK_GEOMETRIES.find((g) => g.id === id) ?? CRACK_GEOMETRIES[0];
+}
+
+/** Y for a geometry at a crack-to-width ratio. Null where undefined. */
+export function geometryFactor(g: CrackGeometry, ratio: number): number | null {
+  return g.Y(ratio);
+}
+
+/* --------------------------------------------------- leak before break */
+
+/** Hoop stress in a thin-walled cylinder under internal pressure, σ = pr/t. */
+export function hoopStress(p: number, r: number, t: number): number {
+  if (!(t > 0)) return Infinity;
+  return (p * r) / t;
+}
+
+/**
+ * Minimum wall thickness that leaks before it breaks, m.
+ *
+ * A through-wall crack that reaches the far side leaks — loudly, detectably,
+ * at low consequence. A buried crack that reaches its critical length bursts
+ * the vessel. The design criterion is that the critical **through-wall** crack
+ * length be at least the wall thickness, so a crack cannot become critical
+ * while still buried:
+ *
+ *   2a_c ≥ t,  2a_c = (2/π)(K_IC/Yσ)²,  σ = pr/t
+ *   ⟹  t ≥ (π/2)·(Y·p·r / K_IC)²
+ *
+ * Toughness enters squared, and the pressure and radius do too — which is why
+ * a tougher, **lower-strength** alloy can be the correct engineering choice
+ * here, directly against the default that stronger is safer.
+ *
+ * @param kic MPa·√m
+ * @param p   internal pressure, MPa
+ * @param r   vessel radius, m
+ */
+export function leakBeforeBreakThickness(
+  kic: number,
+  p: number,
+  r: number,
+  Y: number,
+): number | null {
+  if (!(kic > 0) || !(p > 0) || !(r > 0) || !(Y > 0)) return null;
+  return (Math.PI / 2) * ((Y * p * r) / kic) ** 2;
+}
+
 /**
  * Griffith's criterion for an ideally brittle solid (Callister eq. 8.3):
  *

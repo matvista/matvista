@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  criticalCrackSize, criticalStress, cyclesToFailure, fatigueStrength, fitSn,
-  griffithCrackLength, griffithStress, growthRate, larsonMiller, parisLife,
+  CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
+  fatigueStrength, fitSn, geometryFactor, getCrackGeometry, griffithCrackLength,
+  griffithStress, growthRate, hoopStress, larsonMiller, leakBeforeBreakThickness, parisLife,
   plasticZoneRadius, ruptureHours, stressIntensity,
 } from './model';
 import {
@@ -163,3 +164,177 @@ describe('creep — Larson–Miller', () => {
     expect(s590Stress(25)).toBeLessThan(s590Stress(22));
   });
 });
+
+/**
+ * P8 — Y is not a fudge factor. It encodes the crack's geometry, and it is
+ * where a hand calculation goes wrong. Every value below is a standard
+ * handbook closed form (Tada/Paris/Irwin; Feddersen for the finite-width
+ * secant), not a number dialled in on a slider.
+ */
+describe('named crack geometries', () => {
+  const Y = (id: string, ratio = 0) => geometryFactor(getCrackGeometry(id), ratio);
+
+  it('gives the centre crack in a wide plate Y = 1 exactly', () => {
+    expect(Y('centre')).toBe(1);
+  });
+
+  /**
+   * The free-surface correction. A crack that breaks the surface opens more
+   * than a buried one of the same size, and 1.12 is that 12%.
+   */
+  it('gives the single-edge notch the 1.12 free-surface correction', () => {
+    expect(Y('edge')).toBeCloseTo(1.12, 12);
+  });
+
+  /**
+   * A semicircular surface flaw: Y = 1.12/Φ, with Φ the complete elliptic
+   * integral of the second kind, which is exactly π/2 when a/c = 1. The 1.12
+   * free-surface term is the same one the edge notch carries; the ellipse's
+   * front divides it down.
+   */
+  it('gives the semicircular surface flaw 1.12/(π/2) = 0.713', () => {
+    expect(Y('surface')).toBeCloseTo(1.12 / (Math.PI / 2), 12);
+    expect(Y('surface')).toBeCloseTo(0.713, 3);
+    // Smaller than the edge notch, which is why a buried-ish flaw of the same
+    // depth is less severe than a notch of that depth.
+    expect(Y('surface')).toBeLessThan(Y('edge')!);
+  });
+
+  describe('the finite-width secant correction', () => {
+    it('reduces to the wide plate as the crack vanishes', () => {
+      expect(Y('finite', 0)).toBeCloseTo(1, 12);
+      expect(Y('finite', 0.01)).toBeCloseTo(1, 3);
+    });
+
+    it('follows √sec(π·2a/2W)', () => {
+      for (const r of [0.1, 0.3, 0.5, 0.7]) {
+        expect(Y('finite', r)!).toBeCloseTo(Math.sqrt(1 / Math.cos((Math.PI * r) / 2)), 12);
+      }
+      expect(Y('finite', 0.5)!).toBeCloseTo(1.1892, 4);
+      expect(Y('finite', 0.7)!).toBeCloseTo(1.4841, 4);
+    });
+
+    it('rises monotonically as the crack eats the section', () => {
+      let prev = 0;
+      for (let r = 0; r <= SECANT_MAX_RATIO; r += 0.01) {
+        const y = Y('finite', r)!;
+        expect(y).toBeGreaterThan(prev);
+        prev = y;
+      }
+    });
+
+    /**
+     * The validity limit, and the reason this is a `null` and not a number.
+     * Past 2a/W ≈ 0.7 the expression is outside its fit and heading for a
+     * singularity at 1; extrapolating there would return a confident value for
+     * a case the formula does not describe.
+     */
+    it('refuses past its validity limit rather than extrapolating', () => {
+      expect(SECANT_MAX_RATIO).toBe(0.7);
+      expect(Y('finite', 0.7)).not.toBeNull();
+      expect(Y('finite', 0.71)).toBeNull();
+      expect(Y('finite', 0.99)).toBeNull();
+      expect(Y('finite', -0.1)).toBeNull();
+    });
+  });
+
+  it('marks only the finite-width case as width-dependent', () => {
+    for (const g of CRACK_GEOMETRIES) {
+      expect(g.finiteWidth).toBe(g.id === 'finite');
+      if (!g.finiteWidth) {
+        // A width-independent Y must ignore the ratio entirely.
+        expect(geometryFactor(g, 0)).toBe(geometryFactor(g, 0.5));
+      }
+    }
+  });
+
+  it('falls back to a known geometry for an unknown id', () => {
+    expect(getCrackGeometry('nonsense').id).toBe(CRACK_GEOMETRIES[0].id);
+  });
+
+  /**
+   * The point of naming them: the same crack and the same stress span a factor
+   * of two in K depending only on where the crack sits.
+   */
+  it('spans a factor of two in K across the named cases', () => {
+    const a = 0.002;
+    const sigma = 400;
+    const ks = ['centre', 'edge', 'surface'].map((id) => stressIntensity(sigma, a, Y(id)!));
+    expect(Math.max(...ks) / Math.min(...ks)).toBeCloseTo(1.12 / 0.713, 2);
+  });
+});
+
+/**
+ * Leak-before-break. A through-wall crack that reaches the far side leaks —
+ * loudly, detectably, at low consequence — whereas a buried crack that reaches
+ * critical length bursts the vessel. The design criterion is that the critical
+ * **through-wall** crack length be at least the wall thickness.
+ *
+ * With hoop stress σ = pr/t and 2a_c = (2/π)(K_IC/Yσ)², the condition
+ * 2a_c ≥ t solves to t ≥ (π/2)(Y·p·r/K_IC)².
+ */
+describe('leak-before-break', () => {
+  it('computes the hoop stress of a thin-walled cylinder', () => {
+    expect(hoopStress(10, 0.5, 0.005)).toBeCloseTo(1000, 9);
+    expect(hoopStress(10, 0.5, 0)).toBe(Infinity);
+  });
+
+  /**
+   * The criterion, checked against the independent LEFM route rather than
+   * restated: at the returned thickness, twice the critical crack size must
+   * equal the wall exactly.
+   */
+  it.each(FRACTURE_ALLOYS.map((a) => a.id))('%s: 2·a_c equals the wall at t_min', (id) => {
+    const alloy = FRACTURE_ALLOYS.find((a) => a.id === id)!;
+    for (const p of [2, 10, 30]) {
+      for (const r of [0.2, 0.5, 1.5]) {
+        const t = leakBeforeBreakThickness(alloy.kic, p, r, 1)!;
+        expect(t).toBeGreaterThan(0);
+        const sigma = hoopStress(p, r, t);
+        expect(2 * criticalCrackSize(alloy.kic, sigma, 1)).toBeCloseTo(t, 12);
+      }
+    }
+  });
+
+  it('is satisfied above the returned thickness and violated below it', () => {
+    const kic = 87.4;
+    const t = leakBeforeBreakThickness(kic, 10, 0.5, 1)!;
+    const holds = (wall: number) =>
+      2 * criticalCrackSize(kic, hoopStress(10, 0.5, wall), 1) >= wall;
+    expect(holds(t * 1.2)).toBe(true);
+    expect(holds(t * 0.8)).toBe(false);
+  });
+
+  /**
+   * The engineering conclusion, and the one that contradicts "stronger is
+   * safer": the same steel tempered warmer is 220 MPa weaker and 37 MPa√m
+   * tougher, and it satisfies leak-before-break in a wall a third as thick.
+   */
+  it('lets the tougher 4340 temper use a thinner wall than the stronger one', () => {
+    const soft = FRACTURE_ALLOYS.find((a) => a.id === '4340-425')!;
+    const hard = FRACTURE_ALLOYS.find((a) => a.id === '4340-260')!;
+    expect(soft.yieldStrength).toBeLessThan(hard.yieldStrength);
+    expect(soft.kic).toBeGreaterThan(hard.kic);
+    const tSoft = leakBeforeBreakThickness(soft.kic, 10, 0.5, 1)!;
+    const tHard = leakBeforeBreakThickness(hard.kic, 10, 0.5, 1)!;
+    expect(tSoft).toBeCloseTo(0.0051409, 7);
+    expect(tHard).toBeCloseTo(0.0157080, 7);
+    expect(tHard / tSoft).toBeCloseTo((soft.kic / hard.kic) ** 2, 9);
+  });
+
+  it('scales as (Y·p·r/K_IC)², so toughness pays twice over', () => {
+    const base = leakBeforeBreakThickness(50, 10, 0.5, 1)!;
+    expect(leakBeforeBreakThickness(50, 20, 0.5, 1)!).toBeCloseTo(4 * base, 12);
+    expect(leakBeforeBreakThickness(50, 10, 1.0, 1)!).toBeCloseTo(4 * base, 12);
+    expect(leakBeforeBreakThickness(100, 10, 0.5, 1)!).toBeCloseTo(base / 4, 12);
+    expect(leakBeforeBreakThickness(50, 10, 0.5, 2)!).toBeCloseTo(4 * base, 12);
+  });
+
+  it('refuses degenerate input rather than returning zero or infinity', () => {
+    expect(leakBeforeBreakThickness(0, 10, 0.5, 1)).toBeNull();
+    expect(leakBeforeBreakThickness(50, 0, 0.5, 1)).toBeNull();
+    expect(leakBeforeBreakThickness(50, 10, 0, 1)).toBeNull();
+    expect(leakBeforeBreakThickness(50, 10, 0.5, 0)).toBeNull();
+  });
+});
+

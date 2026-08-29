@@ -2472,3 +2472,67 @@ input[type='range'] {
 .sc-transparent {
   color: var(--muted);
 }
+
+/* P8 — named crack geometries with a sketch, replacing the bare Y slider. */
+.fa-geom {
+  margin: 0.6rem 0 0.4rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.fa-geom-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fa-geom-head > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.fa-geom-head select {
+  width: 100%;
+}
+
+.fa-geom-y {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.fa-sketch {
+  flex: none;
+  width: 92px;
+  height: 74px;
+}
+
+.fa-sk-body {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 2;
+}
+
+.fa-sk-dashed {
+  stroke-dasharray: 4 3;
+}
+
+.fa-sk-crack {
+  stroke: #e34948;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.fa-sk-dim {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.fa-sk-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+}

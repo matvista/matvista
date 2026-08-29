@@ -1,15 +1,16 @@
 import { useMemo } from 'react';
-import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
+import { useRoute, useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { MECH_MATERIALS } from '../mechanical/materials';
 import {
   BRITTLE_SOLIDS, FRACTURE_ALLOYS, GROWTH_CLASSES, S590_CURVE,
   S590_P_MAX, S590_P_MIN, getFatigueBehaviour, getFractureAlloy, getGrowthClass,
-  s590Parameter, s590Stress,
+  s590Parameter, s590Stress, type FractureAlloy,
 } from '../failure/materials';
 import {
-  criticalCrackSize, criticalStress, cyclesToFailure, fatigueStrength, fitSn,
-  griffithCrackLength, growthRate, larsonMiller, lefmSizeRequirement,
-  parisLife, plasticZoneRadius, ruptureHours, stressIntensity,
+  CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
+  fatigueStrength, fitSn, geometryFactor, getCrackGeometry, griffithCrackLength, growthRate,
+  hoopStress, larsonMiller, leakBeforeBreakThickness, lefmSizeRequirement, parisLife,
+  plasticZoneRadius, ruptureHours, stressIntensity,
 } from '../failure/model';
 
 const W = 660;
@@ -54,22 +55,200 @@ export function FailureAnalysis() {
   );
 }
 
+/* ========================================================== geometry Y == */
+
+const GEOM_IDS = CRACK_GEOMETRIES.map((g) => g.id);
+
+/**
+ * P8 — the crack geometry, shared by the fracture and crack-growth panels.
+ *
+ * Both used to carry an identical bare "geometry factor Y, 0.8–1.5" slider,
+ * which taught that fracture mechanics has a fudge factor. It does not: Y
+ * encodes where the crack sits, and it is where a hand calculation goes wrong.
+ *
+ * They share one `geom` key deliberately — it is one crack in one component,
+ * and the two panels asking the same question with different answers was
+ * already possible with the old shared `Y` key. Links written before this
+ * change carry `?Y=` and no `?geom=`; those open on the `custom` entry, which
+ * *is* the old slider, so nothing published stops working.
+ */
+function useCrackGeometry() {
+  const route = useRoute();
+  const legacyLink = route.params.geom == null && route.params.Y != null;
+  const [geomId, setGeomId] = useRouteEnum<string>(
+    'geom',
+    legacyLink ? 'custom' : 'centre',
+    GEOM_IDS,
+  );
+  // Deliberately reaches past SECANT_MAX_RATIO so the refusal is somewhere a
+  // reader can actually go, rather than a branch nothing can enter.
+  const [ratio, setRatio] = useRouteNumber('aw', 0.3, 0.02, 0.95);
+  const [customY, setCustomY] = useRouteNumber('Y', 1, 0.8, 1.5);
+  const geom = getCrackGeometry(geomId);
+  const Y = geom.id === 'custom' ? customY : geometryFactor(geom, ratio);
+  return { geom, geomId, setGeomId, ratio, setRatio, customY, setCustomY, Y };
+}
+
+type CrackGeometryState = ReturnType<typeof useCrackGeometry>;
+
+function GeometryPicker({ g }: { g: CrackGeometryState }) {
+  return (
+    <div className="fa-geom">
+      <div className="fa-geom-head">
+        <GeometrySketch id={g.geom.id} />
+        <div>
+          <select
+            value={g.geomId}
+            onChange={(e) => g.setGeomId(e.target.value)}
+            aria-label="Crack geometry"
+          >
+            {CRACK_GEOMETRIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="fa-geom-y">
+            {g.Y == null ? (
+              <strong className="err-off">Y undefined here</strong>
+            ) : (
+              <>
+                Y = <strong>{g.Y.toFixed(3)}</strong>
+              </>
+            )}{' '}
+            · {g.geom.aMeaning}
+          </p>
+        </div>
+      </div>
+
+      {g.geom.finiteWidth && (
+        <Slider
+          label="Crack across the width 2a/W"
+          unit=""
+          value={g.ratio}
+          min={0.02}
+          max={0.95}
+          step={0.01}
+          onChange={g.setRatio}
+          fixed={2}
+        />
+      )}
+      {g.geom.id === 'custom' && (
+        <Slider
+          label="Geometry factor Y"
+          unit=""
+          value={g.customY}
+          min={0.8}
+          max={1.5}
+          step={0.01}
+          onChange={g.setCustomY}
+          fixed={2}
+        />
+      )}
+      <p className="density-note">{g.geom.note}</p>
+    </div>
+  );
+}
+
+/** Shown wherever the chosen geometry has no defined Y, in place of results. */
+function GeometryRefusal({ g }: { g: CrackGeometryState }) {
+  return (
+    <p className="ht-caveat">
+      <strong>Outside the expression’s range.</strong> Feddersen’s secant correction is fitted for
+      2a/W up to {SECANT_MAX_RATIO}; at {g.ratio.toFixed(2)} the crack has eaten enough of the
+      section that the formula is heading for its singularity at 1 and no longer describes the
+      panel. Nothing is reported here rather than a confident number for a case this expression
+      does not cover — bring the ratio back below {SECANT_MAX_RATIO}, or use a net-section
+      analysis instead.
+    </p>
+  );
+}
+
+/**
+ * Five sketches, one per named geometry. Deliberately schematic: what has to
+ * read at a glance is where the crack is relative to the free surfaces, which
+ * is the whole of what Y encodes.
+ */
+function GeometrySketch({ id }: { id: string }) {
+  const body = (() => {
+    switch (id) {
+      case 'edge':
+        return (
+          <>
+            <rect x={10} y={8} width={80} height={54} className="fa-sk-body" />
+            <line x1={10} y1={35} x2={38} y2={35} className="fa-sk-crack" />
+            <text x={24} y={30} className="fa-sk-label">a</text>
+          </>
+        );
+      case 'surface':
+        return (
+          <>
+            <rect x={10} y={8} width={80} height={54} className="fa-sk-body" />
+            <path d="M34 8 A16 16 0 0 1 66 8" className="fa-sk-crack" fill="none" />
+            <line x1={50} y1={8} x2={50} y2={24} className="fa-sk-crack" />
+            <text x={55} y={20} className="fa-sk-label">a</text>
+          </>
+        );
+      case 'finite':
+        return (
+          <>
+            <rect x={22} y={8} width={56} height={54} className="fa-sk-body" />
+            <line x1={34} y1={35} x2={66} y2={35} className="fa-sk-crack" />
+            <line x1={22} y1={66} x2={78} y2={66} className="fa-sk-dim" />
+            <text x={50} y={62} className="fa-sk-label" textAnchor="middle">2a</text>
+            <text x={50} y={76} className="fa-sk-label" textAnchor="middle">W</text>
+          </>
+        );
+      case 'vessel':
+        return (
+          <>
+            <rect x={10} y={16} width={80} height={38} rx={19} className="fa-sk-body" />
+            <line x1={40} y1={16} x2={60} y2={16} className="fa-sk-crack" />
+            <text x={50} y={12} className="fa-sk-label" textAnchor="middle">2a</text>
+            <text x={50} y={40} className="fa-sk-label" textAnchor="middle">p</text>
+          </>
+        );
+      case 'custom':
+        return (
+          <>
+            <rect x={10} y={8} width={80} height={54} className="fa-sk-body fa-sk-dashed" />
+            <text x={50} y={40} className="fa-sk-label" textAnchor="middle">?</text>
+          </>
+        );
+      default:
+        return (
+          <>
+            <rect x={10} y={8} width={80} height={54} className="fa-sk-body" />
+            <line x1={34} y1={35} x2={66} y2={35} className="fa-sk-crack" />
+            <text x={50} y={30} className="fa-sk-label" textAnchor="middle">2a</text>
+          </>
+        );
+    }
+  })();
+  return (
+    <svg className="fa-sketch" viewBox="0 0 100 80" role="img" aria-label="Crack geometry sketch">
+      {body}
+    </svg>
+  );
+}
+
 /* ============================================================== fracture == */
 
 function FracturePanel() {
   const [alloyId, setAlloyId] = useRouteString('alloy', '4340-425');
   const [sigma, setSigma] = useRouteNumber('sigma', 400, 20, 1600);
   const [crackMm, setCrackMm] = useRouteNumber('a', 2, 0.05, 50);
-  const [Y, setY] = useRouteNumber('Y', 1, 0.8, 1.5);
+  const g = useCrackGeometry();
+  const Y = g.Y;
 
   const alloy = getFractureAlloy(alloyId);
   const a = crackMm / 1000;
-  const ac = criticalCrackSize(alloy.kic, sigma, Y);
-  const K = stressIntensity(sigma, a, Y);
-  const sigmaC = criticalStress(alloy.kic, a, Y);
-  const ry = plasticZoneRadius(Math.min(K, alloy.kic), alloy.yieldStrength);
+  const ac = Y == null ? null : criticalCrackSize(alloy.kic, sigma, Y);
+  const K = Y == null ? null : stressIntensity(sigma, a, Y);
+  const sigmaC = Y == null ? null : criticalStress(alloy.kic, a, Y);
+  const ry = K == null ? null : plasticZoneRadius(Math.min(K, alloy.kic), alloy.yieldStrength);
   const sizeReq = lefmSizeRequirement(alloy.kic, alloy.yieldStrength);
-  const willBreak = K >= alloy.kic;
+  const willBreak = K != null && K >= alloy.kic;
   // LEFM needs small-scale yielding; past ~80% of yield the assumption is going.
   const nearYield = sigma > 0.8 * alloy.yieldStrength;
   const thinSection = a < sizeReq;
@@ -85,6 +264,7 @@ function FracturePanel() {
     const px = (v: number) => PAD.l + (Math.log10(v / aMin) / Math.log10(aMax / aMin)) * plotW;
     const py = (v: number) =>
       PAD.t + plotH - (Math.log10(Math.max(v, sMin) / sMin) / Math.log10(sMax / sMin)) * plotH;
+    if (Y == null) return '';
     const pts: string[] = [];
     for (let i = 0; i <= 120; i++) {
       const av = aMin * (aMax / aMin) ** (i / 120);
@@ -107,8 +287,9 @@ function FracturePanel() {
         <div className="fa-sliders">
           <Slider label="Applied stress" unit="MPa" value={sigma} min={20} max={1600} step={10} onChange={setSigma} />
           <Slider label="Crack length a" unit="mm" value={crackMm} min={0.05} max={50} step={0.05} onChange={setCrackMm} fixed={2} />
-          <Slider label="Geometry factor Y" unit="" value={Y} min={0.8} max={1.5} step={0.01} onChange={setY} fixed={2} />
         </div>
+
+        <GeometryPicker g={g} />
 
         <svg className="ht-plot" viewBox={`0 0 ${W} ${H}`} role="img"
           aria-label={`Critical stress against crack length for ${alloy.name}`}>
@@ -128,8 +309,10 @@ function FracturePanel() {
           <polyline points={curve} className="fa-curve" />
 
           <line x1={sx(a)} x2={sx(a)} y1={PAD.t} y2={PAD.t + plotH} className="ht-path" />
-          <circle cx={sx(a)} cy={sy(Math.min(sigma, sMax))} r={5}
-            className={willBreak ? 'fa-dot-bad' : 'fa-dot-ok'} />
+          {Y != null && (
+            <circle cx={sx(a)} cy={sy(Math.min(sigma, sMax))} r={5}
+              className={willBreak ? 'fa-dot-bad' : 'fa-dot-ok'} />
+          )}
 
           <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} className="dd-axis" />
           <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={PAD.t + plotH} className="dd-axis" />
@@ -148,25 +331,31 @@ function FracturePanel() {
       </section>
 
       <aside className="detail">
-        <h2 className="crystal-title">{(ac * 1000).toFixed(2)} mm</h2>
+        <h2 className="crystal-title">{ac == null ? '—' : `${(ac * 1000).toFixed(2)} mm`}</h2>
         <p className="detail-meta">critical crack size at {sigma} MPa</p>
 
-        <table className="detail-props">
-          <tbody>
-            <tr><th scope="row">K_IC</th><td>{alloy.kic} MPa√m</td></tr>
-            <tr><th scope="row">Yield strength</th><td>{alloy.yieldStrength} MPa</td></tr>
-            <tr><th scope="row">K at a = {crackMm.toFixed(2)} mm</th>
-              <td className={willBreak ? 'err-off' : 'err-ok'}>{K.toFixed(1)} MPa√m</td></tr>
-            <tr><th scope="row">Fracture stress at that crack</th><td>{sigmaC.toFixed(0)} MPa</td></tr>
-            <tr><th scope="row">Plastic zone r_y</th><td>{(ry * 1000).toFixed(3)} mm</td></tr>
-          </tbody>
-        </table>
+        {Y == null && <GeometryRefusal g={g} />}
 
-        <p className="detail-summary">
-          {willBreak
-            ? `K has reached K_IC: a ${crackMm.toFixed(2)} mm crack runs at ${sigma} MPa. Fast fracture is unstable — once it starts there is no further load increase needed.`
-            : `K = ${K.toFixed(1)} MPa√m against a toughness of ${alloy.kic}, so a ${crackMm.toFixed(2)} mm crack holds at ${sigma} MPa. It would take ${(ac * 1000).toFixed(2)} mm to fracture, or ${sigmaC.toFixed(0)} MPa at this crack length.`}
-        </p>
+        {ac != null && K != null && sigmaC != null && ry != null && (
+          <>
+            <table className="detail-props">
+              <tbody>
+                <tr><th scope="row">K_IC</th><td>{alloy.kic} MPa√m</td></tr>
+                <tr><th scope="row">Yield strength</th><td>{alloy.yieldStrength} MPa</td></tr>
+                <tr><th scope="row">K at a = {crackMm.toFixed(2)} mm</th>
+                  <td className={willBreak ? 'err-off' : 'err-ok'}>{K.toFixed(1)} MPa√m</td></tr>
+                <tr><th scope="row">Fracture stress at that crack</th><td>{sigmaC.toFixed(0)} MPa</td></tr>
+                <tr><th scope="row">Plastic zone r_y</th><td>{(ry * 1000).toFixed(3)} mm</td></tr>
+              </tbody>
+            </table>
+
+            <p className="detail-summary">
+              {willBreak
+                ? `K has reached K_IC: a ${crackMm.toFixed(2)} mm crack runs at ${sigma} MPa. Fast fracture is unstable — once it starts there is no further load increase needed.`
+                : `K = ${K.toFixed(1)} MPa√m against a toughness of ${alloy.kic}, so a ${crackMm.toFixed(2)} mm crack holds at ${sigma} MPa. It would take ${(ac * 1000).toFixed(2)} mm to fracture, or ${sigmaC.toFixed(0)} MPa at this crack length.`}
+            </p>
+          </>
+        )}
 
         {nearYield && (
           <p className="ht-caveat">
@@ -176,7 +365,7 @@ function FracturePanel() {
             flaw — the failure mode is becoming net-section yielding, not fast fracture.
           </p>
         )}
-        {!nearYield && thinSection && (
+        {!nearYield && thinSection && Y != null && (
           <p className="ht-caveat">
             <strong>Section-size caveat.</strong> A valid plane-strain measurement needs the crack
             and the remaining ligament to exceed 2.5·(K_IC/σy)² = {(sizeReq * 1000).toFixed(1)} mm
@@ -194,6 +383,8 @@ function FracturePanel() {
             comfortably larger than the smallest flaw inspection can reliably find.
           </p>
         </div>
+
+        {g.geom.id === 'vessel' && Y != null && <LeakBeforeBreakBox alloy={alloy} Y={Y} />}
 
         <GriffithBox />
       </aside>
@@ -397,22 +588,122 @@ function FatiguePanel() {
   );
 }
 
+/**
+ * Leak-before-break: the design argument in which a tougher, **weaker** alloy
+ * is the right answer.
+ *
+ * A through-wall crack that reaches the far side leaks — loudly, detectably,
+ * at low consequence. A buried crack that reaches its critical length bursts
+ * the vessel. So the criterion is that the critical through-wall crack length
+ * be at least the wall thickness, and with σ = pr/t that solves to a minimum
+ * wall: t ≥ (π/2)(Y·p·r/K_IC)².
+ */
+function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
+  const [pressure, setPressure] = useRouteNumber('p', 10, 0.5, 40);
+  const [radiusMm, setRadiusMm] = useRouteNumber('r', 500, 50, 2000);
+  const r = radiusMm / 1000;
+
+  const t = leakBeforeBreakThickness(alloy.kic, pressure, r, Y);
+  const sigma = t == null ? null : hoopStress(pressure, r, t);
+  const yields = sigma != null && sigma > alloy.yieldStrength;
+
+  return (
+    <div className="density-box">
+      <h3>Leak before break</h3>
+      <p className="density-eq">2a꜀ ≥ t, σ = pr/t ⟹ t ≥ (π/2)(Y·p·r / K_IC)²</p>
+
+      <Slider label="Internal pressure p" unit="MPa" value={pressure} min={0.5} max={40} step={0.5} onChange={setPressure} fixed={1} />
+      <Slider label="Vessel radius r" unit="mm" value={radiusMm} min={50} max={2000} step={10} onChange={setRadiusMm} />
+
+      {t != null && sigma != null && (
+        <>
+          <table className="detail-props">
+            <tbody>
+              <tr>
+                <th scope="row">Minimum wall for LBB</th>
+                <td>{(t * 1000).toFixed(2)} mm</td>
+              </tr>
+              <tr>
+                <th scope="row">Hoop stress there</th>
+                <td className={yields ? 'err-off' : 'err-ok'}>{sigma.toFixed(0)} MPa</td>
+              </tr>
+              <tr>
+                <th scope="row">Critical through-wall crack</th>
+                <td>{(2 * criticalCrackSize(alloy.kic, sigma, Y) * 1000).toFixed(2)} mm</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p className="density-note">
+            At that wall the critical crack length is exactly the wall thickness, so a crack
+            growing through the section reaches the outside — and leaks — before it can run.
+            Thicker is safer here, because the stress falls faster than the wall grows.
+          </p>
+        </>
+      )}
+
+      {yields && (
+        <p className="ht-caveat">
+          <strong>It yields first.</strong> At the leak-before-break wall the hoop stress exceeds
+          this alloy’s yield strength, so the vessel deforms before the fracture argument ever
+          applies. A real design carries a safety factor on top; the thickness above is a floor
+          from fracture alone, not a specification.
+        </p>
+      )}
+
+      <div className="table-scroll" role="region" aria-label="Leak-before-break wall thickness by alloy" tabIndex={0}>
+        <table className="detail-props">
+          <thead>
+            <tr>
+              <th scope="col">Alloy</th>
+              <th scope="col">K_IC</th>
+              <th scope="col">σy</th>
+              <th scope="col">t for LBB</th>
+            </tr>
+          </thead>
+          <tbody>
+            {FRACTURE_ALLOYS.map((f) => {
+              const tf = leakBeforeBreakThickness(f.kic, pressure, r, Y);
+              return (
+                <tr key={f.id} className={f.id === alloy.id ? 'xrd-row-sel' : ''}>
+                  <th scope="row">{f.name}</th>
+                  <td>{f.kic}</td>
+                  <td>{f.yieldStrength}</td>
+                  <td>{tf == null ? '—' : `${(tf * 1000).toFixed(1)} mm`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="density-note">
+        Read the two 4340 rows against each other. Tempering at 425 °C costs 220 MPa of yield
+        strength and buys 37 MPa√m of toughness — and because toughness enters squared, the
+        weaker steel leaks before it breaks in a wall a third as thick. That is the case where
+        the stronger material is the wrong engineering choice, and it is not a close call.
+      </p>
+    </div>
+  );
+}
+
 /* ========================================================== crack growth == */
 
 function GrowthPanel() {
   const [classId, setClassId] = useRouteString('cls', 'ferritic');
   const [a0Mm, setA0Mm] = useRouteNumber('a0', 1, 0.1, 20);
   const [dSigma, setDSigma] = useRouteNumber('ds', 150, 20, 500);
-  const [Y, setY] = useRouteNumber('Y', 1, 0.8, 1.5);
+  const g = useCrackGeometry();
+  const Y = g.Y;
 
   const cls = getGrowthClass(classId);
   const a0 = a0Mm / 1000;
-  const af = criticalCrackSize(cls.kic, dSigma, Y);
-  const life = parisLife(cls.C, cls.m, a0, af, dSigma, Y);
+  const af = Y == null ? null : criticalCrackSize(cls.kic, dSigma, Y);
+  const life = Y == null || af == null ? null : parisLife(cls.C, cls.m, a0, af, dSigma, Y);
 
   // Crack length against cycles.
   const pts = useMemo(() => {
-    if (life == null || life <= 0) return '';
+    if (Y == null || af == null || life == null || life <= 0) return '';
     const out: string[] = [];
     const steps = 160;
     for (let i = 0; i <= steps; i++) {
@@ -426,8 +717,8 @@ function GrowthPanel() {
   function gx(f: number) { return PAD.l + f * plotW; }
   function gy(f: number) { return PAD.t + plotH - f * plotH; }
 
-  const kMax = stressIntensity(dSigma, af, Y);
-  const belowThreshold = stressIntensity(dSigma, a0, Y) < 3;
+  const kMax = Y == null || af == null ? null : stressIntensity(dSigma, af, Y);
+  const belowThreshold = Y != null && stressIntensity(dSigma, a0, Y) < 3;
 
   return (
     <div className="ss-layout">
@@ -440,8 +731,9 @@ function GrowthPanel() {
         <div className="fa-sliders">
           <Slider label="Initial crack a₀" unit="mm" value={a0Mm} min={0.1} max={20} step={0.1} onChange={setA0Mm} fixed={1} />
           <Slider label="Stress range Δσ" unit="MPa" value={dSigma} min={20} max={500} step={5} onChange={setDSigma} />
-          <Slider label="Geometry factor Y" unit="" value={Y} min={0.8} max={1.5} step={0.01} onChange={setY} fixed={2} />
         </div>
+
+        <GeometryPicker g={g} />
 
         <svg className="ht-plot" viewBox={`0 0 ${W} ${H}`} role="img"
           aria-label={`Crack length against cycles for ${cls.name}`}>
@@ -454,7 +746,7 @@ function GrowthPanel() {
           <polyline points={pts} className="fa-curve" />
           <line x1={PAD.l} x2={W - PAD.r} y1={gy(1)} y2={gy(1)} className="fa-yield" />
           <text x={W - PAD.r - 4} y={gy(1) - 6} className="ht-edge-label" textAnchor="end">
-            a_c = {(af * 1000).toFixed(1)} mm
+            a_c = {af == null ? '—' : `${(af * 1000).toFixed(1)} mm`}
           </text>
           <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} className="dd-axis" />
           <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={PAD.t + plotH} className="dd-axis" />
@@ -465,7 +757,7 @@ function GrowthPanel() {
           ))}
           {[0, 0.25, 0.5, 0.75, 1].map((f) => (
             <text key={f} x={PAD.l - 8} y={gy(f) + 4} className="dd-tick" textAnchor="end">
-              {(af * 1000 * f).toFixed(1)}
+              {af == null ? '' : (af * 1000 * f).toFixed(1)}
             </text>
           ))}
           <text x={PAD.l + plotW / 2} y={H - 10} className="dd-tick" textAnchor="middle">cycles</text>
@@ -482,17 +774,21 @@ function GrowthPanel() {
 
         <p className="density-eq">da/dN = C·(ΔK)<sup>m</sup>, ΔK = Y·Δσ·√(πa)</p>
 
-        <table className="detail-props">
-          <tbody>
-            <tr><th scope="row">C</th><td>{cls.C.toExponential(2)} m/cycle</td></tr>
-            <tr><th scope="row">m</th><td>{cls.m}</td></tr>
-            <tr><th scope="row">Assumed K_IC</th><td>{cls.kic} MPa√m</td></tr>
-            <tr><th scope="row">Critical crack a_c</th><td>{(af * 1000).toFixed(2)} mm</td></tr>
-            <tr><th scope="row">ΔK at a₀</th><td>{stressIntensity(dSigma, a0, Y).toFixed(1)} MPa√m</td></tr>
-            <tr><th scope="row">ΔK at a_c</th><td>{kMax.toFixed(1)} MPa√m</td></tr>
-            <tr><th scope="row">da/dN at a₀</th><td>{growthRate(cls.C, cls.m, a0, dSigma, Y).toExponential(2)} m/cycle</td></tr>
-          </tbody>
-        </table>
+        {Y == null && <GeometryRefusal g={g} />}
+
+        {Y != null && af != null && kMax != null && (
+          <table className="detail-props">
+            <tbody>
+              <tr><th scope="row">C</th><td>{cls.C.toExponential(2)} m/cycle</td></tr>
+              <tr><th scope="row">m</th><td>{cls.m}</td></tr>
+              <tr><th scope="row">Assumed K_IC</th><td>{cls.kic} MPa√m</td></tr>
+              <tr><th scope="row">Critical crack a_c</th><td>{(af * 1000).toFixed(2)} mm</td></tr>
+              <tr><th scope="row">ΔK at a₀</th><td>{stressIntensity(dSigma, a0, Y).toFixed(1)} MPa√m</td></tr>
+              <tr><th scope="row">ΔK at a_c</th><td>{kMax.toFixed(1)} MPa√m</td></tr>
+              <tr><th scope="row">da/dN at a₀</th><td>{growthRate(cls.C, cls.m, a0, dSigma, Y).toExponential(2)} m/cycle</td></tr>
+            </tbody>
+          </table>
+        )}
 
         <p className="detail-summary">
           {life == null

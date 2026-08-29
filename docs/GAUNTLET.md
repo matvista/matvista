@@ -94,7 +94,7 @@ then, modules were 3.5–8.6 kB each and three.js was already deferred; the only
 left was AshbyChart's dead memos, which recompute 54 points in microseconds. That is
 tidying, not performance, and the lens rules say to say so rather than invent work to
 fill it. (Re-measured since: first paint is **92.95 kB gzip** — index 85.17 plus a
-render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–11.51 kB. The
+render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–12.04 kB. The
 reasoning stands; the figures were four modules out of date.)
 
 **Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write

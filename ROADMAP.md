@@ -211,7 +211,7 @@ Measured budget, from a production build (`npm run build`):
 | stylesheet | 37.3 kB | 7.8 kB | always |
 | `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| twelve per-module chunks | — | 71.1 kB total | one per module opened |
+| twelve per-module chunks | — | 72.5 kB total | one per module opened |
 | shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
 
 The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
@@ -222,8 +222,8 @@ stylesheet — the stylesheet is render-blocking, so both count — **92.95 kB g
 measured at **93.6 kB over the wire** with the document and its headers. three.js is
 reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.95–11.51 kB gzipped** (twelve of them total
-71.1 kB) — negligible beside the 3D library, and none of it in first paint since each
+A module of the existing kind costs **1.95–12.04 kB gzipped** (twelve of them total
+72.5 kB) — negligible beside the 3D library, and none of it in first paint since each
 arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the

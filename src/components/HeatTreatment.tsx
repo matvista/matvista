@@ -119,19 +119,20 @@ export function HeatTreatment() {
     ferriteFraction > 0 && enrichedCarbon !== null && enrichedCarbon > steel.composition.C + 0.005;
 
   /**
-   * Which legend entries carry a "≤" qualifier.
+   * Which legend entries carry a "≤" qualifier: the proeutectoid ferrite,
+   * always.
    *
-   * Only proeutectoid ferrite, and only once it has *saturated* at the
-   * lever-rule fraction. That fraction is the binary Fe–Fe₃C value, which is a
-   * ceiling for an alloy steel rather than an answer — so where the bar shows
-   * it, the bar is showing a bound. Below saturation the number is the
-   * transformed fraction itself, which the lever rule does not cap (a smaller
-   * true equilibrium fraction would not change min(f, α) while f is under
-   * both), so no qualifier there: it would claim an uncertainty that is not
-   * present.
+   * An earlier version applied it only once ferrite had saturated at the
+   * lever-rule fraction, on the reasoning that below saturation the number is
+   * the transformed fraction and the lever rule does not cap it. That was
+   * wrong. The alloy-corrected equilibrium fraction α′ is smaller than the
+   * binary αₑq, and min(f, α′) ≤ min(f, αₑq) for **every** f — so the figure
+   * shown is at or above the truth at every rate, not only at saturation. The
+   * distinction was also invisible at displayed precision: 5140 at 5.668785
+   * °C/s printed "≤ 49%" and at 5.721897 printed "49%", 153 rates apart from
+   * each other and identical on screen.
    */
-  const bounded = (product: string, fraction: number) =>
-    product === 'proeutectoid ferrite' && fraction >= ttt.equilibriumFerrite - 1e-9;
+  const bounded = (product: string) => product === 'proeutectoid ferrite';
 
   const critical = useMemo(
     () => criticalCoolingRate(steel, ttt, AUSTENITISE),
@@ -320,7 +321,7 @@ export function HeatTreatment() {
                   width: `${f.fraction * 100}%`,
                   background: PRODUCT_COLOR[f.product],
                 }}
-                title={`${f.product} ${bounded(f.product, f.fraction) ? 'at most ' : ''}${(f.fraction * 100).toFixed(0)}%`}
+                title={`${f.product} ${bounded(f.product) ? 'at most ' : ''}${(f.fraction * 100).toFixed(0)}%`}
               />
             ))}
         </div>
@@ -336,12 +337,12 @@ export function HeatTreatment() {
                     one, and a bare bold "49%" reads as a measurement. */}
                 <strong
                   title={
-                    bounded(f.product, f.fraction)
+                    bounded(f.product)
                       ? 'Upper bound — the binary lever rule; see the note below'
                       : undefined
                   }
                 >
-                  {bounded(f.product, f.fraction) && (
+                  {bounded(f.product) && (
                     <>
                       <span aria-hidden="true">≤ </span>
                       <span className="vh">at most </span>

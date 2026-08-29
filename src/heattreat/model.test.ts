@@ -1061,3 +1061,53 @@ describe('the near-complete branch is as rare as the comment says', () => {
     expect(STEELS.map((s) => s.id)).toEqual(['1080', '5140', '4340']);
   });
 });
+
+/**
+ * The reported ferrite fraction is an upper bound at **every** rate, not only
+ * where it saturates.
+ *
+ * The legend marked it "≤" only once `f >= alphaEq`, on the reasoning that
+ * below saturation the number is the transformed fraction and the lever rule
+ * does not cap it. That reasoning is wrong: the true equilibrium fraction
+ * `alpha'` for an alloy steel is smaller than the binary `alphaEq`, and
+ * min(f, alpha') ≤ min(f, alphaEq) for every f — so the displayed value is at
+ * or above the truth everywhere, and the distinction was invisible anyway
+ * (5140 at 5.668785 printed "≤ 49%" and at 5.721897 printed "49%").
+ */
+describe('the ferrite fraction is an upper bound everywhere', () => {
+  it('is at or above what any smaller equilibrium fraction would give', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      const alpha = ttt.equilibriumFerrite;
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const shown = o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+        // Only where the model puts the path in the pearlitic field at all —
+        // below the nose it reports bainite and no ferrite, which is the
+        // separate floor, not this bound.
+        if (shown === 0) continue;
+        // The whole diffusional product, which is the `f` ferrite-leads caps.
+        const f = o.fractions
+          .filter((x) => x.product !== 'martensite')
+          .reduce((a, x) => a + x.fraction, 0);
+        // Any alloy-corrected equilibrium fraction is smaller than the binary
+        // one; 0.42–0.44 is the range the literature puts 5140 in.
+        for (const alphaPrime of [0.30, 0.35, 0.42, 0.44, alpha]) {
+          expect(Math.min(f, alphaPrime)).toBeLessThanOrEqual(shown + 1e-12);
+        }
+      }
+    }
+  });
+
+  it('and the bound is strict below saturation too, which the old rule missed', () => {
+    const s = getSteel('5140');
+    const ttt = buildTtt(s);
+    // A rate where ferrite has not saturated: the reported figure still
+    // exceeds what a smaller equilibrium fraction would allow once f passes it.
+    const o = predict(s, ttt, AUST, 6);
+    const shown = o.fractions.find((f) => f.product === 'proeutectoid ferrite')!.fraction;
+    expect(shown).toBeLessThan(ttt.equilibriumFerrite);
+    expect(shown).toBeGreaterThan(0.42); // above a plausible alloy-corrected alpha'
+  });
+});

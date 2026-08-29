@@ -65,7 +65,7 @@ export const STEELS: Steel[] = [
     bainiteFloor: 250,
     hardness: { coarsePearlite: 15, finePearlite: 30, bainite: 45, martensite: 65 },
     jominy: [62, 40, 30, 28, 27, 26, 26, 25, 25, 24, 24, 23, 23],
-    note: 'The classic teaching TTT diagram, and a cautionary one. Being eutectoid, it transforms to 100% pearlite or 100% martensite with no proeutectoid phase — but the nose sits at about one second, so anything short of a water quench misses martensite entirely. Hardness collapses within a few millimetres of the quenched end.',
+    note: 'The classic teaching TTT diagram, and a cautionary one. It is the eutectoid grade, so it transforms to essentially 100% pearlite or 100% martensite with no proeutectoid phase — its nominal 0.79 wt% C is a whisker above the 0.76 eutectoid, enough for well under 1% proeutectoid cementite, which this model does not track. The nose sits at about one second, so anything short of a water quench misses martensite entirely. Hardness collapses within a few millimetres of the quenched end.',
   },
   {
     id: '5140',

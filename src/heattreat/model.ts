@@ -341,30 +341,43 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
 /**
  * Hardness of a transformation product for this steel.
  *
- * **Scope note.** Proeutectoid ferrite is not given its own entry, and the
- * reported hardness of a fully transformed structure is therefore unchanged by
- * the ferrite split above. That is deliberate. `steels.ts` documents this block
- * as "hardness of each product *for this carbon level*", and the shipped
- * numbers bear that reading out: a pearlite constituent is eutectoid whatever
- * steel it grew in, so it would measure much the same in all three, yet 5140 is
- * given 12 HRC against 1080's 15. 12 HRC ≈ 185 HB, and annealed 5140 measures
- * ≈ 197 HB — so the shipped figure is already the hardness of the
- * ferrite + pearlite structure, not of the pearlite alone. Diluting it again by
- * the ferrite fraction would double-count, and would report ≈ 6 HRC for
- * annealed 5140 against a real ≈ 13 HRC.
+ * **Scope note: the ferrite split does not change the hardness readout, and
+ * that is deliberate.**
  *
- * What the repo does *not* determine is the hardness of the pearlite
- * constituent on its own, which is what a partially-ferritic structure would
- * need, and no number for it is invented here. The claim this model makes is
- * about the **microstructure**; the hardness readout is left as it was.
+ * The argument is a solid-solution one, not a reading of the doc comment. An
+ * earlier version of this note claimed `steels.ts`'s phrase "hardness of each
+ * product *for this carbon level*" implied a whole-structure figure; it does
+ * not, since martensite (57 vs 65) and bainite (40 vs 45) differ between the
+ * grades with no proeutectoid ferrite involved anywhere, so the phrase plainly
+ * means intrinsic hardness.
+ *
+ * What actually settles it: pearlite is eutectoid whatever steel it grows in,
+ * but 5140's pearlitic ferrite carries 0.85 Cr and 0.8 Mn in solid solution,
+ * so a *pure pearlite constituent* in 5140 would be **harder** than 1080's,
+ * not softer. The shipped 12 HRC against 1080's 15 is therefore only
+ * explicable as dilution — the number already has the proeutectoid ferrite in
+ * it. Splitting it again by the ferrite fraction would double-count and report
+ * ≈ 6 HRC for annealed 5140 against a real ≈ 13 HRC.
+ *
+ * The hardness of the pearlite constituent alone is not determined by anything
+ * in this repo, and none is invented here. The claim this model makes is about
+ * the **microstructure**; the hardness readout is left as it was.
+ *
+ * Follow-up, not fixed here: all three coarse-pearlite values sit below
+ * HRC 20, where the Rockwell C scale is unreliable and the indenter is barely
+ * engaged. They would be better quoted in HB.
  */
 function hardnessOf(steel: Steel, product: Product): number {
   switch (product) {
     case 'proeutectoid ferrite':
-      // Unreachable: `predict` only ever asks for the hardness of the product
-      // `productAt` chose, and that is never ferrite. Present to keep the
-      // switch exhaustive over `Product`.
-      return steel.hardness.coarsePearlite;
+      // Unreachable by construction: `predict` only ever asks for the hardness
+      // of the product `productAt` chose, and that is never ferrite. Returning
+      // `coarsePearlite` here — as this did — silently answered a question the
+      // scope note says has no answer, handing back 12 HRC for a ~80 HB phase.
+      throw new Error(
+        'hardnessOf: proeutectoid ferrite has no hardness in this model. ' +
+          'See the scope note above — the per-product figures already include it.',
+      );
     case 'coarse pearlite':
       return steel.hardness.coarsePearlite;
     case 'fine pearlite':

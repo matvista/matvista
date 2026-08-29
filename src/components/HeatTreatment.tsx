@@ -15,6 +15,7 @@ import {
   tangentCoolingRate,
   TRACE_FRACTION,
   type CurvePoint,
+  type Product,
 } from '../heattreat/model';
 
 const W = 720;
@@ -42,8 +43,15 @@ const JPAD = { l: 62, r: 24, t: 16, b: 48 };
  * sat at 2.27:1 on dark and the old bainite green at 2.67:1 on light.
  * The product name is always printed beside the swatch as well, so colour is
  * never the only thing carrying the meaning.
+ *
+ * Keyed on `Product` rather than `string`: the project sets neither `strict`
+ * nor `noUncheckedIndexedAccess`, so a `Record<string, string>` would hand a
+ * sixth product `undefined` and render `background: undefined` with no
+ * compiler complaint. This way adding to `Product` fails the build until a
+ * colour is chosen for it — which is how the ferrite swatch got missed once
+ * already.
  */
-const PRODUCT_COLOR: Record<string, string> = {
+const PRODUCT_COLOR: Record<Product, string> = {
   'proeutectoid ferrite': '#a8681d', // light 4.27, dark 4.32
   'coarse pearlite': '#2976d2', // light 4.32, dark 4.27
   'fine pearlite': '#776bbd', // light 4.31, dark 4.28

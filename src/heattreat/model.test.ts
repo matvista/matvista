@@ -4,7 +4,7 @@ import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
   tangentCoolingRate,
 } from './model';
-import { EUTECTOID_T } from '../phase/systems';
+import { EUTECTOID_T, steelMicrostructure } from '../phase/systems';
 
 const AUST = 850;
 const martensite = (id: string, rate: number) => {
@@ -221,7 +221,22 @@ describe('proeutectoid ferrite', () => {
     }
   });
 
-  it('gives exactly 0 for eutectoid 1080 — its note says no proeutectoid phase', () => {
+  /**
+   * 1080 is the eutectoid *grade*, and its note says it forms no proeutectoid
+   * phase — but its nominal 0.79 wt% C sits 0.03 above the eutectoid, so the
+   * phase module classifies it as hyper-eutectoid and a real 1080 rejects a
+   * trace of proeutectoid **cementite**. This asserts what is true rather than
+   * the tidier thing: the *ferrite* fraction is 0 because there is none to
+   * form, and the cementite the diagram implies is a known, recorded
+   * limitation that this model does not report.
+   */
+  it('forms no proeutectoid ferrite in 1080, which is hyper-eutectoid at 0.79 wt% C', () => {
+    const micro = steelMicrostructure(getSteel('1080').composition.C)!;
+    expect(micro.kind).toBe('hypereutectoid');
+    expect(micro.proeutectoid).toBe('Fe₃C (cementite)');
+    // Small enough that the module's "no proeutectoid phase" note is a fair
+    // simplification, and it is recorded as one rather than asserted away.
+    expect(micro.proeutectoidFraction).toBeLessThan(0.01);
     expect(equilibriumFerriteFraction(getSteel('1080'))).toBe(0);
     const s = getSteel('1080');
     const ttt = buildTtt(s);

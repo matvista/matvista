@@ -1215,19 +1215,48 @@ describe('the pearlite floor and the ferrite floor are independent', () => {
     return { ferriteMin, bainiteMax, sawFinePearlite };
   };
 
-  it('lands 4340 bainite on the measured 476–480 °C without losing the ferrite floor', () => {
+  /**
+   * The *divide* is the measured value; the highest temperature at which
+   * bainite is actually reported is the largest `tttCurve` sample strictly
+   * below it. The curve takes 140 samples from A₁ − 1 down to the bainite
+   * floor, so the gap is somewhere between zero and one spacing depending on
+   * where the divide falls between samples: 3.5429 °C spacing puts 4340's 478
+   * at 474.457, a near-full step, while 5140's 3.4 °C spacing puts 510 at
+   * 508.4, a sixth of one. An earlier title said this "lands on the measured
+   * 476–480", which overclaims by that quantisation.
+   */
+  const highestSampleBelow = (id: string, divide: number) => {
+    const s = getSteel(id);
+    const spacing = (s.a1 - 1 - s.bainiteFloor) / 140;
+    const i = Math.floor((s.a1 - 1 - divide) / spacing) + 1;
+    return { temp: s.a1 - 1 - spacing * i, spacing };
+  };
+
+  it('puts 4340’s divide on the measured 476–480 °C, realised one sample below', () => {
+    const s = getSteel('4340');
+    expect(s.bainiteStart).toBe(478);
+    expect(s.bainiteStart!).toBeGreaterThanOrEqual(476);
+    expect(s.bainiteStart!).toBeLessThanOrEqual(480);
     const r = scan('4340');
-    expect(r.bainiteMax).toBeGreaterThan(470);
-    expect(r.bainiteMax).toBeLessThan(480);
+    const below = highestSampleBelow('4340', s.bainiteStart!);
+    expect(r.bainiteMax).toBeCloseTo(below.temp, 2);
+    expect(r.bainiteMax).toBeCloseTo(474.457, 2);
+    expect(s.bainiteStart! - r.bainiteMax).toBeLessThan(below.spacing + 1e-9);
     // the ferrite gain from 5306e90 is kept in full
-    expect(r.ferriteMin).toBeGreaterThanOrEqual(getSteel('4340').nose.temp);
+    expect(r.ferriteMin).toBeGreaterThanOrEqual(s.nose.temp);
   });
 
-  it('lands 5140 bainite inside the 42CrMo4 proxy band, 500–520 °C', () => {
+  it('puts 5140’s divide inside the 42CrMo4 proxy band, realised one sample below', () => {
+    const s = getSteel('5140');
+    expect(s.bainiteStart).toBe(510);
+    expect(s.bainiteStart!).toBeGreaterThanOrEqual(500);
+    expect(s.bainiteStart!).toBeLessThanOrEqual(520);
     const r = scan('5140');
-    expect(r.bainiteMax).toBeGreaterThan(500);
-    expect(r.bainiteMax).toBeLessThan(520);
-    expect(r.ferriteMin).toBeGreaterThanOrEqual(getSteel('5140').nose.temp);
+    const below = highestSampleBelow('5140', s.bainiteStart!);
+    expect(r.bainiteMax).toBeCloseTo(below.temp, 2);
+    expect(r.bainiteMax).toBeCloseTo(508.4, 2);
+    expect(s.bainiteStart! - r.bainiteMax).toBeLessThan(below.spacing + 1e-9);
+    expect(r.ferriteMin).toBeGreaterThanOrEqual(s.nose.temp);
   });
 
   it('restores the fine-pearlite field, so its shipped hardness is not dead data', () => {

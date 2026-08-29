@@ -2579,3 +2579,21 @@ input[type='range'] {
   font-size: 12px;
   font-family: system-ui, sans-serif;
 }
+
+/* A8 — the index derivation, under the chart. Reuses the Miller derivation
+   table's typography, as the APF panel does; U10 lifts all three together. */
+.ab-deriv-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ab-deriv .mi-deriv-table {
+  width: 100%;
+}
+
+.ab-deriv .mi-deriv-table td {
+  padding-right: 0;
+}

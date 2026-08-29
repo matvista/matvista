@@ -2400,3 +2400,24 @@ input[type='range'] {
 .xrd-chip-link:hover {
   border-color: var(--accent);
 }
+
+/* M2 — the equal-Dt locus, under the concentration profile it explains. */
+.dd-equaldt {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.dd-equaldt h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.dd-now {
+  fill: #eb6834;
+  stroke: var(--surface);
+  stroke-width: 2;
+}

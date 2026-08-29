@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DIFFUSION_SYSTEMS, concentrationAt, depthForConcentration, diffusionCoefficient,
-  erf, siteDensity, vacancyFraction,
+  dtForTarget, equalDtCurve, erf, erfInverse, siteDensity, timeForTarget, vacancyFraction,
 } from './model';
 
 describe('carburising (Callister ex. 5.4)', () => {
@@ -90,3 +90,143 @@ describe('vacancies', () => {
     expect(siteDensity(8.94, 63.55)).toBeCloseTo(8.47e28, -27);
   });
 });
+
+/**
+ * M2 — the equal-Dt locus.
+ *
+ * For a fixed concentration at a fixed depth, x/2√(Dt) is a constant, so Dt is
+ * a constant: the profile does not care about temperature and time separately,
+ * only about their product through D. That invariance is what students almost
+ * never extract from the erf solution, and it is what makes
+ * "1000 °C for 7 h ≡ 1100 °C for 1.4 h" a calculation rather than a slogan.
+ */
+describe('inverse error function', () => {
+  it.each([0, 0.2763, 0.5205, 0.8427, 0.9953])('round-trips erf at %s', (y) => {
+    expect(erf(erfInverse(y)!)).toBeCloseTo(y, 6);
+  });
+
+  it('inverts erf over its whole open range', () => {
+    for (let z = 0.01; z < 3; z += 0.01) {
+      expect(erfInverse(erf(z))!).toBeCloseTo(z, 5);
+    }
+  });
+
+  it('refuses arguments outside (−1, 1)', () => {
+    expect(erfInverse(1)).toBeNull();
+    expect(erfInverse(-1)).toBeNull();
+    expect(erfInverse(1.5)).toBeNull();
+  });
+});
+
+describe('the equal-Dt process curve', () => {
+  // Callister ex. 5.4 again: 0.25 wt% C steel, surface 1.20 wt%, and the
+  // question "how long to reach 0.80 wt% at 0.5 mm" — answered there at
+  // D = 1.6e-11 m²/s in about 7 hours.
+  const C0 = 0.25;
+  const Cs = 1.2;
+  const target = 0.8;
+  const x = 5e-4;
+  const D = 1.6e-11;
+
+  it('reproduces Callister’s 7 hours from the inversion', () => {
+    const t = timeForTarget(target, x, D, C0, Cs)!;
+    expect(t).not.toBeNull();
+    expect(t / 3600).toBeCloseTo(7, 1);
+  });
+
+  it('agrees with the forward solution it inverts', () => {
+    const t = timeForTarget(target, x, D, C0, Cs)!;
+    expect(concentrationAt(x, t, D, C0, Cs)).toBeCloseTo(target, 6);
+  });
+
+  it('depends on D and t only through their product', () => {
+    const Dt = dtForTarget(target, x, C0, Cs)!;
+    for (const factor of [0.1, 0.5, 2, 10, 100]) {
+      expect(timeForTarget(target, x, D * factor, C0, Cs)!).toBeCloseTo(Dt / (D * factor), 12);
+      // …and the profile really is unchanged
+      expect(
+        concentrationAt(x, Dt / (D * factor), D * factor, C0, Cs),
+      ).toBeCloseTo(target, 6);
+    }
+  });
+
+  it('holds Dt constant along the whole returned curve', () => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    const curve = equalDtCurve(sys, target, x, C0, Cs, 400, 1200, 80);
+    expect(curve).not.toBeNull();
+    expect(curve!.points.length).toBe(81);
+    for (const p of curve!.points) {
+      const D_T = diffusionCoefficient(sys, p.tempC + 273.15);
+      expect(D_T * p.seconds).toBeCloseTo(curve!.dt, 9);
+      // and every point on it genuinely hits the target
+      expect(concentrationAt(x, p.seconds, D_T, C0, Cs)).toBeCloseTo(target, 6);
+    }
+  });
+
+  it('falls monotonically with temperature — hotter is always quicker', () => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    const curve = equalDtCurve(sys, target, x, C0, Cs, 400, 1200, 80)!;
+    for (let i = 1; i < curve.points.length; i++) {
+      expect(curve.points[i].seconds).toBeLessThan(curve.points[i - 1].seconds);
+    }
+  });
+
+  /**
+   * The prose the module already asserts — "heating is a far more powerful
+   * lever than waiting" — as a number. 100 °C buys back most of an order of
+   * magnitude for carbon in γ-iron.
+   */
+  it('makes 100 °C worth 3.3× the time for carbon in γ-iron', () => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    const at = (T: number) =>
+      timeForTarget(target, x, diffusionCoefficient(sys, T + 273.15), C0, Cs)!;
+    const ratio = at(900) / at(1000);
+    // Independently, straight from Arrhenius: the time ratio is D(1273)/D(1173)
+    // = exp[(Qd/R)(1/1173 − 1/1273)], which the inversion must not disturb.
+    const closedForm = Math.exp((sys.Qd / 8.31) * (1 / 1173.15 - 1 / 1273.15));
+    expect(ratio).toBeCloseTo(closedForm, 9);
+    expect(ratio).toBeCloseTo(3.3, 1);
+  });
+
+  /**
+   * The domain guard that matters. Outside (C0, Cs) there is no solution at
+   * any temperature or time, and the curve has to be **absent** rather than
+   * clamped — clamping is what hid the out-of-domain computation in
+   * iteration 9. Both bounds are reachable from the shipped sliders: the
+   * surface-concentration control goes down to 0.40 wt%, below the 0.50 wt%
+   * case-hardening target.
+   */
+  it('has no solution for a target at or outside the two ends', () => {
+    expect(dtForTarget(0.25, x, C0, Cs)).toBeNull(); // target = C0
+    expect(dtForTarget(0.2, x, C0, Cs)).toBeNull(); // below C0
+    expect(dtForTarget(1.2, x, C0, Cs)).toBeNull(); // target = Cs
+    expect(dtForTarget(1.5, x, C0, Cs)).toBeNull(); // above Cs
+    expect(timeForTarget(0.2, x, D, C0, Cs)).toBeNull();
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    expect(equalDtCurve(sys, 0.4, x, C0, 0.4, 400, 1200, 10)).toBeNull();
+  });
+
+  /**
+   * The panel takes its target depth from `depthForConcentration` and then
+   * asks `dtForTarget` what Dt that implies. The two are separate numerical
+   * inversions of the same equation, so the round trip has to return the Dt it
+   * started from — otherwise the curve would not pass through the setting the
+   * reader is looking at.
+   */
+  it('round-trips depthForConcentration back to the same Dt', () => {
+    for (const D of [1e-12, 1.6e-11, 5e-11]) {
+      for (const hours of [1, 5, 20]) {
+        const t = hours * 3600;
+        const depth = depthForConcentration(0.5, t, D, C0, Cs)!;
+        expect(depth).not.toBeNull();
+        expect(dtForTarget(0.5, depth, C0, Cs)!).toBeCloseTo(D * t, 15);
+      }
+    }
+  });
+
+  it('has no solution at zero depth or zero diffusivity', () => {
+    expect(dtForTarget(target, 0, C0, Cs)).toBeNull();
+    expect(timeForTarget(target, x, 0, C0, Cs)).toBeNull();
+  });
+});
+

@@ -146,3 +146,102 @@ export function depthForConcentration(
   }
   return (lo + hi) / 2;
 }
+
+/**
+ * Inverse error function, by bisection on erf — which is monotone, so this
+ * converges unconditionally. Null outside (−1, 1), where no argument exists.
+ *
+ * 80 halvings of a 0…6 bracket, which is far past `erf`'s own 1.5 × 10⁻⁷
+ * accuracy bound; the approximation, not the search, sets the answer.
+ */
+export function erfInverse(y: number): number | null {
+  if (!(Math.abs(y) < 1)) return null;
+  const sign = y < 0 ? -1 : 1;
+  const ay = Math.abs(y);
+  let lo = 0;
+  let hi = 6; // erf(6) = 1 to 16 places
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (erf(mid) < ay) lo = mid;
+    else hi = mid;
+  }
+  return sign * ((lo + hi) / 2);
+}
+
+/**
+ * The Dt product that puts `target` at depth `x`, m².
+ *
+ * The whole of M2 in one line. Fick's second law fixes the profile through the
+ * single group x/2√(Dt), so demanding a concentration at a depth demands a
+ * value of **Dt** — not of D, and not of t. Everything else follows: raise the
+ * temperature and the time falls in exact proportion to D.
+ *
+ *   (C − C₀)/(C_s − C₀) = 1 − erf(z),  z = x / 2√(Dt)   ⟹   Dt = x²/4z².
+ *
+ * Null when the target is at or outside (C₀, C_s), where no time and no
+ * temperature reach it. **Absent, not clamped** — clamping a value computed
+ * outside its domain is what hid the missing α field in iteration 9.
+ */
+export function dtForTarget(
+  target: number,
+  x: number,
+  C0: number,
+  Cs: number,
+): number | null {
+  if (!(x > 0) || Cs === C0) return null;
+  const frac = (target - C0) / (Cs - C0);
+  if (!(frac > 0) || !(frac < 1)) return null;
+  const z = erfInverse(1 - frac);
+  if (z == null || !(z > 0)) return null;
+  return (x * x) / (4 * z * z);
+}
+
+/** Time to reach `target` at depth `x` at a given diffusivity, seconds. */
+export function timeForTarget(
+  target: number,
+  x: number,
+  D: number,
+  C0: number,
+  Cs: number,
+): number | null {
+  const Dt = dtForTarget(target, x, C0, Cs);
+  if (Dt == null || !(D > 0)) return null;
+  return Dt / D;
+}
+
+export interface EqualDtCurve {
+  /** The invariant product, m². Every point on the curve shares it. */
+  dt: number;
+  /** (temperature, time) pairs that all produce the same profile. */
+  points: { tempC: number; seconds: number }[];
+}
+
+/**
+ * Every (temperature, time) pair that reaches the same target — the locus of
+ * equivalent processes, sampled across a temperature range.
+ *
+ * The curve is steep because D is exponential in T while depth goes only as
+ * √t, which is the module's existing claim that "heating is a far more
+ * powerful lever than waiting" made drawable.
+ */
+export function equalDtCurve(
+  sys: DiffusionSystem,
+  target: number,
+  x: number,
+  C0: number,
+  Cs: number,
+  tMinC: number,
+  tMaxC: number,
+  steps = 80,
+): EqualDtCurve | null {
+  const dt = dtForTarget(target, x, C0, Cs);
+  if (dt == null) return null;
+  const points: { tempC: number; seconds: number }[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const tempC = tMinC + ((tMaxC - tMinC) * i) / steps;
+    const D = diffusionCoefficient(sys, tempC + 273.15);
+    if (!(D > 0)) return null;
+    points.push({ tempC, seconds: dt / D });
+  }
+  return { dt, points };
+}

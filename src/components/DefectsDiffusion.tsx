@@ -10,13 +10,22 @@ import {
   concentrationAt,
   depthForConcentration,
   diffusionCoefficient,
+  equalDtCurve,
   siteDensity,
   vacancyFraction,
+  type DiffusionSystem,
 } from '../diffusion/model';
 import { prefersReducedMotion } from '../motion';
 import { CrystalScene } from './CrystalScene';
 
 const K = 273.15;
+
+/** Slider bounds, hoisted so the equal-Dt panel can offer only reachable settings. */
+const TEMP_MIN = 400;
+const TEMP_MAX = 1200;
+const HOURS_MIN = 0.5;
+const HOURS_MAX = 40;
+const HOURS_STEP = 0.5;
 
 export function DefectsDiffusion() {
   const [structureId, setStructureId] = useRouteString('s', 'fcc');
@@ -158,12 +167,183 @@ export function DefectsDiffusion() {
   );
 }
 
+/**
+ * Decade labels for the log-time axis. The range can span seven decades — the
+ * span is the lesson — so past 10³ the labels go superscript rather than
+ * running off the left of the plot, which is what "1000000 h" did.
+ */
+const SUPERSCRIPT = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+
+function hourLabel(e: number): string {
+  if (e < 0) return `${(10 ** e).toFixed(-e)} h`;
+  if (e <= 3) return `${10 ** e} h`;
+  return `10${String(e).split('').map((d) => SUPERSCRIPT[+d]).join('')} h`;
+}
+
+/**
+ * M2 — every (temperature, time) pair that produces the same profile.
+ *
+ * Fick's second law fixes the profile through the single group x/2√(Dt), so a
+ * concentration at a depth demands a value of **Dt**, not of D and not of t.
+ * The consequence — 950 °C for 5 h and 1050 °C for 1.5 h are the same
+ * treatment — is what students almost never extract from the erf solution, and
+ * it is invisible while the two sliders are only ever moved one at a time.
+ *
+ * The target is the reader's own current setting: the depth at which carbon
+ * reaches the case-hardening threshold right now. So the curve passes through
+ * the point on screen by construction, and moving any slider redefines it.
+ *
+ * **Not a drag control.** The plan asked for dragging along the curve with the
+ * sliders following. The chart is a figure and the equivalent settings are
+ * buttons instead: a pointer-only locus would repeat the WCAG 2.1.1 failure
+ * iteration 12 fixed in the phase diagram, and buttons reach the same
+ * settings from a keyboard with no new interaction model to make accessible.
+ */
+function EqualDtPanel({
+  sys, target, depth, C0, Cs, tempC, hours, setTempC, setHours,
+}: {
+  sys: DiffusionSystem;
+  target: number;
+  depth: number | null;
+  C0: number;
+  Cs: number;
+  tempC: number;
+  hours: number;
+  setTempC: (v: number) => void;
+  setHours: (v: number) => void;
+}) {
+  const curve = useMemo(
+    () => (depth == null ? null : equalDtCurve(sys, target, depth, C0, Cs, TEMP_MIN, TEMP_MAX)),
+    [sys, target, depth, C0, Cs],
+  );
+
+  /** Round temperatures whose required time the time slider can actually express. */
+  const options = useMemo(() => {
+    if (!curve) return [];
+    const out: { tempC: number; hours: number }[] = [];
+    for (let T = 500; T <= TEMP_MAX; T += 50) {
+      const seconds = curve.dt / diffusionCoefficient(sys, T + K);
+      const h = seconds / 3600;
+      if (h >= HOURS_MIN && h <= HOURS_MAX) out.push({ tempC: T, hours: h });
+    }
+    return out;
+  }, [curve, sys]);
+
+  if (depth == null || !curve) {
+    return (
+      <div className="dd-equaldt">
+        <h3>Equivalent treatments</h3>
+        <p className="density-note">
+          No equal-Dt curve here: the surface is held at {Cs.toFixed(2)} wt%, so{' '}
+          {target.toFixed(2)} wt% is never reached at any depth, at any temperature, for any
+          length of time. There is nothing to be equivalent to — which is why this panel is
+          absent rather than showing zeros.
+        </p>
+      </div>
+    );
+  }
+
+  const W = 560;
+  const H = 210;
+  const PAD = { l: 54, r: 20, t: 12, b: 42 };
+  const plotW = W - PAD.l - PAD.r;
+  const plotH = H - PAD.t - PAD.b;
+  const logs = curve.points.map((p) => Math.log10(p.seconds / 3600));
+  const loLog = Math.floor(Math.min(...logs));
+  const hiLog = Math.ceil(Math.max(...logs));
+  const sx = (T: number) => PAD.l + ((T - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * plotW;
+  const sy = (h: number) =>
+    PAD.t + plotH - ((Math.log10(h) - loLog) / (hiLog - loLog)) * plotH;
+  const path = curve.points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.tempC)},${sy(p.seconds / 3600)}`)
+    .join(' ');
+  const decades: number[] = [];
+  for (let e = loLog; e <= hiLog; e++) decades.push(e);
+
+  return (
+    <div className="dd-equaldt">
+      <h3>Equivalent treatments — same Dt, same profile</h3>
+      <p className="density-eq">
+        x / 2√(Dt) fixed ⟹ Dt = {curve.dt.toExponential(2)} m² · · · t = Dt / D(T)
+      </p>
+
+      <svg
+        className="dd-plot"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Every temperature and time reaching ${target} wt% at ${(depth * 1000).toFixed(2)} millimetres, on a logarithmic time axis`}
+      >
+        {decades.map((e) => (
+          <g key={e}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={sy(10 ** e)} y2={sy(10 ** e)} className="dd-grid" />
+            <text x={PAD.l - 8} y={sy(10 ** e) + 4} className="dd-tick" textAnchor="end">
+              {hourLabel(e)}
+            </text>
+          </g>
+        ))}
+        <path d={path} className="dd-line" />
+        <circle cx={sx(tempC)} cy={sy(hours)} r={5} className="dd-now" />
+        <text
+          x={sx(tempC) + (tempC > (TEMP_MIN + TEMP_MAX) / 2 ? -8 : 8)}
+          y={sy(hours) - 8}
+          className="dd-marker-label"
+          textAnchor={tempC > (TEMP_MIN + TEMP_MAX) / 2 ? 'end' : 'start'}
+        >
+          you are here
+        </text>
+        <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} className="dd-axis" />
+        <line x1={PAD.l} x2={PAD.l} y1={PAD.t} y2={PAD.t + plotH} className="dd-axis" />
+        {[400, 600, 800, 1000, 1200].map((T) => (
+          <text key={T} x={sx(T)} y={H - 22} className="dd-tick" textAnchor="middle">
+            {T}
+          </text>
+        ))}
+        <text x={W / 2} y={H - 6} className="dd-tick" textAnchor="middle">
+          temperature (°C)
+        </text>
+      </svg>
+
+      <p className="density-note">
+        Holding {target.toFixed(2)} wt% at {(depth * 1000).toFixed(2)} mm — the case depth the
+        sliders above currently produce — takes {hours.toFixed(1)} h at {tempC} °C. Every point on
+        that line is the same treatment:
+      </p>
+
+      <div className="mi-family-list">
+        {options.map((o) => {
+          const snapped = Math.round(o.hours / HOURS_STEP) * HOURS_STEP;
+          return (
+            <button
+              key={o.tempC}
+              className={`mi-chip ${o.tempC === tempC ? 'mi-chip-on' : ''}`}
+              onClick={() => {
+                setTempC(o.tempC);
+                setHours(Math.min(HOURS_MAX, Math.max(HOURS_MIN, snapped)));
+              }}
+            >
+              {o.tempC} °C · {o.hours < 10 ? o.hours.toFixed(1) : o.hours.toFixed(0)} h
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="density-note">
+        Clicking one sets both sliders at once. The time slider steps in {HOURS_STEP} h, so the
+        case depth shifts a little from the figure on the chip — the setting is snapped, the curve
+        is not. The line is steep because D is <em>exponential</em> in temperature while depth
+        grows only as √t: that is the same claim the paragraph below makes in words, drawn. Buying
+        an hour back costs very little heat, and buying a day back costs almost none.
+      </p>
+    </div>
+  );
+}
+
 function DiffusionPanel() {
   // Distinct keys from the vacancy panel above: both live in this one module,
   // so they share a query string.
   const [sysId, setSysId] = useRouteString('sys', 'c-fe-fcc');
-  const [tempC, setTempC] = useRouteNumber('difT', 950, 400, 1200);
-  const [hours, setHours] = useRouteNumber('h', 5, 0.5, 40);
+  const [tempC, setTempC] = useRouteNumber('difT', 950, TEMP_MIN, TEMP_MAX);
+  const [hours, setHours] = useRouteNumber('h', 5, HOURS_MIN, HOURS_MAX);
   const [Cs, setCs] = useRouteNumber('Cs', 1.2, 0.4, 1.6);
   const [C0, setC0] = useRouteNumber('C0', 0.2, 0, 0.4);
 
@@ -337,6 +517,18 @@ function DiffusionPanel() {
           </tr>
         </tbody>
       </table>
+
+      <EqualDtPanel
+        sys={sys}
+        target={caseTarget}
+        depth={caseDepth}
+        C0={C0}
+        Cs={Cs}
+        tempC={tempC}
+        hours={hours}
+        setTempC={setTempC}
+        setHours={setHours}
+      />
 
       <p className="trend-note">{sys.note}</p>
       <p className="density-note">

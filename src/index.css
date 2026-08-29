@@ -2327,3 +2327,13 @@ input[type='range'] {
   text-align: right;
   padding-right: 0;
 }
+
+/* A2 — allowed by the lattice, out of reach of this wavelength. Distinct from
+   `.xrd-off`, which is a systematic absence and never comes back. The dashed
+   border and the λ/2d text carry the state; colour alone does not. */
+.xrd-far {
+  color: var(--muted);
+  border-style: dashed;
+  border-color: var(--muted);
+  background: none;
+}

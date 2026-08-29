@@ -3,6 +3,7 @@ import { useRouteString } from '../useRoute';
 import {
   XRD_SAMPLES,
   XRD_SOURCES,
+  braggReach,
   computePattern,
   dSpacing,
   familyLabel,
@@ -37,6 +38,10 @@ export function XrdSimulator() {
   const comparePeaks = useMemo(
     () => (compare ? computePattern(compare.lattice, compare.a, source.lambda, MAX_2THETA) : []),
     [compare, source],
+  );
+  const reach = useMemo(
+    () => braggReach(sample.lattice, sample.a, source.lambda),
+    [sample, source],
   );
 
   const sx = (twoTheta: number) => PAD.l + (twoTheta / MAX_2THETA) * plotW;
@@ -140,6 +145,19 @@ export function XrdSimulator() {
 
         <p className="trend-note">{sample.note}</p>
         <p className="density-note">
+          <strong>Why the source changes how many peaks exist.</strong> Bragg’s law gives
+          sin θ = λ/2d, and a sine cannot exceed 1, so no plane spaced closer than{' '}
+          <strong>d = λ/2 = {reach.dMin.toFixed(4)} nm</strong> can diffract at any angle. At{' '}
+          λ = {source.lambda} nm, {sample.name.replace(/ \(.*\)/, '')} has {reach.reachable}{' '}
+          reflection {reach.reachable === 1 ? 'family' : 'families'} above that floor, of which{' '}
+          {peaks.length} {peaks.length === 1 ? 'falls' : 'fall'} inside the 2θ ≤ {MAX_2THETA}°
+          window drawn here.
+          {reach.smallestD != null && (
+            <> The closest spacing this anode reaches is d = {reach.smallestD.toFixed(4)} nm.</>
+          )}{' '}
+          Nothing about the crystal changed; the ruler did.
+        </p>
+        <p className="density-note">
           Peak <strong>positions</strong> come straight from Bragg’s law and are exact — copper’s
           first four lines land at 43.32, 50.45, 74.13 and 89.95° against published values of 43.3,
           50.4, 74.1 and 90.0°. <strong>Intensities are indicative</strong>: multiplicity, structure
@@ -184,7 +202,7 @@ export function XrdSimulator() {
           </tbody>
         </table>
 
-        <ExtinctionPanel lattice={sample.lattice} a={sample.a} />
+        <ExtinctionPanel lattice={sample.lattice} a={sample.a} lambda={source.lambda} />
       </aside>
     </div>
   );
@@ -195,7 +213,15 @@ export function XrdSimulator() {
  * absences are what identify the structure, so they deserve to be visible
  * rather than merely missing from the pattern.
  */
-function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
+function ExtinctionPanel({
+  lattice,
+  a,
+  lambda,
+}: {
+  lattice: XrdLattice;
+  a: number;
+  lambda: number;
+}) {
   const CANDIDATES: [number, number, number][] = [
     [1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 0, 0], [2, 1, 0], [2, 1, 1],
     [2, 2, 0], [3, 0, 0], [3, 1, 0], [3, 1, 1], [2, 2, 2], [4, 0, 0],
@@ -215,10 +241,18 @@ function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
       <div className="xrd-extinct">
         {CANDIDATES.map(([h, k, l]) => {
           const ok = isAllowed(lattice, h, k, l);
+          const d = dSpacing(a, h, k, l);
+          // λ/2d is sin θ. Above 1 there is no angle to measure at — the
+          // reflection is allowed by the lattice and out of reach of this
+          // anode, which is a different thing from being extinct.
+          const sinTheta = lambda / (2 * d);
+          const outOfReach = ok && sinTheta > 1;
+          const cls = !ok ? 'xrd-off' : outOfReach ? 'xrd-far' : 'xrd-on';
           return (
-            <span key={familyLabel(h, k, l)} className={`xrd-chip ${ok ? 'xrd-on' : 'xrd-off'}`}>
+            <span key={familyLabel(h, k, l)} className={`xrd-chip ${cls}`}>
               {familyLabel(h, k, l)}
-              {ok && <em> · d {dSpacing(a, h, k, l).toFixed(3)}</em>}
+              {ok && <em> · d {d.toFixed(3)}</em>}
+              {outOfReach && <em> · λ/2d {sinTheta.toFixed(2)}</em>}
             </span>
           );
         })}
@@ -228,6 +262,12 @@ function ExtinctionPanel({ lattice, a }: { lattice: XrdLattice; a: number }) {
         by destructive interference. Those absences are the fingerprint: an FCC pattern opens on
         111, a BCC pattern on 110, and the diamond lattice additionally kills 200 and 222. Reading
         which peaks are <em>missing</em> is how a structure is identified.
+      </p>
+      <p className="density-note">
+        Indices marked <span className="xrd-chip xrd-far">λ/2d &gt; 1</span> are the other kind of
+        missing: the lattice allows them, but sin θ would have to exceed 1, so this wavelength
+        cannot reach them. Change the anode and they come back. A systematic absence never does —
+        that is the difference, and it is why a pattern is indexed against a stated λ.
       </p>
       <p className="density-note">
         Multiplicity m counts the symmetry-equivalent planes in a family — 8 for {'{111}'}, 6 for{' '}

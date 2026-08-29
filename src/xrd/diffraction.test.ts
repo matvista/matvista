@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel,
-  formatIntensity, isAllowed, latticeParameter, multiplicity, structureFactorSquared,
+  INDEX_CEILING, XRD_SAMPLES, XRD_SOURCES, braggIndexBound, braggReach, computePattern,
+  familyLabel, formatIntensity, isAllowed, latticeParameter, multiplicity,
+  structureFactorSquared,
 } from './diffraction';
 
 /**
@@ -493,3 +494,117 @@ describe('Miller labels are always formatted, never concatenated', () => {
     }
   });
 });
+
+/**
+ * A2 — the source selector silently changes how many reflections exist. The
+ * reason is Bragg's own inequality: sin θ = λ/2d ≤ 1, so no plane spaced
+ * closer than λ/2 can diffract at any angle. This is the number the caption
+ * under the chart quotes and the reason the extinction chips grey out.
+ */
+describe('the λ ≤ 2d diffraction limit', () => {
+  const PAIRS = XRD_SAMPLES.flatMap((s) => XRD_SOURCES.map((src) => [s.id, src.id] as const));
+  const sample = (id: string) => XRD_SAMPLES.find((s) => s.id === id)!;
+  const source = (id: string) => XRD_SOURCES.find((s) => s.id === id)!;
+
+  it.each(XRD_SOURCES.map((s) => s.id))('%s: the floor is exactly λ/2', (id) => {
+    const src = source(id);
+    const cu = sample('cu');
+    expect(braggReach(cu.lattice, cu.a, src.lambda).dMin).toBe(src.lambda / 2);
+  });
+
+  /**
+   * The oracle is `computePattern` opened to the full 2θ ≤ 180° hemisphere —
+   * a separate implementation that also computes multiplicities, structure
+   * factors and intensities, and which the rest of this file already pins to
+   * published peak positions. `braggReach` walks the same index bound with
+   * none of that arithmetic, so agreement across all 28 combinations is a
+   * real cross-check rather than a restatement.
+   */
+  it.each(PAIRS)('%s under %s: the reachable count matches the full pattern', (sid, srcid) => {
+    const s = sample(sid);
+    const lambda = source(srcid).lambda;
+    const full = computePattern(s.lattice, s.a, lambda, 180);
+    const reach = braggReach(s.lattice, s.a, lambda);
+    expect(reach.reachable).toBe(full.length);
+    expect(reach.smallestD).toBeCloseTo(Math.min(...full.map((p) => p.d)), 12);
+  });
+
+  it.each(PAIRS)('%s under %s: nothing reachable sits below the floor', (sid, srcid) => {
+    const s = sample(sid);
+    const lambda = source(srcid).lambda;
+    const reach = braggReach(s.lattice, s.a, lambda);
+    expect(reach.smallestD).not.toBeNull();
+    expect(reach.smallestD!).toBeGreaterThanOrEqual(reach.dMin);
+  });
+
+  /**
+   * The spread the caption is there to explain, measured against this model:
+   * one copper specimen, four anodes, an order of magnitude in how much of
+   * the pattern exists. `reachable` counts the whole hemisphere; the second
+   * column is what the module actually plots, inside its 2θ ≤ 140° window.
+   */
+  it('reproduces copper’s source spread', () => {
+    const cu = sample('cu');
+    const counts = XRD_SOURCES.map((src) => [
+      src.id,
+      braggReach(cu.lattice, cu.a, src.lambda).reachable,
+      computePattern(cu.lattice, cu.a, src.lambda, 140).length,
+    ]);
+    expect(counts).toEqual([
+      ['cu', 8, 7],
+      ['mo', 46, 40],
+      ['cr', 3, 3],
+      ['co', 6, 5],
+    ]);
+  });
+
+  /**
+   * Cr Kα on copper is the case the extinction panel has to grey: λ/2 =
+   * 0.1145 nm sits above (311), (222) and (400), which are allowed by the FCC
+   * rule and still cannot be measured. An absence and an unreachable
+   * reflection are different things, and the panel must not conflate them.
+   */
+  it('separates “forbidden” from “out of reach” for copper under Cr Kα', () => {
+    const cu = sample('cu');
+    const lambda = source('cr').lambda;
+    const reach = braggReach(cu.lattice, cu.a, lambda);
+    expect(reach.dMin).toBeCloseTo(0.11449, 5);
+    const d = (h: number, k: number, l: number) => cu.a / Math.sqrt(h * h + k * k + l * l);
+    // allowed and measurable
+    for (const [h, k, l] of [[1, 1, 1], [2, 0, 0], [2, 2, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(true);
+      expect(d(h, k, l)).toBeGreaterThan(reach.dMin);
+    }
+    // allowed but past the limit
+    for (const [h, k, l] of [[3, 1, 1], [2, 2, 2], [4, 0, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(true);
+      expect(d(h, k, l)).toBeLessThan(reach.dMin);
+    }
+    // forbidden, and would be even with an infinitely short wavelength
+    for (const [h, k, l] of [[1, 0, 0], [1, 1, 0], [2, 1, 0]]) {
+      expect(isAllowed(cu.lattice, h, k, l)).toBe(false);
+    }
+  });
+
+  /**
+   * Past the point where λ exceeds twice the largest allowed spacing there is
+   * no pattern at all. It must come back empty rather than clamped — the same
+   * refusal the index ceiling makes.
+   */
+  it('reports nothing reachable when the wavelength outruns the lattice', () => {
+    const cu = sample('cu');
+    const dMax = cu.a / Math.sqrt(3); // FCC's largest allowed spacing, (111)
+    const reach = braggReach(cu.lattice, cu.a, 2 * dMax + 0.01);
+    expect(reach.reachable).toBe(0);
+    expect(reach.smallestD).toBeNull();
+    expect(computePattern(cu.lattice, cu.a, 2 * dMax + 0.01, 180)).toHaveLength(0);
+  });
+
+  it('refuses past the defensive index ceiling, exactly as computePattern does', () => {
+    const a = 0.3615;
+    const lambda = (2 * a) / (INDEX_CEILING + 10);
+    expect(braggIndexBound(a, lambda)).toBeGreaterThan(INDEX_CEILING);
+    expect(() => braggReach('fcc', a, lambda)).toThrow(RangeError);
+  });
+});
+

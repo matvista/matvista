@@ -201,6 +201,71 @@ export function braggIndexBound(a: number, lambda: number): number {
 }
 
 /**
+ * The index sweep both the pattern and the reach summary run over.
+ *
+ * Shared so the two can never disagree about how far to look, and so the
+ * refusal past `INDEX_CEILING` is written once.
+ */
+function sweepBound(a: number, lambda: number): number {
+  const maxIndex = braggIndexBound(a, lambda);
+  if (maxIndex > INDEX_CEILING) {
+    throw new RangeError(
+      `computePattern: 2a/λ = ${((2 * a) / lambda).toFixed(1)} needs indices to ${maxIndex}, ` +
+        `past the ${INDEX_CEILING} ceiling. Truncating would drop real reflections silently, ` +
+        `so this refuses instead — raise INDEX_CEILING deliberately if the domain really extends.`,
+    );
+  }
+  return maxIndex;
+}
+
+/** How much of a lattice's pattern a given wavelength can actually reach. */
+export interface BraggReach {
+  /**
+   * The closest plane spacing any angle can reach, λ/2 nm. sin θ = λ/2d and
+   * sin θ ≤ 1, so a plane spaced below this cannot diffract at all — which is
+   * why X-rays and not visible light, and why the anode choice deletes peaks.
+   */
+  dMin: number;
+  /** Allowed {hkl} families with d ≥ λ/2, i.e. reachable somewhere in 2θ ≤ 180°. */
+  reachable: number;
+  /** The smallest spacing among those, nm. Null when nothing is reachable. */
+  smallestD: number | null;
+}
+
+/**
+ * Counts what the wavelength can reach, without computing intensities.
+ *
+ * `computePattern` already drops `sinTheta > 1` with a bare `continue`, so the
+ * information exists and is thrown away; this returns it. Same index bound and
+ * same one-representative-per-family enumeration, so the count agrees with
+ * `computePattern(lattice, a, lambda, 180).length` for every shipped
+ * combination — asserted for all 28 of them.
+ *
+ * Note this is the whole hemisphere, not the 2θ ≤ 140° window the chart draws.
+ * The two differ (copper under Cu Kα: 8 against 7) and the caption says which
+ * is which.
+ */
+export function braggReach(lattice: XrdLattice, a: number, lambda: number): BraggReach {
+  const maxIndex = sweepBound(a, lambda);
+  const dMin = lambda / 2;
+  let reachable = 0;
+  let smallestD: number | null = null;
+  for (let h = 0; h <= maxIndex; h++) {
+    for (let k = 0; k <= h; k++) {
+      for (let l = 0; l <= k; l++) {
+        if (h + k + l === 0) continue;
+        if (!isAllowed(lattice, h, k, l)) continue;
+        const d = dSpacing(a, h, k, l);
+        if (d < dMin) continue;
+        reachable++;
+        if (smallestD == null || d < smallestD) smallestD = d;
+      }
+    }
+  }
+  return { dMin, reachable, smallestD };
+}
+
+/**
  * Generates the powder pattern.
  *
  * The index sweep is bounded by `braggIndexBound`, not by a constant: the
@@ -220,14 +285,7 @@ export function computePattern(
   maxTwoTheta = 140,
 ): Peak[] {
   const peaks: Peak[] = [];
-  const maxIndex = braggIndexBound(a, lambda);
-  if (maxIndex > INDEX_CEILING) {
-    throw new RangeError(
-      `computePattern: 2a/λ = ${((2 * a) / lambda).toFixed(1)} needs indices to ${maxIndex}, ` +
-        `past the ${INDEX_CEILING} ceiling. Truncating would drop real reflections silently, ` +
-        `so this refuses instead — raise INDEX_CEILING deliberately if the domain really extends.`,
-    );
-  }
+  const maxIndex = sweepBound(a, lambda);
 
   // Enumerating h ≥ k ≥ l visits each {hkl} family exactly once, so no
   // separate seen-set is needed to deduplicate.

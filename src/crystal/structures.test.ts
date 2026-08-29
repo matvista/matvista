@@ -292,3 +292,88 @@ describe('packingFactor derives APF from the geometry', () => {
     },
   );
 });
+
+/**
+ * The two printed fields that carry no number, and so had no gate.
+ *
+ * `bd6000e` claimed to gate every term of the packing derivation. It gated
+ * five: N, a/R, the sphere volume, the cell volume and the quotient. The sixth
+ * is the row *header* — `aFromR`, the relation itself — and it is prose, so
+ * every assertion in this file went straight past it. Changing FCC's
+ * `a = 2R√2` to `a = 4R/√3` left the suite green while the panel rendered
+ * "a = 4R/√3" beside a computed "a = 2.828 R", contradicting itself on one
+ * line. `system` is the same shape: printed as "{system} system" under the
+ * heading and answerable to nothing.
+ *
+ * Both are now answerable to something the geometry already fixes.
+ */
+describe('the printed strings agree with the geometry they label', () => {
+  /**
+   * The a↔R relation, evaluated.
+   *
+   * The grammar is deliberately tight — a coefficient, `R`, an optional `√n`,
+   * an optional `/√n` — and anything it does not recognise **throws** rather
+   * than being skipped. A parser that silently returned null on an unfamiliar
+   * relation would put the gap straight back, one edit later.
+   */
+  const evaluate = (relation: string): number => {
+    // HCP appends ", ideal c/a = 1.633"; the a↔R clause is the first one.
+    const head = relation.split(',')[0].trim();
+    const m = /^a = (\d+)R(?:√(\d+))?(?:\/√(\d+))?$/.exec(head);
+    if (m == null) throw new Error(`unparsed a↔R relation: ${relation}`);
+    let value = Number(m[1]);
+    if (m[2] != null) value *= Math.sqrt(Number(m[2]));
+    if (m[3] != null) value /= Math.sqrt(Number(m[3]));
+    return value;
+  };
+
+  it('parses every elemental relation, so no row is gated vacuously', () => {
+    expect(ELEMENTAL.length).toBeGreaterThan(3);
+    for (const s of ELEMENTAL) expect(Number.isFinite(evaluate(s.aFromR))).toBe(true);
+  });
+
+  /**
+   * `aOverR` is not a restatement of the string: it is checked against the
+   * measured lattice parameters of real metals further up this file, so this
+   * chains the printed relation to something outside the module.
+   */
+  it.each(ELEMENTAL.map((s) => s.id))(
+    '%s: the printed a↔R relation evaluates to the a/R the panel computes',
+    (id) => {
+      const s = getStructure(id);
+      expect(evaluate(s.aFromR)).toBeCloseTo(s.aOverR!, 12);
+    },
+  );
+
+  /**
+   * The compounds have no single R, so there is no relation to evaluate — and
+   * nothing here tries to invent a positive form for them, because they do not
+   * share one: rock salt and CsCl are written in `r_cation`/`r_anion` and
+   * perovskite in bond lengths. What they must not do is *claim* a single-R
+   * relation, since `packingFactor` refuses to derive an APF for exactly that
+   * reason and a metallic `a = kR` beside that refusal would contradict it.
+   */
+  it.each(STRUCTURES.filter((s) => s.aOverR == null).map((s) => s.id))(
+    '%s (compound): claims no single-R relation, matching its refusal to derive an APF',
+    (id) => {
+      const s = getStructure(id);
+      expect(s.aOverR).toBeUndefined();
+      expect(packingFactor(s)).toBeNull();
+      expect(() => evaluate(s.aFromR)).toThrow();
+      expect(s.aFromR).not.toMatch(/^a = \d+R/);
+    },
+  );
+
+  /**
+   * `system` is printed beside the title and is otherwise inert, but `cell`
+   * is not: it selects the hexagonal prism volume over a³ and decides whether
+   * `coa` means anything. Naming a system the cell is not is the readable half
+   * of a contradiction the rest of the file would never see.
+   */
+  it.each(STRUCTURES.map((s) => s.id))('%s: names the crystal system its cell is', (id) => {
+    const s = getStructure(id);
+    expect(s.system).toBe(s.cell === 'hexagonal' ? 'Hexagonal' : 'Cubic');
+    // and the c/a ratio exists exactly where a hexagonal cell needs one
+    expect(s.coa != null).toBe(s.cell === 'hexagonal');
+  });
+});

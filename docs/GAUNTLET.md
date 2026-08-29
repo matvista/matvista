@@ -621,6 +621,21 @@ Recorded here rather than by rewriting the commits. Each was re-measured with on
 | `948a81d` | Corrosion "20.60 → 25.04 kB raw, **6.59** → 8.01 gzip" | At its parent `a834086` the Corrosion chunk is **6.60 kB** gzip. Raw and the after-figure are right. |
 | `d294681` | Corrosion "25.04 → 32.83 kB raw, **8.01** → 9.99 gzip" | At its parent `4f6b14a` it is **8.00 kB** gzip. Raw and the after-figure are right. |
 
+Two of my own, found by re-measuring the index chunk at every commit on this branch after
+writing the table above — which is the point of having it:
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `56037ff` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | The raw length is unchanged at 301,121 B, but the gzip figure went 85.17 → **85.18 kB**. |
+| `7c1161b` | the same sentence | 301,121 B again, gzip 85.17 → **85.16 kB**. |
+
+Both are the `a834086` shape exactly: the index chunk's *length* holds while its content
+moves, because the lazy-chunk filename table inside it changes whenever any module chunk
+does, and the gzip figure wobbles by 0.01 kB with it. Every other commit on this branch
+holds at 301,121 B / 85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet, checked one
+build per commit. **"Unchanged" needs the gzip figure compared, not assumed** — the raw
+length is the part that does not move.
+
 And two in the branch's own summary report, which is not a commit and cannot be corrected
 in place:
 

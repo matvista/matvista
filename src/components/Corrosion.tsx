@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
+import { useRouteEnum, useRouteNumber } from '../useRoute';
 import {
   EMF_SERIES, GALVANIC_SERIES, POURBAIX, electrochemistryFor, getPourbaix, regionAt,
 } from '../corrosion/data';
@@ -20,6 +20,24 @@ const PH_MIN = 0;
 const PH_MAX = 14;
 const PB_E_MIN = -1.8;
 const PB_E_MAX = 1.3;
+
+/**
+ * The selectable sets, hoisted so `useRouteEnum` gets a stable reference and so
+ * a control's option list and its allowed URL values are one thing.
+ *
+ * Three selects here used to declare one default to `useRouteString` and
+ * resolve to another: `useRouteString('cm', 'Iron')` with
+ * `metals.find(…) ?? metals[0]`, so `?cm=Unobtanium` selected the first EMF
+ * entry rather than iron — a garbage value and an absent one landing on
+ * different metals, which is the one thing `useRouteEnum` exists to prevent.
+ * The couple panel's `?? GALVANIC_SERIES[19]` happened to be Carbon steel, but
+ * only positionally: inserting an alloy above it would have moved the default
+ * silently.
+ */
+const EMF_METALS = EMF_SERIES.filter((e) => e.metal);
+const EMF_METAL_NAMES = EMF_METALS.map((e) => e.metal!);
+const GALVANIC_NAMES = GALVANIC_SERIES.map((g) => g.name);
+const POURBAIX_IDS = POURBAIX.map((p) => p.id);
 
 type Panel = 'couple' | 'emf' | 'cell' | 'pourbaix';
 const PANELS: Panel[] = ['couple', 'emf', 'cell', 'pourbaix'];
@@ -58,15 +76,17 @@ export function Corrosion() {
 /* ================================================================ couple == */
 
 function CouplePanel() {
-  const [aName, setAName] = useRouteString('a', 'Carbon steel');
-  const [bName, setBName] = useRouteString('b', 'Copper');
+  const [aName, setAName] = useRouteEnum('a', 'Carbon steel', GALVANIC_NAMES);
+  const [bName, setBName] = useRouteEnum('b', 'Copper', GALVANIC_NAMES);
   const [anodeArea, setAnodeArea] = useRouteNumber('aa', 10, 0.1, 100);
   const [cathodeArea, setCathodeArea] = useRouteNumber('ca', 10, 0.1, 100);
   // Log-scaled: measured corrosion current densities span 0.01–1000 µA/cm².
   const [logI, setLogI] = useRouteNumber('logi', 0, -2, 3);
 
-  const a = GALVANIC_SERIES.find((g) => g.name === aName) ?? GALVANIC_SERIES[19];
-  const b = GALVANIC_SERIES.find((g) => g.name === bName) ?? GALVANIC_SERIES[11];
+  // `useRouteEnum` has already rejected anything not in the list, so neither
+  // of these can miss — asserted in corrosion/data.test.ts rather than assumed.
+  const a = GALVANIC_SERIES.find((g) => g.name === aName)!;
+  const b = GALVANIC_SERIES.find((g) => g.name === bName)!;
   const couple = galvanicCouple(a, b);
   const anodeIsA = couple.anode === a.name;
   const ratio = areaRatioFactor(cathodeArea, anodeArea);
@@ -296,12 +316,12 @@ function RatePanel({
 /* =================================================================== emf == */
 
 function EmfPanel() {
-  const [metal, setMetal] = useRouteString('metal', 'Zinc');
+  const [metal, setMetal] = useRouteEnum('metal', 'Zinc', EMF_METAL_NAMES);
   const [logMolar, setLogMolar] = useRouteNumber('c', 0, -6, 0);
   const [tempC, setTempC] = useRouteNumber('T', 25, 0, 100);
 
-  const metals = EMF_SERIES.filter((e) => e.metal);
-  const entry = metals.find((e) => e.metal === metal) ?? metals[0];
+  const metals = EMF_METALS;
+  const entry = metals.find((e) => e.metal === metal)!;
   const molar = 10 ** logMolar;
   const T_K = tempC + 273.15;
   const E = nernstPotential(entry.E0, entry.n, molar, T_K);
@@ -422,12 +442,12 @@ const CELL_MODES: CellMode[] = ['ion', 'oxygen'];
  */
 function CellPanel() {
   const [mode, setMode] = useRouteEnum<CellMode>('cmode', 'ion', CELL_MODES);
-  const [metal, setMetal] = useRouteString('cm', 'Iron');
+  const [metal, setMetal] = useRouteEnum('cm', 'Iron', EMF_METAL_NAMES);
   const [logHigh, setLogHigh] = useRouteNumber('ah', 0, -6, 0);
   const [logLow, setLogLow] = useRouteNumber('al', -4, -6, 0);
 
-  const metals = EMF_SERIES.filter((e) => e.metal);
-  const entry = metals.find((e) => e.metal === metal) ?? metals[0];
+  const metals = EMF_METALS;
+  const entry = metals.find((e) => e.metal === metal)!;
   // Metal-ion cell: n electrons per atom dissolved. Differential aeration: the
   // oxygen half-cell, O₂ + 4H⁺ + 4e⁻ → 2H₂O, so n = 4 regardless of the metal.
   const n = mode === 'ion' ? entry.n : 4;
@@ -690,7 +710,7 @@ function CrevicSketch({
 /* ============================================================== pourbaix == */
 
 function PourbaixPanel() {
-  const [metalId, setMetalId] = useRouteString('m', 'fe');
+  const [metalId, setMetalId] = useRouteEnum('m', 'fe', POURBAIX_IDS);
   const [pH, setPH] = useRouteNumber('pH', 7, 0, 14);
   const [E, setE] = useRouteNumber('E', 0, -1.6, 1.2);
 

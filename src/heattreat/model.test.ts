@@ -900,3 +900,87 @@ describe('the hardness overstatement bound quoted in the scope note', () => {
     }
   });
 });
+
+/**
+ * Mˢ follows the austenite the martensite actually forms from.
+ *
+ * Rejecting ferrite enriches what is left — up to the eutectoid 0.76 wt% C —
+ * and carbon dominates Andrews' Mˢ, so the offset reaches 152 °C. Computing
+ * Mˢ from the *bulk* composition and disclosing the gap in a caveat was not
+ * good enough: that Mˢ is the Scheil floor, so it moved the microstructure and
+ * the hardness too, and it suppressed the retained-austenite warning on paths
+ * that need it — the panel drew up to 51% "martensite at 57 HRC" that could
+ * not fully transform at room temperature, while showing that same warning for
+ * 1080.
+ *
+ * The enrichment is now fed back. It is a fixed point — a lower Mˢ lets the
+ * path transform further, which forms more ferrite, which lowers Mˢ again —
+ * so `predict` iterates it to convergence and reports the values it used.
+ */
+describe('martensite temperatures follow the enriched austenite', () => {
+  it.each([
+    ['1080', 233.41044666842697],
+    ['5140', 36.46135678530757],
+    ['4340', 2.133696798237151],
+  ])('%s: the critical cooling rate is untouched', (id, expected) => {
+    const s = getSteel(id);
+    expect(criticalCoolingRate(s, buildTtt(s), AUST)).toBe(expected);
+  });
+
+  it('leaves 1080 on its bulk Mˢ at every rate — it rejects no ferrite', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      expect(o.ms).toBe(ttt.ms);
+      expect(o.m90).toBe(ttt.m90);
+    }
+  });
+
+  it('reaches the eutectoid Mˢ where ferrite saturates — the 152 °C case', () => {
+    const s = getSteel('5140');
+    const ttt = buildTtt(s);
+    const o = predict(s, ttt, AUST, 3.0385);
+    expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(EUTECTOID_X, 3);
+    // Andrews at 0.76 wt% C instead of 0.40.
+    expect(o.ms).toBeCloseTo(martensiteStart({ ...s.composition, C: EUTECTOID_X }), 9);
+    expect(ttt.ms - o.ms).toBeCloseTo(152, 0);
+  });
+
+  it('reports the Mˢ its own enrichment implies', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const c = untransformedAusteniteCarbon(o, s.composition.C);
+        // The Mˢ reported must be the one that composition implies.
+        expect(o.ms).toBeCloseTo(martensiteStart({ ...s.composition, C: c }), 6);
+      }
+    }
+  });
+
+  it('never reports an Mˢ above the bulk value', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        expect(o.ms).toBeLessThanOrEqual(ttt.ms + 1e-9);
+        expect(o.m90).toBeLessThanOrEqual(o.ms);
+      }
+    }
+  });
+
+  /**
+   * The contradiction this removes: two caveats on one panel, one saying the
+   * austenite is enriched and the other deciding whether to warn about
+   * retained austenite from the un-enriched figure.
+   */
+  it('drops 5140 M90 below room temperature where the panel drew full martensite', () => {
+    const s = getSteel('5140');
+    const ttt = buildTtt(s);
+    expect(ttt.m90).toBeGreaterThan(20); // bulk: no warning
+    const o = predict(s, ttt, AUST, 5);
+    expect(o.fractions.find((f) => f.product === 'martensite')!.fraction).toBeGreaterThan(0.3);
+    expect(o.m90).toBeLessThan(20); // enriched: warning is due
+  });
+});

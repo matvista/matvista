@@ -204,9 +204,12 @@ export function HeatTreatment() {
           {/* Martensite lines are horizontal: the transformation is diffusionless,
               so it depends on temperature alone and not at all on time. */}
           {[
-            { T: ttt.ms, label: 'Mˢ' },
-            { T: ttt.m50, label: 'M50' },
-            { T: ttt.m90, label: 'M90' },
+            // From the outcome, not the steel: on a ferrite-forming path the
+            // austenite left to quench is enriched and its Mˢ is far lower, so
+            // these lines move with the cooling rate.
+            { T: outcome.ms, label: 'Mˢ' },
+            { T: outcome.m50, label: 'M50' },
+            { T: outcome.m90, label: 'M90' },
           ]
             .filter((m) => m.T >= TEMP_MIN + 8)
             .map((m) => (
@@ -370,14 +373,14 @@ export function HeatTreatment() {
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
               <td>
-                {Math.round(martensiteStart(steel.composition))} °C
-                {msUnderstated && ' (bulk composition)'}
+                {Math.round(outcome.ms)} °C
+                {msUnderstated && ' (enriched austenite)'}
               </td>
             </tr>
             <tr>
               <th scope="row">M90</th>
-              <td className={ttt.m90 < 20 ? 'err-off' : ''}>
-                {Math.round(ttt.m90)} °C
+              <td className={outcome.m90 < 20 ? 'err-off' : ''}>
+                {Math.round(outcome.m90)} °C
               </td>
             </tr>
           </tbody>
@@ -400,19 +403,22 @@ export function HeatTreatment() {
 
         {msUnderstated && (
           <p className="ht-caveat">
-            <strong>Mˢ is computed from the bulk composition.</strong> Rejecting ferrite leaves the
-            untransformed austenite richer in carbon than the steel as a whole — here about{' '}
+            <strong>Mˢ here is the enriched austenite's, not the steel's.</strong> Rejecting
+            ferrite leaves what is left richer in carbon than the steel as a whole — about{' '}
             {enrichedCarbon.toFixed(2)} wt% C against {steel.composition.C.toFixed(2)} — and carbon
-            is the term that dominates Andrews' Mˢ. The real Mˢ for that austenite is roughly{' '}
-            {Math.round(423 * (enrichedCarbon - steel.composition.C))} °C below the figure above.
-            Feeding the enrichment back would move the whole construction, including every critical
-            cooling rate, so it is not done here — the number is stated as it is computed.
+            dominates Andrews' equation, so Mˢ, M50 and M90 above are{' '}
+            {Math.round(martensiteStart(steel.composition) - outcome.ms)} °C below the bulk figure
+            of {Math.round(martensiteStart(steel.composition))} °C, and the lines on the diagram
+            move with them. What is <em>not</em> fed back is the floor the transformation
+            integrates down to, which still uses the bulk value: the two are coupled and the
+            coupled solution turns out to jump discontinuously with cooling rate. The cost is a
+            diffusional fraction understated by at most about three points.
           </p>
         )}
 
-        {ttt.m90 < 20 && (
+        {outcome.m90 < 20 && (
           <p className="ht-caveat">
-            <strong>Retained austenite.</strong> M90 sits at {Math.round(ttt.m90)} °C — below room
+            <strong>Retained austenite.</strong> M90 sits at {Math.round(outcome.m90)} °C — below room
             temperature — so quenching to 20 °C cannot convert the last of the austenite however
             fast you go. Carbon is what pushes Mˢ down, which is why the problem belongs to
             high-carbon steels and why they get a sub-zero treatment when it matters.

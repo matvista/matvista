@@ -117,6 +117,15 @@ export function getSteel(id: string): Steel {
  * Carbon dominates by an order of magnitude. Push it high enough and Mˢ falls
  * below room temperature, which is why high-carbon steels keep untransformed
  * retained austenite after quenching.
+ *
+ * **Fitted range: 0.11–0.60 wt% C.** Two of the places this module uses it are
+ * outside that range and neither was flagged before. 1080's nominal 0.79 wt% C
+ * is one — and it produces the headline 233 °C/s critical rate, so the number
+ * this module is best known for rests on an extrapolation. The other is the
+ * enriched austenite on a ferrite-forming path, which reaches the eutectoid
+ * 0.76 wt% C. Both are modest extrapolations of a linear fit and the equation
+ * is monotone and well-behaved there, but they are extrapolations, and a
+ * caller quoting Mˢ for a high-carbon steel should know it.
  */
 export function martensiteStart(c: Steel['composition']): number {
   return 539 - 423 * c.C - 30.4 * c.Mn - 17.7 * c.Ni - 12.1 * c.Cr - 7.5 * c.Mo;

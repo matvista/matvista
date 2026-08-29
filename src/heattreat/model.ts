@@ -197,6 +197,21 @@ export interface Outcome {
   startTemp: number | null;
   /** Whether the diffusional transformation ran to completion. */
   complete: boolean;
+  /**
+   * Martensite-start temperature actually used for this path, °C.
+   *
+   * Not `TttModel.ms`: rejecting proeutectoid ferrite enriches the austenite
+   * that is left, and carbon dominates Andrews' equation, so the austenite
+   * quenching at the end of a ferrite-forming path has a much lower Mˢ than
+   * the steel as a whole — 183 °C against 335 for 5140 at its saturation
+   * point. This is the figure the Scheil floor, the plot's Mˢ line and the
+   * retained-austenite warning all use.
+   */
+  ms: number;
+  /** Temperature for 50% martensite, from `ms`. */
+  m50: number;
+  /** Temperature for 90% martensite, from `ms`. */
+  m90: number;
   summary: string;
 }
 
@@ -417,7 +432,70 @@ function describeParts(parts: { product: Product; fraction: number }[]): {
  * get a mixture; cool slowly through it and you get pearlite.
  */
 export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: number): Outcome {
-  const startRun = scheil(ttt.start, startTemp, rate, ttt.ms);
+  return withEnrichedMartensiteStart(steel, ttt, startTemp, rate);
+}
+
+/**
+ * Report the Mˢ of the austenite the martensite actually forms from.
+ *
+ * Rejecting proeutectoid ferrite enriches what is left, up to the eutectoid
+ * 0.76 wt% C, and carbon dominates Andrews' equation — so on a ferrite-forming
+ * path the austenite reaching Mˢ is 152 °C colder in 5140 and 152 °C colder in
+ * 4340 than the steel as a whole. Computing the displayed Mˢ from the bulk
+ * composition was wrong twice over: the row was wrong, and the
+ * retained-austenite warning is gated on M90, so it stayed silent on paths
+ * drawing up to 51% martensite that could not fully transform at room
+ * temperature — while firing for 1080, which does not need it. Two caveats on
+ * one panel contradicting each other.
+ *
+ * **The Scheil floor still uses the bulk Mˢ, and that is a reduction, not an
+ * oversight.** Feeding the enriched value back into the floor was implemented
+ * and withdrawn: the two are coupled — a lower Mˢ lets the path transform
+ * further, forming more ferrite, enriching further, lowering Mˢ again — and
+ * the map is not a contraction. Measured, the fixed point is bistable: at
+ * 5140 3.11745 °C/s it jumps 335.2 → 182.9 °C across a 0.2% change in rate,
+ * taking the pearlite fraction 2.67 points up as cooling gets *faster*. That
+ * is the discontinuity class this series has already shipped twice, so it is
+ * not shipped a third time.
+ *
+ * What the reduction leaves wrong, measured rather than hand-waved: with the
+ * floor at the bulk value the path stops transforming a little early, so the
+ * diffusional fraction is understated by a few points — 23.94% ferrite against
+ * 24.65% for 5140 at 10 °C/s, and at most about 2.7 points anywhere. That is
+ * the residual, and it is two orders of magnitude smaller than the 152 °C the
+ * displayed Mˢ was out by.
+ *
+ * Nothing here can move a critical cooling rate: a path that misses the nose
+ * forms no ferrite, so there is no enrichment, and the floor is untouched in
+ * any case. Asserted bit-identical.
+ */
+function withEnrichedMartensiteStart(
+  steel: Steel,
+  ttt: TttModel,
+  startTemp: number,
+  rate: number,
+): Outcome {
+  const outcome = predictWithMs(steel, ttt, startTemp, rate, ttt.ms);
+  const carbon = untransformedAusteniteCarbon(outcome, steel.composition.C);
+  if (carbon <= steel.composition.C) return outcome;
+  const ms = martensiteStart({ ...steel.composition, C: carbon });
+  return {
+    ...outcome,
+    ms,
+    m50: martensiteFractionTemp(ms, 0.5),
+    m90: martensiteFractionTemp(ms, 0.9),
+  };
+}
+
+function predictWithMs(
+  steel: Steel,
+  ttt: TttModel,
+  startTemp: number,
+  rate: number,
+  ms: number,
+): Outcome {
+  const martensite = { ms, m50: martensiteFractionTemp(ms, 0.5), m90: martensiteFractionTemp(ms, 0.9) };
+  const startRun = scheil(ttt.start, startTemp, rate, ms);
 
   if (!startRun.reached) {
     return {
@@ -425,6 +503,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       hardness: steel.hardness.martensite,
       startTemp: null,
       complete: true,
+      ...martensite,
       summary:
         'The path outruns the nose — nowhere along it does the accumulated incubation reach one — so austenite survives to Mˢ and shears to martensite. Fully hard, and fully brittle until tempered.',
     };
@@ -432,7 +511,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
 
   const hitStart = startRun.reached;
   const product = productAt(steel, hitStart.T);
-  const finishRun = scheil(ttt.finish, startTemp, rate, ttt.ms);
+  const finishRun = scheil(ttt.finish, startTemp, rate, ms);
 
   if (finishRun.reached) {
     const parts = splitProeutectoid(ttt, product, 1);
@@ -442,6 +521,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       hardness: hardnessOf(steel, product),
       startTemp: hitStart.T,
       complete: true,
+      ...martensite,
       summary:
         alpha > 0
           ? `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ. Because this steel is hypoeutectoid, it must first reject proeutectoid ferrite — pearlite is eutectoid at 0.76 wt% C, and rejecting the carbon-poor ferrite first is what enriches the remaining austenite to that composition. The binary Fe–Fe₃C lever rule puts that at ${Math.round(alpha * 100)}%, which is an upper bound: alloying lowers the eutectoid carbon, so the true figure for this grade is lower. Quenching afterwards changes nothing — there is no austenite left to harden.`
@@ -477,6 +557,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       hardnessOf(steel, product) * fraction + steel.hardness.martensite * (1 - fraction),
     startTemp: hitStart.T,
     complete: false,
+    ...martensite,
     summary:
       shown.total < TRACE_FRACTION
         ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${parts[0].product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`

@@ -5,7 +5,9 @@ import {
   FERRITE_MAX,
   GAMMA_MAX,
   PHASE_SYSTEMS,
+  gibbsPhaseRule,
   steelMicrostructure,
+  type PhaseRuleResult,
   type PhaseSystem,
 } from '../phase/systems';
 
@@ -91,6 +93,11 @@ export function PhaseDiagrams() {
     if (e.key === 'ArrowDown') setPointT(clamp(clamped.T - dT, system.tMin, system.tMax));
     if (e.key === 'ArrowUp') setPointT(clamp(clamped.T + dT, system.tMin, system.tMax));
   }
+
+  const rule = useMemo(
+    () => gibbsPhaseRule(system, clamped.x, clamped.T),
+    [system, clamped.x, clamped.T],
+  );
 
   const steel =
     system.id === 'fe-c' && clamped.x >= FERRITE_MAX && clamped.x <= GAMMA_MAX
@@ -298,6 +305,8 @@ export function PhaseDiagrams() {
           </>
         )}
 
+        <PhaseRuleBox rule={rule} />
+
         {system.invariants.length > 0 && (
           <div className="density-box">
             <h3>Invariant reactions</h3>
@@ -356,6 +365,80 @@ export function PhaseDiagrams() {
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * The phase rule, attached to the point the reader is already dragging.
+ *
+ * The rule is memorised and not understood: students recite P + F = C + N and
+ * cannot say why a eutectic is a point. Reading F off the field you are
+ * standing in makes it a consequence of where you are. The tie line the chart
+ * already draws *is* the degree of freedom that two-phase costs you.
+ */
+function PhaseRuleBox({ rule }: { rule: PhaseRuleResult }) {
+  const noun = rule.P === 1 ? 'phase' : 'phases';
+  return (
+    <div className="density-box">
+      <h3>Gibbs phase rule</h3>
+      <p className="density-eq">
+        P + F = C + N &nbsp;→&nbsp; {rule.P} + <strong>{rule.F}</strong> = {rule.C} + {rule.N}
+      </p>
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Phases P</th>
+            <td>
+              {rule.P} {noun}
+              {rule.invariant ? ` (on the ${rule.invariant.label.toLowerCase()})` : ''}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Components C</th>
+            <td>{rule.C} — a binary</td>
+          </tr>
+          <tr>
+            <th scope="row">Non-compositional N</th>
+            <td>{rule.N} — temperature; pressure is fixed</td>
+          </tr>
+          <tr>
+            <th scope="row">Degrees of freedom F</th>
+            <td>{rule.F}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="density-note">
+        {rule.F === 2 && (
+          <>
+            Two degrees of freedom. Temperature and composition move
+            independently and you are still in the same single-phase field —
+            which is why single-phase regions are areas.
+          </>
+        )}
+        {rule.F === 1 && (
+          <>
+            One degree of freedom. Choose the temperature and the composition of{' '}
+            <em>both</em> phases is already decided — you cannot pick them, you
+            can only read them off the tie line drawn above. Only the
+            proportions still vary, and the lever rule fixes those from the
+            overall composition. That lost freedom is the tie line.
+          </>
+        )}
+        {rule.F === 0 && (
+          <>
+            No degrees of freedom. Three phases coexist, so the temperature and
+            all three compositions are fixed by the system itself — nothing is
+            left to choose. That is why{' '}
+            {rule.invariant ? <code>{rule.invariant.reaction}</code> : 'an invariant reaction'}{' '}
+            happens at a single point rather than over a range, and why the
+            temperature holds steady on a cooling curve until the reaction
+            finishes. The panel above still names the field whose boundary this
+            point sits on — an invariant is a point, so it lies on the edge of
+            every field that meets there.
+          </>
+        )}
+      </p>
     </div>
   );
 }

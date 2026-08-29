@@ -420,6 +420,53 @@ export const FE_C: PhaseSystem = {
 
 export const PHASE_SYSTEMS: PhaseSystem[] = [CU_NI, PB_SN, FE_C];
 
+// ===================== the Gibbs phase rule =====================
+
+export interface PhaseRuleResult {
+  /** Phases present, P. */
+  P: number;
+  /** Components, C. Two, for a binary. */
+  C: number;
+  /** Non-compositional variables, N. One — temperature, at fixed pressure. */
+  N: number;
+  /** Degrees of freedom, F = C + N − P. */
+  F: number;
+  /** The invariant reaction the point is sitting on, when it is on one. */
+  invariant: Invariant | null;
+}
+
+/**
+ * Fraction of each axis within which a point counts as *on* an invariant.
+ *
+ * Tied to the arrow-key step in `PhaseDiagrams` — one press moves 1% of the
+ * axis — so a keyboard user can actually land on the eutectic. Wider and the
+ * invariant would swallow its neighbourhood; narrower and it would be
+ * reachable only with a mouse.
+ */
+export const INVARIANT_TOLERANCE = 0.01;
+
+/**
+ * Degrees of freedom at a point, by the Gibbs phase rule.
+ *
+ * P + F = C + N. Both components are condensed and pressure is fixed, so N
+ * counts temperature alone and F = 3 − P: two in a single-phase field, one
+ * inside a two-phase field, zero on an invariant.
+ *
+ * **The invariant case has to override the evaluator.** An invariant is a
+ * point, so `evaluate` reports whichever field's boundary it lies on — the
+ * Pb–Sn eutectic evaluates as single-phase L, sitting exactly on the liquidus.
+ * Taking P from that would report F = 2 at the one place in the diagram where
+ * nothing at all can move.
+ */
+export function gibbsPhaseRule(system: PhaseSystem, x: number, T: number): PhaseRuleResult {
+  const dx = (system.xMax - system.xMin) * INVARIANT_TOLERANCE;
+  const dT = (system.tMax - system.tMin) * INVARIANT_TOLERANCE;
+  const invariant =
+    system.invariants.find((i) => Math.abs(x - i.x) <= dx && Math.abs(T - i.T) <= dT) ?? null;
+  const P = invariant ? 3 : system.evaluate(x, T).phases.length;
+  return { P, C: 2, N: 1, F: 2 + 1 - P, invariant };
+}
+
 // ===================== steel microconstituents =====================
 
 export interface SteelResult {

@@ -43,3 +43,32 @@ describe('prefersReducedMotion', () => {
     expect(prefersReducedMotion()).toBe(false);
   });
 });
+
+/**
+ * One definition, repo-wide.
+ *
+ * `motion.ts`'s own doc says this file exists so a fix to the guard "cannot
+ * reach some call sites and miss others". Nothing checked that. The scan that
+ * did live in `scene-motion.test.ts` went with it when that file was deleted,
+ * and it only ever looked at five hardcoded files anyway — planting a
+ * definition in `useRoute.ts` passed the whole suite — and its pattern was
+ * `/function prefersReducedMotion/`, which cannot see the arrow-const form it
+ * was named for.
+ */
+describe('prefersReducedMotion is defined exactly once', () => {
+  it('is declared in motion.ts and nowhere else under src', () => {
+    const modules = import.meta.glob('./**/*.{ts,tsx}', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    const paths = Object.keys(modules).filter((p) => !/\.test\.tsx?$/.test(p));
+    // The glob is load-bearing: an empty match would pass vacuously.
+    expect(paths.length).toBeGreaterThan(30);
+
+    // Both declaration forms — `function f()` and `const f = () =>` — since a
+    // pattern naming only the first is how the arrow-const mutation survived.
+    const declares = /(?:function|const|let|var)\s+prefersReducedMotion\b/;
+    expect(paths.filter((p) => declares.test(modules[p]))).toEqual(['./motion.ts']);
+  });
+});

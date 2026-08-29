@@ -115,7 +115,8 @@ export function HeatTreatment() {
   // The enrichment only bears on Mˢ if austenite actually survives to it. On a
   // completed transformation there is none left, so saying "0.40 against 0.40,
   // roughly 0 °C below" would be noise dressed as a caveat.
-  const msUnderstated = ferriteFraction > 0 && enrichedCarbon > steel.composition.C + 0.005;
+  const msUnderstated =
+    ferriteFraction > 0 && enrichedCarbon !== null && enrichedCarbon > steel.composition.C + 0.005;
 
   /**
    * Which legend entries carry a "≤" qualifier.
@@ -405,7 +406,7 @@ export function HeatTreatment() {
           <p className="ht-caveat">
             <strong>Mˢ here is the enriched austenite's, not the steel's.</strong> Rejecting
             ferrite leaves what is left richer in carbon than the steel as a whole — about{' '}
-            {enrichedCarbon.toFixed(2)} wt% C against {steel.composition.C.toFixed(2)} — and carbon
+            {enrichedCarbon!.toFixed(2)} wt% C against {steel.composition.C.toFixed(2)} — and carbon
             dominates Andrews' equation, so Mˢ, M50 and M90 above are{' '}
             {Math.round(martensiteStart(steel.composition) - outcome.ms)} °C below the bulk figure
             of {Math.round(martensiteStart(steel.composition))} °C, and the lines on the diagram

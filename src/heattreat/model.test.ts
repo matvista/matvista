@@ -594,19 +594,19 @@ describe('ferrite-leads: continuity, monotonicity, carbon balance', () => {
  * against 0.40) and suppressed the caveat entirely.
  */
 describe('untransformed austenite carbon', () => {
-  it('is the bulk composition when nothing is left', () => {
+  it('returns null when nothing is left untransformed', () => {
     for (const id of ['5140', '4340', '1080']) {
       const s = getSteel(id);
       const o = predict(s, buildTtt(s), AUST, 0.01);
       expect(o.complete).toBe(true);
-      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(s.composition.C, 12);
+      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeNull();
     }
   });
 
-  it('is the bulk composition on a full quench — martensite is the austenite', () => {
+  it('returns null on a full quench — no ferrite did any enriching', () => {
     for (const s of STEELS) {
       const o = predict(s, buildTtt(s), AUST, 5000);
-      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(s.composition.C, 12);
+      expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeNull();
     }
   });
 
@@ -616,11 +616,11 @@ describe('untransformed austenite carbon', () => {
     const ferrite = o.fractions.find((f) => f.product === 'proeutectoid ferrite')!.fraction;
     expect(ferrite).toBeCloseTo(0.2394, 4);
     // (0.40 − 0.2394 × 0.022) / (1 − 0.2394)
-    expect(untransformedAusteniteCarbon(o, 0.4)).toBeCloseTo(
+    expect(untransformedAusteniteCarbon(o, 0.4)!).toBeCloseTo(
       (0.4 - 0.2394 * FERRITE_MAX) / (1 - 0.2394),
       3,
     );
-    expect(untransformedAusteniteCarbon(o, 0.4)).toBeCloseTo(0.519, 3);
+    expect(untransformedAusteniteCarbon(o, 0.4)!).toBeCloseTo(0.519, 3);
   });
 
   /**
@@ -629,26 +629,7 @@ describe('untransformed austenite carbon', () => {
    * does not track, and the quotient ran to 6.97 wt% C as the untransformed
    * fraction approached zero.
    */
-  it('returns the bulk composition for a steel that rejects no ferrite', () => {
-    const s = getSteel('1080');
-    const ttt = buildTtt(s);
-    for (let lg = -2; lg <= 4; lg += 0.005) {
-      expect(untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C)).toBe(
-        s.composition.C,
-      );
-    }
-  });
 
-  it('is never below the bulk, and never above the eutectoid', () => {
-    for (const s of STEELS) {
-      const ttt = buildTtt(s);
-      for (let lg = -2; lg <= 4; lg += 0.002) {
-        const c = untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C);
-        expect(c).toBeGreaterThanOrEqual(s.composition.C - 1e-9);
-        expect(c).toBeLessThanOrEqual(Math.max(EUTECTOID_X, s.composition.C) + 1e-9);
-      }
-    }
-  });
 });
 
 /**
@@ -941,7 +922,7 @@ describe('martensite temperatures follow the enriched austenite', () => {
     const s = getSteel('5140');
     const ttt = buildTtt(s);
     const o = predict(s, ttt, AUST, 3.0385);
-    expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeCloseTo(EUTECTOID_X, 3);
+    expect(untransformedAusteniteCarbon(o, s.composition.C)!).toBeCloseTo(EUTECTOID_X, 3);
     // Andrews at 0.76 wt% C instead of 0.40.
     expect(o.ms).toBeCloseTo(martensiteStart({ ...s.composition, C: EUTECTOID_X }), 9);
     expect(ttt.ms - o.ms).toBeCloseTo(152, 0);
@@ -953,8 +934,13 @@ describe('martensite temperatures follow the enriched austenite', () => {
       for (let lg = -2; lg <= 4; lg += 0.002) {
         const o = predict(s, ttt, AUST, 10 ** lg);
         const c = untransformedAusteniteCarbon(o, s.composition.C);
-        // The Mˢ reported must be the one that composition implies.
-        expect(o.ms).toBeCloseTo(martensiteStart({ ...s.composition, C: c }), 6);
+        // Where the enrichment cannot be resolved the bulk Mˢ stands, which is
+        // the conservative reading; where it can, the reported Mˢ must be the
+        // one that composition implies.
+        expect(o.ms).toBeCloseTo(
+          c === null ? ttt.ms : martensiteStart({ ...s.composition, C: c }),
+          6,
+        );
       }
     }
   });
@@ -982,5 +968,70 @@ describe('martensite temperatures follow the enriched austenite', () => {
     const o = predict(s, ttt, AUST, 5);
     expect(o.fractions.find((f) => f.product === 'martensite')!.fraction).toBeGreaterThan(0.3);
     expect(o.m90).toBeLessThan(20); // enriched: warning is due
+  });
+});
+
+/**
+ * `untransformedAusteniteCarbon` must refuse rather than return a number no
+ * steel can hold.
+ *
+ * Just above the completion boundary both halves of (C0 − consumed)/(1 − solid)
+ * are differences of nearly equal doubles, so the quotient is dominated by
+ * cancellation. The `solid >= 1` guard does not see that regime: 4340 at
+ * 0.14224645321580959 returned 1.0000 wt% C, and 64 of the 4000 consecutive
+ * representable rates above the edge exceed 0.7605 — the ceiling the doc
+ * comment claims. Reachable from the URL, because `useRouteNumber` parses with
+ * a bare `Number()`.
+ */
+describe('untransformed austenite carbon refuses outside its domain', () => {
+  it('never returns a value above the eutectoid', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.001) {
+        const c = untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C);
+        if (c === null) continue;
+        expect(c).toBeGreaterThanOrEqual(s.composition.C - 1e-9);
+        expect(c).toBeLessThanOrEqual(EUTECTOID_X + 1e-9);
+      }
+    }
+  });
+
+  it.each([
+    ['5140', 3.0384463987756063],
+    ['4340', 0.14224645321580959],
+  ])('%s at %s — the cancellation edge — returns null, not a wt%%', (id, rate) => {
+    const s = getSteel(id);
+    const o = predict(s, buildTtt(s), AUST, rate);
+    expect(untransformedAusteniteCarbon(o, s.composition.C)).toBeNull();
+  });
+
+  it('holds across every representable rate just above the edge', () => {
+    for (const [id, edge] of [
+      ['5140', 3.0384463987756054],
+      ['4340', 0.14224645321580959],
+    ] as [string, number][]) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      let r = edge;
+      for (let i = 0; i < 4000; i++) {
+        const c = untransformedAusteniteCarbon(predict(s, ttt, AUST, r), s.composition.C);
+        if (c !== null) expect(c).toBeLessThanOrEqual(EUTECTOID_X + 1e-9);
+        r += r * Number.EPSILON;
+      }
+    }
+  });
+
+  it('returns null for a steel with no ferrite to do the enriching', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      expect(untransformedAusteniteCarbon(predict(s, ttt, AUST, 10 ** lg), s.composition.C)).toBeNull();
+    }
+  });
+
+  it('still reads 0.519 wt% C for 5140 at 10 °C/s', () => {
+    const s = getSteel('5140');
+    const o = predict(s, buildTtt(s), AUST, 10);
+    expect(untransformedAusteniteCarbon(o, 0.4)!).toBeCloseTo(0.519, 2);
   });
 });

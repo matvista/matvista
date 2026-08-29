@@ -288,35 +288,49 @@ export function productCarbon(product: Product, bulkC: number): number {
 }
 
 /**
- * Carbon left in the austenite that has not transformed diffusionally, wt%.
+ * Carbon left in the austenite that has not transformed diffusionally, wt%, or
+ * **null where this model cannot resolve it**.
  *
  * Ferrite rejection is what enriches it: every unit of ferrite takes only
  * 0.022 wt% C out of a 0.40 wt% steel, so the balance concentrates in what
- * remains. This is the quantity that governs the real Mˢ, and `martensiteStart`
- * does not use it — see the note on `splitProeutectoid`. Exported so the UI can
- * state the size of that gap instead of leaving it implicit.
+ * remains. This is the quantity that governs the real Mˢ.
  *
  * Martensite is excluded from the sum on purpose: it *is* the austenite that
  * survived, so counting its carbon as already consumed would report the
  * remaining austenite as depleted rather than enriched. Getting that wrong
  * once made 5140 at 10 °C/s read 0.12 wt% C instead of 0.52 and silently
- * suppressed the caveat.
+ * suppressed the caveat that depends on it.
  *
- * **Defined only where this model has a mechanism for enrichment**, which is
- * proeutectoid ferrite rejection. Without ferrite the balance does not close:
- * 1080 is hyper-eutectoid, its pearlite carries 0.76 wt% against a 0.79 bulk,
- * and the surplus belongs to proeutectoid cementite the model does not track —
- * so as the untransformed fraction approaches zero the quotient runs away
- * (measured at 6.97 wt% C, a number no steel can hold). Rather than clamp that
- * into range, which would hide the fact that it was computed outside its
- * domain, this returns the bulk composition whenever no ferrite formed or
- * nothing is left untransformed.
+ * **Three ways out of the domain, all returning null rather than a number.**
+ * An earlier version returned the bulk composition in the first case and
+ * nothing at all in the others, which made "outside domain" invisible to any
+ * caller not already gated — and this is exported, so one caller is all that
+ * kept it safe.
  *
- * Under ferrite-leads the result can never exceed the eutectoid: ferrite stops
- * at `alphaEq`, which is exactly the point where the residue reaches 0.76 wt%.
- * That is asserted rather than enforced here.
+ *  1. **No ferrite.** Without proeutectoid ferrite there is no enrichment
+ *     mechanism and the balance does not close: 1080 is hyper-eutectoid, its
+ *     pearlite carries 0.76 wt% against a 0.79 bulk, and the surplus belongs
+ *     to cementite this model does not track. Measured with the guard removed,
+ *     the quotient reaches **146.85 wt% C** on a 0.0002-decade sweep and runs
+ *     higher on a finer one. (b0b4181 quoted 6.97 wt% for this, which was an
+ *     understatement, not the overstatement it read as.)
+ *  2. **Nothing untransformed.** A completed transformation leaves no
+ *     austenite to have a composition.
+ *  3. **Cancellation.** Just above the completion boundary both
+ *     `bulkC − carbon` and `1 − solid` are differences of nearly equal
+ *     doubles, so the quotient is noise: 4340 at 0.14224645321580959 returned
+ *     1.0000 wt% C, and 64 of the 4000 consecutive representable rates above
+ *     that edge exceeded 0.7605. Reachable from the URL, since
+ *     `useRouteNumber` parses with a bare `Number()`.
+ *
+ * Case 3 is caught by checking the *result* against the range ferrite-leads
+ * guarantees — at or above the bulk, at or below the eutectoid, because
+ * ferrite stops at `alphaEq` which is exactly where the residue reaches
+ * 0.76 wt%. A result outside that has left its domain, and saying so beats
+ * clamping it into range, which would hide the evidence. That is the lesson
+ * iteration 9 already paid for.
  */
-export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): number {
+export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): number | null {
   let solid = 0;
   let carbon = 0;
   let ferrite = 0;
@@ -326,8 +340,11 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
     solid += f.fraction;
     carbon += f.fraction * productCarbon(f.product, bulkC);
   }
-  if (ferrite <= 0 || solid >= 1) return bulkC;
-  return (bulkC - carbon) / (1 - solid);
+  if (ferrite <= 0 || solid >= 1) return null;
+  const value = (bulkC - carbon) / (1 - solid);
+  if (!Number.isFinite(value)) return null;
+  if (value < bulkC - 1e-9 || value > EUTECTOID_X + 1e-9) return null;
+  return value;
 }
 
 /**
@@ -477,7 +494,7 @@ function withEnrichedMartensiteStart(
 ): Outcome {
   const outcome = predictWithMs(steel, ttt, startTemp, rate, ttt.ms);
   const carbon = untransformedAusteniteCarbon(outcome, steel.composition.C);
-  if (carbon <= steel.composition.C) return outcome;
+  if (carbon === null || carbon <= steel.composition.C) return outcome;
   const ms = martensiteStart({ ...steel.composition, C: carbon });
   return {
     ...outcome,

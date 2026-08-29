@@ -621,21 +621,23 @@ Recorded here rather than by rewriting the commits. Each was re-measured with on
 | `948a81d` | Corrosion "20.60 → 25.04 kB raw, **6.59** → 8.01 gzip" | At its parent `a834086` the Corrosion chunk is **6.60 kB** gzip. Raw and the after-figure are right. |
 | `d294681` | Corrosion "25.04 → 32.83 kB raw, **8.01** → 9.99 gzip" | At its parent `4f6b14a` it is **8.00 kB** gzip. Raw and the after-figure are right. |
 
-Two of my own, found by re-measuring the index chunk at every commit on this branch after
-writing the table above — which is the point of having it:
+Mine, found by re-measuring the index chunk at every commit in the audited window after
+writing the table above — which is the point of having it. It was headed "two of my own"
+when it had two rows and carries six; it is not given a count any more, because the count
+is what kept going stale:
 
 | Commit | Claimed | Measured |
 |---|---|---|
 | `56037ff` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | The raw length is unchanged at 301,121 B, but the gzip figure went 85.17 → **85.18 kB**. |
 | `7c1161b` | the same sentence | 301,121 B again, gzip 85.17 → **85.16 kB**. |
-
 | `bd9de77` | "First-paint chunk 301,121 B raw / 85.16 kB gzip … unchanged from the parent's own build" | 301,121 B again, gzip 85.16 → **85.17 kB**. Written after the two rows above, which is the point of the rule below. |
 | `96b386c` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | Its parent `56037ff` is **85.18**, so it fell. Fourth of the same shape. |
 | `abce31d` | "the index chunk is byte-identical at 301,121 B" | The *length* is identical; the bytes are not — md5 `f1e4f657…` → `3570614e…`. Its gzip figure did hold at 85.17. |
 | `234672c` | MillerIndices "17.59 → 17.62 kB raw (5.53 → 5.54 gzip)", HeatTreatment "28.40 → **28.43**", DefectsDiffusion "5.40 → **5.41** gzip" | 17.59 → **17.63** kB raw and 5.53 → **5.55** gzip; **28.42**; **5.42**. Three figures written from what the change looked like it would cost rather than from the build sitting in the same shell. |
 
-All three are the `a834086` shape exactly, and the mechanism is worth stating as a rule of
-its own:
+`56037ff`, `7c1161b`, `bd9de77` and `96b386c` are the `a834086` shape exactly — all four
+claiming an index figure "unchanged" on the strength of a raw length that genuinely had
+not moved — and the mechanism is worth stating as a rule of its own:
 
 > **The index chunk's raw length is stable; its gzip figure is not.** The lazy-chunk
 > filename table lives inside that chunk, so any commit that changes *any* module chunk
@@ -644,9 +646,24 @@ its own:
 > from a build — and never write "unchanged" for it on the strength of the raw length
 > holding.
 
-Twenty-two of the twenty-six commits on this branch really do hold at 301,121 B /
-85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet, checked one build per commit; the
-four in that group are the ones that moved.
+**The audit's own count did not close, and the correction is the same lesson again.**
+`5b702f8` said "twenty-two of the twenty-six … the four in that group", and no reading
+gives four: it recorded three commits itself (`abce31d`, `96b386c`, `234672c`), three more
+were already in the table above it, and 22 + 3 ≠ 26. Recounted against the window, one
+build per commit:
+
+- **Twenty-six** commits in `3f79182..234672c`, and every one of them quotes an index or
+  first-paint figure, so none of them holds vacuously.
+- **Six** carry a figure that moved — the six rows of the table above, all inside that
+  window. The other four errata rows (`be91ef6`, `a834086`, `948a81d`, `d294681`) are
+  outside it.
+- **Twenty** hold at 301,121 B / 85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet.
+
+`5b702f8`'s subject also says "every size claim on this branch". It audited twenty-six
+commits; the branch has ninety-two, of which fifty quote a size figure at all. The window
+is about half the size-quoting commits and under a third of the branch — accurate for what
+it checked, overbroad for what it says. Recorded rather than amended, for the reason that
+row gives itself.
 
 **Two rules that would have caught all of these, both from writing them and then
 breaking them again:**

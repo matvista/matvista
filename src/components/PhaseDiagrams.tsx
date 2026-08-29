@@ -428,11 +428,15 @@ function PhaseRuleBox({ rule }: { rule: PhaseRuleResult }) {
             all three compositions are fixed by the system itself — nothing is
             left to choose. That is why{' '}
             {rule.invariant ? <code>{rule.invariant.reaction}</code> : 'an invariant reaction'}{' '}
-            happens at a single point rather than over a range, and why the
-            temperature holds steady on a cooling curve until the reaction
-            finishes. The panel above still names the field whose boundary this
-            point sits on — an invariant is a point, so it lies on the edge of
-            every field that meets there.
+            runs at one temperature rather than over a range, and why a cooling
+            curve holds flat here until the reaction has finished. This is true
+            all along the isotherm, not only at the reaction’s own composition:
+            an alloy to either side of it arrives at this line with some primary
+            phase already grown, and it is what is left over that transforms —
+            only at the reaction composition is there no primary phase at all.
+            The panel above still names one of the two fields the line
+            separates, because that is where the point lands the instant the
+            temperature moves off it.
           </>
         )}
       </p>

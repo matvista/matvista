@@ -491,33 +491,69 @@ export interface PhaseRuleResult {
 }
 
 /**
- * Fraction of each axis within which a point counts as *on* an invariant.
+ * Float slack on the invariant temperature. Not a band a reader can sit inside.
  *
- * Tied to the arrow-key step in `PhaseDiagrams` — one press moves 1% of the
- * axis — so a keyboard user can actually land on the eutectic. Wider and the
- * invariant would swallow its neighbourhood; narrower and it would be
- * reachable only with a mouse.
+ * This used to be 1% *of each axis*, which on Fe–C is ±0.067 wt% C and ±12.0 °C
+ * — so `?sys=fe-c&x=0.76&T=739` reported three phases and F = 0 while the
+ * region readout on the same screen said γ, one phase, and the temperature box
+ * stepping 1 °C walked a reader through eleven consecutive false readings. The
+ * justification was wrong as well: the arrow keys move 1% of the axis *from
+ * wherever the point already is*, so they never land on an invariant anyway,
+ * while the number boxes step 1 °C and 0.01 wt% and land on every shipped
+ * invariant temperature exactly. The band bought nothing and cost the false
+ * readings, so it is gone; reaching an invariant is the number box's job, or
+ * the link's.
  */
-export const INVARIANT_TOLERANCE = 0.01;
+export const INVARIANT_T_EPSILON = 1e-9;
+
+/**
+ * The composition range over which an invariant reaction is under way.
+ *
+ * Three phases coexist along the **whole** invariant isotherm, not only at the
+ * invariant composition: at 40 wt% Sn and 183 °C the alloy holds α, β and the
+ * last of the liquid together exactly as it does at 61.9 wt% Sn, and F is 0 at
+ * both. What is special about the invariant composition is that the reaction
+ * consumes *everything* there — nowhere else on the line is the primary phase
+ * absent.
+ *
+ * The span is read off the isotherm the system already draws rather than
+ * declared a second time, so the set this module calls invariant is exactly
+ * the line the reader can see. An invariant with no isotherm drawn for it
+ * would therefore never be flagged, which `systems.test.ts` refuses.
+ */
+function isothermSpan(system: PhaseSystem, invariant: Invariant): [number, number] | null {
+  const line = system.boundaries.find(
+    (b) =>
+      b.kind === 'isotherm' &&
+      b.points.length > 1 &&
+      b.points.every(([, T]) => Math.abs(T - invariant.T) <= INVARIANT_T_EPSILON),
+  );
+  if (!line) return null;
+  const xs = line.points.map(([x]) => x);
+  return [Math.min(...xs), Math.max(...xs)];
+}
 
 /**
  * Degrees of freedom at a point, by the Gibbs phase rule.
  *
  * P + F = C + N. Both components are condensed and pressure is fixed, so N
  * counts temperature alone and F = 3 − P: two in a single-phase field, one
- * inside a two-phase field, zero on an invariant.
+ * inside a two-phase field, zero on an invariant isotherm.
  *
- * **The invariant case has to override the evaluator.** An invariant is a
- * point, so `evaluate` reports whichever field's boundary it lies on — the
- * Pb–Sn eutectic evaluates as single-phase L, sitting exactly on the liquidus.
- * Taking P from that would report F = 2 at the one place in the diagram where
- * nothing at all can move.
+ * **The invariant case has to override the evaluator.** The evaluator draws
+ * fields, and an isotherm is the seam between two of them, so it reports
+ * whichever side it resolves to — the Pb–Sn eutectic composition at 183 °C
+ * evaluates as single-phase L, sitting exactly on the liquidus. Taking P from
+ * that would report F = 2 on the one line in the diagram where nothing at all
+ * can move.
  */
 export function gibbsPhaseRule(system: PhaseSystem, x: number, T: number): PhaseRuleResult {
-  const dx = (system.xMax - system.xMin) * INVARIANT_TOLERANCE;
-  const dT = (system.tMax - system.tMin) * INVARIANT_TOLERANCE;
   const invariant =
-    system.invariants.find((i) => Math.abs(x - i.x) <= dx && Math.abs(T - i.T) <= dT) ?? null;
+    system.invariants.find((i) => {
+      if (Math.abs(T - i.T) > INVARIANT_T_EPSILON) return false;
+      const span = isothermSpan(system, i);
+      return span != null && x >= span[0] && x <= span[1];
+    }) ?? null;
   const P = invariant ? 3 : system.evaluate(x, T).phases.length;
   return { P, C: 2, N: 1, F: 2 + 1 - P, invariant };
 }

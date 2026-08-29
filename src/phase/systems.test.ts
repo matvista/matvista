@@ -184,20 +184,154 @@ describe('the Gibbs phase rule', () => {
   });
 
   /**
-   * The tolerance is the arrow-key step — 1% of each axis — so a keyboard user
-   * can actually land on the invariant. Wider and the eutectic would swallow
-   * its neighbourhood; narrower and it would be unreachable without a mouse.
+   * **F = 0 is a line, not a dot, and it is the line the diagram draws.**
+   *
+   * This block replaces one that asserted a ±1%-of-each-axis box around the
+   * invariant *composition*. That box was wrong in both directions at once. On
+   * Fe–C it spanned ±12.0 °C, so `x=0.76, T=739` — a point in the middle of
+   * the γ field, which the region readout on the same screen names — was
+   * reported as three phases with F = 0. And it missed the eutectic isotherm
+   * away from the invariant composition, where three phases genuinely do
+   * coexist: 40 wt% Sn at 183 °C read F = 1.
+   *
+   * The oracle here is not `gibbsPhaseRule`'s own arithmetic. It is
+   * `evaluate` a half-degree either side of the line: a temperature where the
+   * phases above and the phases below add up to three distinct names is one
+   * where three phases meet, and that is the whole content of the claim.
    */
-  it('matches the invariant over exactly one arrow-key step, and no further', () => {
-    const pbsn = PHASE_SYSTEMS.find((s) => s.id === 'pb-sn')!;
-    const dx = (pbsn.xMax - pbsn.xMin) * 0.01; // 1.0 wt% Sn
-    const dT = (pbsn.tMax - pbsn.tMin) * 0.01; // 3.3 °C
-    expect(gibbsPhaseRule(pbsn, 61.9 + dx * 0.99, 183).invariant).not.toBeNull();
-    expect(gibbsPhaseRule(pbsn, 61.9, 183 + dT * 0.99).invariant).not.toBeNull();
-    expect(gibbsPhaseRule(pbsn, 61.9 + dx * 1.01, 183).invariant).toBeNull();
-    expect(gibbsPhaseRule(pbsn, 61.9, 183 + dT * 1.01).invariant).toBeNull();
-    // and the far side of the diagram is nowhere near it
-    expect(gibbsPhaseRule(pbsn, 10, 100).invariant).toBeNull();
+  const INVARIANTS: [string, string, number, [number, number]][] = [
+    ['pb-sn', 'Eutectic', 183, [18.3, 97.8]],
+    ['fe-c', 'Eutectoid', 727, [FERRITE_MAX, CEMENTITE_X]],
+    ['fe-c', 'Eutectic', 1147, [2.14, CEMENTITE_X]],
+  ];
+  const sys = (id: string) => PHASE_SYSTEMS.find((s) => s.id === id)!;
+  /**
+   * Distinct phase names present immediately above and immediately below T.
+   *
+   * A micro-degree rather than a round number on purpose: the Fe–C eutectic
+   * corner has the γ solidus, A_cm and the isotherm converging at
+   * (2.14, 1147), so a half-degree probe straddles all three and reports three
+   * names for a point that is really in one field.
+   */
+  const meeting = (id: string, x: number, T: number) =>
+    new Set(
+      [T - 1e-6, T + 1e-6].flatMap((t) => sys(id).evaluate(x, t).phases.map((p) => p.name)),
+    );
+
+  it.each(INVARIANTS)(
+    '%s %s: every invariant is a drawn isotherm, not a declared point',
+    (id, label, T, span) => {
+      const inv = sys(id).invariants.find((i) => i.label === label)!;
+      expect(inv.T).toBe(T);
+      // The span is derived from the isotherm boundary, so an invariant with
+      // no isotherm drawn for it would silently never be flagged.
+      const line = sys(id).boundaries.find(
+        (b) => b.kind === 'isotherm' && b.points.every(([, t]) => t === T),
+      );
+      expect(line, `${id} ${label} has no isotherm drawn`).toBeDefined();
+      const xs = line!.points.map(([x]) => x);
+      expect([Math.min(...xs), Math.max(...xs)]).toEqual(span);
+    },
+  );
+
+  it.each(INVARIANTS)(
+    '%s %s: F = 0 all along the isotherm, and three phases really do meet there',
+    (id, label, T, [xa, xb]) => {
+      for (let j = 0; j <= 20; j++) {
+        // Indexed, not accumulated: a float step overshoots xb and falls off
+        // the end of the very span under test.
+        const x = j === 20 ? xb : xa + ((xb - xa) * j) / 20;
+        const r = gibbsPhaseRule(sys(id), x, T);
+        expect(r.invariant?.label, `${id} at x=${x}`).toBe(label);
+        expect(r.P).toBe(3);
+        expect(r.F).toBe(0);
+        // Independent of the rule: the evaluator sees three names across the line.
+        expect(meeting(id, x, T).size, `${id} at x=${x}`).toBe(3);
+      }
+    },
+  );
+
+  it.each(INVARIANTS)(
+    '%s %s: one degree off the line is not on it',
+    (id, label, T, [xa, xb]) => {
+      const mid = (xa + xb) / 2;
+      for (const t of [T - 1, T + 1, T - 12, T + 12]) {
+        const r = gibbsPhaseRule(sys(id), mid, t);
+        expect(r.invariant, `${id} ${label} at ${t} °C`).toBeNull();
+        expect(r.P).toBe(sys(id).evaluate(mid, t).phases.length);
+      }
+    },
+  );
+
+  /**
+   * Both Fe–C isotherms run hard up against a diagram edge — the eutectoid
+   * ends at cementite, which is `xMax` — so the cases that exist are counted
+   * rather than assumed, or a row could pass by testing nothing.
+   */
+  it('is not on the isotherm past either of its ends', () => {
+    let checked = 0;
+    for (const [id, , T, [xa, xb]] of INVARIANTS) {
+      const off = (xb - xa) * 0.02;
+      for (const x of [xa - off, xb + off]) {
+        if (x < sys(id).xMin || x > sys(id).xMax) continue;
+        checked++;
+        expect(gibbsPhaseRule(sys(id), x, T).invariant, `${id} at ${x}, ${T} °C`).toBeNull();
+        expect(meeting(id, x, T).size, `${id} at ${x}, ${T} °C`).toBeLessThan(3);
+      }
+    }
+    expect(checked).toBe(3);
+  });
+
+  /**
+   * The five points the review reproduced against the shipped code, kept as
+   * named cases so the failure mode is recognisable rather than buried in a
+   * sweep. The first three read F = 0 with three phases; the last two read
+   * F = 1 with two.
+   */
+  it.each([
+    ['fe-c', 0.76, 739, 2, 'γ'],
+    ['fe-c', 4.3, 1159, 2, 'L'],
+    ['pb-sn', 61.9, 186, 2, 'L'],
+  ])('%s at %s, %s °C is in a field, not on a line', (id, x, T, F, region) => {
+    const r = gibbsPhaseRule(sys(id as string), x as number, T as number);
+    expect(r.invariant).toBeNull();
+    expect(r.F).toBe(F);
+    expect(sys(id as string).evaluate(x as number, T as number).region).toBe(region);
+  });
+
+  it.each([
+    ['pb-sn', 40, 183],
+    ['fe-c', 0.3, 727],
+  ])('%s at %s, %s °C is on the isotherm away from the invariant composition', (id, x, T) => {
+    const r = gibbsPhaseRule(sys(id as string), x as number, T as number);
+    expect(r.P).toBe(3);
+    expect(r.F).toBe(0);
+    expect(meeting(id as string, x as number, T as number).size).toBe(3);
+  });
+
+  /**
+   * The sweep the old tolerance would have failed: nothing anywhere may be
+   * flagged F = 0 unless three phases actually meet at it. 121 × 121 per
+   * system, deliberately offset so the grid does not sit only on round
+   * numbers, plus every invariant temperature as an exact row.
+   */
+  it.each(PHASE_SYSTEMS.map((s) => s.id))('%s: nothing is flagged invariant that is not', (id) => {
+    const s = sys(id);
+    const rows = [...Array(121).keys()].map((j) => s.tMin + ((s.tMax - s.tMin) * j) / 120);
+    rows.push(...s.invariants.map((i) => i.T));
+    let flagged = 0;
+    for (const T of rows) {
+      for (let i = 0; i <= 120; i++) {
+        const x = s.xMin + ((s.xMax - s.xMin) * i) / 120;
+        const r = gibbsPhaseRule(s, x, T);
+        if (!r.invariant) continue;
+        flagged++;
+        expect(meeting(id, x, T).size, `${id} flagged (${x}, ${T})`).toBe(3);
+      }
+    }
+    // Cu–Ni has no invariant and must flag nothing; the other two must flag
+    // something, or this sweep proves nothing about them.
+    expect(flagged === 0).toBe(s.invariants.length === 0);
   });
 
   /**

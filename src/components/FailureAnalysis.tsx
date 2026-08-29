@@ -9,7 +9,8 @@ import {
 import {
   CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
   fatigueStrength, fitSn, geometryFactor, getCrackGeometry, griffithCrackLength, growthRate,
-  hoopStress, larsonMiller, leakBeforeBreakThickness, lefmSizeRequirement, parisLife,
+  hoopStress, lameHoopStress, larsonMiller, leakBeforeBreakThickness, lefmSizeRequirement,
+  parisLife, THIN_WALL_MIN_RATIO,
   plasticZoneRadius, ruptureHours, stressIntensity,
 } from '../failure/model';
 
@@ -622,6 +623,12 @@ function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
   const t = leakBeforeBreakThickness(alloy.kic, pressure, r, Y);
   const sigma = t == null ? null : hoopStress(pressure, r, t);
   const yields = sigma != null && sigma > alloy.yieldStrength;
+  // The other end this expression stops at. `yields` covers the alloy's own
+  // strength; this covers the vessel's geometry, and the sliders reach it at
+  // the shipped defaults.
+  const ratio = t == null ? null : r / t;
+  const thick = ratio != null && ratio < THIN_WALL_MIN_RATIO;
+  const lame = t == null ? null : lameHoopStress(pressure, r, t);
 
   return (
     <div className="density-box">
@@ -647,6 +654,10 @@ function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
                 <th scope="row">Critical through-wall crack</th>
                 <td>{(2 * criticalCrackSize(alloy.kic, sigma, Y) * 1000).toFixed(2)} mm</td>
               </tr>
+              <tr>
+                <th scope="row">r / t at that wall</th>
+                <td className={thick ? 'err-off' : 'err-ok'}>{ratio!.toFixed(1)}</td>
+              </tr>
             </tbody>
           </table>
 
@@ -656,6 +667,20 @@ function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
             Thicker is safer here, because the stress falls faster than the wall grows.
           </p>
         </>
+      )}
+
+      {thick && lame != null && sigma != null && (
+        <p className="ht-caveat">
+          <strong>Too thick for σ = pr/t.</strong> The thin-wall form assumes the hoop stress is
+          the same all through the wall. It is not — it peaks at the bore — and the two agree only
+          while r/t is about {THIN_WALL_MIN_RATIO} or more. Here r/t is {ratio!.toFixed(1)}:
+          taking r as the bore, Lamé’s thick-wall solution puts the peak at{' '}
+          {lame.toFixed(0)} MPa against the {sigma.toFixed(0)} MPa above,{' '}
+          {(((lame - sigma) / sigma) * 100).toFixed(0)}% higher — and higher is the unsafe
+          direction. The wall figure is still the fracture-mechanics floor for the stress it was
+          computed from; a vessel this thick needs the thick-wall stress and a through-thickness
+          gradient this argument does not carry.
+        </p>
       )}
 
       {yields && (
@@ -680,12 +705,20 @@ function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
           <tbody>
             {FRACTURE_ALLOYS.map((f) => {
               const tf = leakBeforeBreakThickness(f.kic, pressure, r, Y);
+              // Each row is its own vessel, so each has its own r/t — the
+              // caveat above is about the selected alloy and would otherwise
+              // leave four unmarked numbers beside it.
+              const rf = tf == null ? null : r / tf;
+              const tooThick = rf != null && rf < THIN_WALL_MIN_RATIO;
               return (
                 <tr key={f.id} className={f.id === alloy.id ? 'xrd-row-sel' : ''}>
                   <th scope="row">{f.name}</th>
                   <td>{f.kic}</td>
                   <td>{f.yieldStrength}</td>
-                  <td>{tf == null ? '—' : `${(tf * 1000).toFixed(1)} mm`}</td>
+                  <td className={tooThick ? 'err-off' : undefined}>
+                    {tf == null ? '—' : `${(tf * 1000).toFixed(1)} mm`}
+                    {rf != null && <em> · r/t {rf.toFixed(1)}</em>}
+                  </td>
                 </tr>
               );
             })}
@@ -698,6 +731,13 @@ function LeakBeforeBreakBox({ alloy, Y }: { alloy: FractureAlloy; Y: number }) {
         strength and buys 37 MPa√m of toughness — and because toughness enters squared, the
         weaker steel leaks before it breaks in a wall a third as thick. That is the case where
         the stronger material is the wrong engineering choice, and it is not a close call.
+      </p>
+
+      <p className="density-note">
+        An r/t under {THIN_WALL_MIN_RATIO} is marked: that row's wall is too thick for the
+        σ = pr/t this table is built on, so its figure is indicative rather than a floor. The
+        7075 row is the first to go there — low toughness demands a thick wall, and a thick wall
+        is where the thin-wall stress stops applying.
       </p>
     </div>
   );

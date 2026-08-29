@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
   fatigueStrength, fitSn, geometryFactor, getCrackGeometry, griffithCrackLength,
-  griffithStress, growthRate, hoopStress, larsonMiller, leakBeforeBreakThickness, parisLife,
+  griffithStress, growthRate, hoopStress, lameHoopStress, larsonMiller, leakBeforeBreakThickness,
+  parisLife, THIN_WALL_MIN_RATIO,
   plasticZoneRadius, ruptureHours, stressIntensity,
 } from './model';
 import {
@@ -335,6 +336,101 @@ describe('leak-before-break', () => {
     expect(leakBeforeBreakThickness(50, 0, 0.5, 1)).toBeNull();
     expect(leakBeforeBreakThickness(50, 10, 0, 1)).toBeNull();
     expect(leakBeforeBreakThickness(50, 10, 0.5, 0)).toBeNull();
+  });
+
+  /**
+   * σ = pr/t assumes the hoop stress is uniform through the wall, and this
+   * panel's own sliders reach walls where it is not. The secant correction
+   * refuses outside its range; this expression had no equivalent, and printed
+   * confident numbers past the point where it describes the vessel.
+   *
+   * Lamé is the oracle: the exact elasticity solution for a thick cylinder,
+   * whose bore value the thin-wall form approximates from below.
+   */
+  describe('the thin-wall assumption behind σ = pr/t', () => {
+    it('is Lamé in the limit — the two converge as the wall thins', () => {
+      const p = 10;
+      const r = 0.5;
+      let previous = Infinity;
+      for (const ratio of [5, 10, 20, 50, 100, 1000]) {
+        const t = r / ratio;
+        const thin = hoopStress(p, r, t);
+        const thick = lameHoopStress(p, r, t);
+        // Thin-wall always under-reads the peak, which is the unsafe direction.
+        expect(thin).toBeLessThan(thick);
+        const error = (thick - thin) / thin;
+        expect(error).toBeLessThan(previous);
+        previous = error;
+      }
+      // …and it really does go to zero, rather than to some floor.
+      expect((lameHoopStress(p, r, r / 1e6) - hoopStress(p, r, r / 1e6)) / hoopStress(p, r, r / 1e6))
+        .toBeCloseTo(0, 5);
+    });
+
+    it('is worth a few per cent at the r/t the module calls the limit', () => {
+      expect(THIN_WALL_MIN_RATIO).toBe(10);
+      const t = 0.5 / THIN_WALL_MIN_RATIO;
+      const thin = hoopStress(10, 0.5, t);
+      const thick = lameHoopStress(10, 0.5, t);
+      expect(thin).toBeCloseTo(100, 9);
+      expect(thick).toBeCloseTo(105.238, 3);
+      expect((thick - thin) / thin).toBeCloseTo(0.0524, 4);
+    });
+
+    /**
+     * The shipped default, which is the case the review found: the panel opens
+     * at p = 10 MPa and r = 500 mm, and the 7075-T651 row is a 68 mm wall.
+     */
+    it('is breached at the shipped defaults, on the 7075 row', () => {
+      const p = 10;
+      const r = 0.5;
+      const Y = 1;
+      const ratios = Object.fromEntries(
+        FRACTURE_ALLOYS.map((a) => {
+          const t = leakBeforeBreakThickness(a.kic, p, r, Y)!;
+          return [a.id, r / t];
+        }),
+      );
+      const t7075 = leakBeforeBreakThickness(
+        FRACTURE_ALLOYS.find((a) => a.id.startsWith('7075'))!.kic,
+        p,
+        r,
+        Y,
+      )!;
+      expect(t7075 * 1000).toBeCloseTo(68.2, 1);
+      expect(ratios['7075']).toBeCloseTo(7.33, 2);
+      // Thin-wall reads 73 MPa where Lamé's bore value is 79.
+      expect(hoopStress(p, r, t7075)).toBeCloseTo(73.3, 1);
+      expect(lameHoopStress(p, r, t7075)).toBeCloseTo(78.66, 2);
+      // Which rows are marked, and which are not — a guard that flagged
+      // everything or nothing would pass a weaker assertion than this.
+      const breached = Object.entries(ratios)
+        .filter(([, v]) => v < THIN_WALL_MIN_RATIO)
+        .map(([id]) => id)
+        .sort();
+      expect(breached).toEqual(['7075']);
+      // 2024 is the next nearest and still clear, at r/t 16.5.
+      expect(ratios['2024']).toBeCloseTo(16.5, 1);
+    });
+
+    /**
+     * The far corner of the two sliders, where the figure stops meaning
+     * anything at all: p = 40 MPa, r = 2000 mm.
+     */
+    it('is breached grossly at the far end of the sliders', () => {
+      const t = leakBeforeBreakThickness(
+        FRACTURE_ALLOYS.find((a) => a.id.startsWith('7075'))!.kic,
+        40,
+        2,
+        1,
+      )!;
+      expect(t * 1000).toBeCloseTo(17453, 0);
+      // A 17 m wall on a 2 m bore: r/t is 0.11, and the thin-wall stress it is
+      // derived from is 4.6 MPa against Lamé's 40.9 — nine times out.
+      expect(2 / t).toBeCloseTo(0.115, 3);
+      expect(hoopStress(40, 2, t)).toBeCloseTo(4.6, 1);
+      expect(lameHoopStress(40, 2, t)).toBeCloseTo(40.85, 2);
+    });
   });
 });
 

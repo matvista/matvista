@@ -167,6 +167,34 @@ export function hoopStress(p: number, r: number, t: number): number {
 }
 
 /**
+ * The r/t below which σ = pr/t stops describing the vessel.
+ *
+ * The thin-wall form assumes the hoop stress is uniform through the wall. It
+ * is not — it peaks at the bore and falls outward — and the error grows as the
+ * wall thickens. Ten is the usual textbook cut, where the thin-wall value is a
+ * few per cent below the true peak. This module's own sliders reach well
+ * inside it: at p = 10 MPa and r = 500 mm the leak-before-break wall for
+ * 7075-T651 is 68 mm, an r/t near 7.
+ */
+export const THIN_WALL_MIN_RATIO = 10;
+
+/**
+ * Peak hoop stress by Lamé's thick-wall solution, at the bore:
+ *
+ *   σ_θ(r_i) = p·(r_o² + r_i²) / (r_o² − r_i²),   r_o = r_i + t
+ *
+ * Here only to say *by how much* the thin-wall figure is out where the wall is
+ * too thick for it — it is always the larger of the two, so the thin-wall form
+ * errs unsafely. Takes `r` as the bore, which is the reading that makes
+ * σ = pr/t the conservative limit of this expression as t → 0.
+ */
+export function lameHoopStress(p: number, r: number, t: number): number {
+  if (!(t > 0) || !(r > 0)) return Infinity;
+  const ro = r + t;
+  return (p * (ro * ro + r * r)) / (ro * ro - r * r);
+}
+
+/**
  * Minimum wall thickness that leaks before it breaks, m.
  *
  * A through-wall crack that reaches the far side leaks — loudly, detectably,

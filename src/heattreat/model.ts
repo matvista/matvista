@@ -349,12 +349,18 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
  * kinetics.** The ordering is real: in a hypoeutectoid steel ferrite is the
  * faster reaction and runs ahead of pearlite, rejecting carbon until what
  * remains has been enriched to the eutectoid composition. What is *not* real
- * is the amount. This saturates at its own bound over most of the reachable
- * slider, because it has no ferrite kinetics; measured dilatometry has ferrite
- * well below equilibrium and falling steeply with cooling rate — 52 → 22 vol%
- * from 1.0 to 7.0 °C/s, where this model sheds only 48.8 → 38.1. So read the
- * number as a ceiling that the true value sits under by a margin which widens
- * as the quench gets faster. The UI says so too.
+ * is the amount. Having no ferrite kinetics, this holds at its own bound over
+ * much of each steel's range and then drops to nothing at the ferrite floor,
+ * where measured dilatometry has ferrite well below equilibrium and declining
+ * steadily — 52 → 22 vol% from 1.0 to 7.0 °C/s. So read the number as a
+ * ceiling the true value sits under by a margin that widens as the quench
+ * gets faster.
+ *
+ * The two steels differ enough that no single pair of figures describes both,
+ * which is why `ferriteBand` computes them per steel and the UI prints those:
+ * 5140 holds 48.8% to 12.8% over 0.01–15.16 °C/s, 4340 48.8% to 10.7% over
+ * 0.01–0.86. A caveat quoting 5140's numbers rendered on 4340 only at rates
+ * outside the window it named.
  *
  * The construction itself: the first `alphaEq` of any diffusional
  * transformation is ferrite, and only the remainder is pearlite:
@@ -670,6 +676,50 @@ function hardnessOf(steel: Steel, product: Product): number {
     case 'martensite':
       return steel.hardness.martensite;
   }
+}
+
+/** The slowest rate the cooling-rate slider offers, °C/s. */
+const SLOWEST_RATE = 0.01;
+
+export interface FerriteBand {
+  /** Slowest rate on the slider, °C/s. */
+  slowRate: number;
+  /** Fastest rate at which any proeutectoid ferrite is still reported, °C/s. */
+  fastRate: number;
+  slowFraction: number;
+  fastFraction: number;
+}
+
+/**
+ * The range of cooling rates over which this steel reports proeutectoid
+ * ferrite, and how much it sheds across it.
+ *
+ * Exists because the caveat beside the bar quoted one steel's shedding for
+ * both: "sheds 49 to 38 between 1 and 7 °C/s" is 5140, while 4340 reports no
+ * ferrite anywhere in that window — its band ends at 0.86 °C/s — so the
+ * sentence rendered only at rates outside the range it named.
+ *
+ * The search is a bisection, which is licensed by the ferrite fraction being
+ * monotone non-increasing in rate; that is asserted separately. Returns null
+ * for a steel that forms no proeutectoid ferrite at all.
+ */
+export function ferriteBand(steel: Steel, ttt: TttModel, startTemp: number): FerriteBand | null {
+  const ferriteAt = (rate: number) =>
+    predict(steel, ttt, startTemp, rate).fractions.find(
+      (f) => f.product === 'proeutectoid ferrite',
+    )?.fraction ?? 0;
+
+  const slowFraction = ferriteAt(SLOWEST_RATE);
+  if (slowFraction <= 0) return null;
+
+  let lo = SLOWEST_RATE; // forms ferrite
+  let hi = RATE_MAX; // does not
+  for (let i = 0; i < 60; i++) {
+    const mid = Math.sqrt(lo * hi);
+    if (ferriteAt(mid) > 0) lo = mid;
+    else hi = mid;
+  }
+  return { slowRate: SLOWEST_RATE, fastRate: lo, slowFraction, fastFraction: ferriteAt(lo) };
 }
 
 /**

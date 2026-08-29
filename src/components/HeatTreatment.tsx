@@ -11,6 +11,7 @@ import {
 import {
   buildTtt,
   coolingPath,
+  ferriteBand,
   criticalCoolingRate,
   predict,
   tangentCoolingRate,
@@ -133,6 +134,8 @@ export function HeatTreatment() {
    * each other and identical on screen.
    */
   const bounded = (product: string) => product === 'proeutectoid ferrite';
+
+  const band = useMemo(() => ferriteBand(steel, ttt, AUSTENITISE), [steel, ttt]);
 
   const critical = useMemo(
     () => criticalCoolingRate(steel, ttt, AUSTENITISE),
@@ -400,9 +403,15 @@ export function HeatTreatment() {
             superposable, and there is no linear-additive formula for eutectoid carbon to combine
             them with. Read {(ttt.equilibriumFerrite * 100).toFixed(0)}% as the ceiling, not the
             answer — and a ceiling the true value drops further below as the quench gets faster,
-            because this model has no ferrite kinetics and simply saturates at its bound. Measured
-            dilatometry on a 0.4 wt% C steel sheds 52 to 22 vol% ferrite between 1 and 7 °C/s;
-            this construction sheds 49 to 38.
+            because this model has no ferrite kinetics of its own. Measured dilatometry on a
+            0.4 wt% C steel sheds 52 to 22 vol% ferrite between 1 and 7 °C/s, a steady decline;
+            {band === null ? null : (
+              <>
+                {' '}this construction holds {(band.slowFraction * 100).toFixed(0)}% from{' '}
+                {fmtRate(band.slowRate)} °C/s down to {(band.fastFraction * 100).toFixed(0)}% at{' '}
+                {fmtRate(band.fastRate)} °C/s, and then reports none at all.
+              </>
+            )}
           </p>
         )}
 

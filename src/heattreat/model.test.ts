@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { STEELS, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
-  productCarbon, tangentCoolingRate, untransformedAusteniteCarbon,
+  ferriteBand, productCarbon, tangentCoolingRate, untransformedAusteniteCarbon,
 } from './model';
 import { EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 
@@ -1273,5 +1273,57 @@ describe('the unguarded carbon quotient diverges', () => {
     }
     // Ten times the sampling density, a strictly larger "maximum".
     expect(fine).toBeGreaterThan(coarse);
+  });
+});
+
+/**
+ * The ferrite band, per steel — for the caveat that used to print one steel's
+ * numbers for both.
+ *
+ * It said "this construction sheds 49 to 38 between 1 and 7 °C/s", which is
+ * 5140. 4340 forms no ferrite at all at 1 through 7 °C/s, and the caveat is
+ * gated on ferrite being present, so on 4340 it rendered *only* at rates
+ * outside the window it quoted.
+ */
+describe('ferriteBand reports each steel’s own range', () => {
+  it('gives 5140 0.01–15.16 °C/s, 48.8% down to 12.8%', () => {
+    const s = getSteel('5140');
+    const b = ferriteBand(s, buildTtt(s), AUST)!;
+    expect(b).not.toBeNull();
+    expect(b.slowRate).toBe(0.01);
+    expect(b.fastRate).toBeCloseTo(15.155, 2);
+    expect(b.slowFraction * 100).toBeCloseTo(48.78, 1);
+    expect(b.fastFraction * 100).toBeCloseTo(12.8, 0);
+  });
+
+  it('gives 4340 a band that ends before 1 °C/s — where the old text quoted', () => {
+    const s = getSteel('4340');
+    const b = ferriteBand(s, buildTtt(s), AUST)!;
+    expect(b.fastRate).toBeCloseTo(0.8556, 3);
+    expect(b.fastRate).toBeLessThan(1);
+    expect(b.fastFraction * 100).toBeCloseTo(10.7, 0);
+    // and the model really does report nothing across the quoted window
+    for (const r of [1, 2, 3, 4, 5, 7]) {
+      const o = predict(s, buildTtt(s), AUST, r);
+      expect(o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0).toBe(0);
+    }
+  });
+
+  it('is null for a steel that forms no ferrite', () => {
+    const s = getSteel('1080');
+    expect(ferriteBand(s, buildTtt(s), AUST)).toBeNull();
+  });
+
+  it('brackets a real transition: ferrite at the fast end, none just past it', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      const b = ferriteBand(s, ttt, AUST)!;
+      const at = (r: number) =>
+        predict(s, ttt, AUST, r).fractions.find((f) => f.product === 'proeutectoid ferrite')
+          ?.fraction ?? 0;
+      expect(at(b.fastRate)).toBeGreaterThan(0);
+      expect(at(b.fastRate * 1.001)).toBe(0);
+    }
   });
 });

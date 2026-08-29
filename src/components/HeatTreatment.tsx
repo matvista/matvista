@@ -64,20 +64,24 @@ const PRODUCT_COLOR: Record<Product, string> = {
 
 /**
  * Names the eutectoid-lowering elements this particular steel actually
- * contains, strongest effect first.
+ * contains, ranked by **per-unit** effect.
  *
- * One static sentence covered both grades and led with molybdenum — which
- * 5140 does not contain at all, along with the nickel it went on to mention.
- * The ordering is qualitative on purpose: b0b4181 established that there is
- * no published linear-additive formula for eutectoid carbon in a
- * multicomponent steel, so no magnitude is quoted, only the ranking.
- * Molybdenum is the steepest of the four; manganese and chromium are
- * appreciable; nickel moves it by ≤0.02 wt% and is called out as negligible
- * rather than silently included.
+ * One static sentence covered both grades and led with molybdenum, which 5140
+ * does not contain at all, along with the nickel it went on to mention.
+ *
+ * Two things this deliberately does not do. It quotes no magnitude — b0b4181
+ * established there is no published linear-additive formula for eutectoid
+ * carbon in a multicomponent steel, and an earlier version of this comment
+ * broke that policy in its own second paragraph by asserting "nickel moves it
+ * by ≤0.02 wt%", unsourced and unasserted. And it says "per wt%" out loud,
+ * because ranking by slope while writing "in this steel" reads as a claim
+ * about this steel's actual composition: 4340 holds 0.25% Mo against 1.8% Ni,
+ * so leading with molybdenum and calling nickel negligible is true of the
+ * slopes and misleading about the amounts.
  */
 function eutectoidShifters(steel: Steel): string {
   const strong: string[] = [];
-  if (steel.composition.Mo > 0) strong.push('molybdenum most steeply');
+  if (steel.composition.Mo > 0) strong.push('molybdenum steepest per wt%');
   const mid = [
     steel.composition.Mn > 0 ? 'manganese' : null,
     steel.composition.Cr > 0 ? 'chromium' : null,
@@ -85,8 +89,13 @@ function eutectoidShifters(steel: Steel): string {
   if (mid.length > 0) {
     strong.push(`${mid.join(' and ')} appreciably`);
   }
-  if (steel.composition.Ni > 0) strong.push('nickel barely at all');
-  if (strong.length === 0) return 'no element present does so appreciably';
+  if (steel.composition.Ni > 0) {
+    strong.push(
+      `nickel least of the four per wt%, though it is the most abundant here at ${steel.composition.Ni.toFixed(
+        2,
+      )}%`,
+    );
+  }
   return strong.length === 1
     ? strong[0]
     : `${strong.slice(0, -1).join(', ')} and ${strong[strong.length - 1]}`;

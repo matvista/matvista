@@ -30,7 +30,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { XRD_SAMPLES, XRD_SOURCES, computePattern, familyLabel } from '../xrd/diffraction';
 
+import { warmRoutes } from './route-warmup';
+
 const { default: App } = await import('../App');
+// Resolve the lazy route modules before anything is timed. Without this the
+// first render in the file pays a cold dynamic import inside a `waitFor`
+// budget meant for a render — see route-warmup.ts.
+await warmRoutes('xrd');
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({

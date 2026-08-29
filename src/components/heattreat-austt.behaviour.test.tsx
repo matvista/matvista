@@ -20,7 +20,13 @@ import { STEELS, getSteel } from '../heattreat/steels';
 import { buildTtt, predict } from '../heattreat/model';
 import { FE_C, boundaryTemperature } from '../phase/systems';
 
+import { warmRoutes } from './route-warmup';
+
 const { default: App } = await import('../App');
+// Resolve the lazy route modules before anything is timed. Without this the
+// first render in the file pays a cold dynamic import inside a `waitFor`
+// budget meant for a render — see route-warmup.ts.
+await warmRoutes('heattreat');
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({

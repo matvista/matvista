@@ -860,3 +860,43 @@ describe('the prose quantifies each segment separately', () => {
     }
   });
 });
+
+/**
+ * The hardness scope note quotes a worst case. Nothing asserted it, and it was
+ * wrong by about a factor of two — it named 5140 at 10 °C/s and "under 3 HRC",
+ * where the real worst point is where the diffusional product is entirely
+ * ferrite at the full lever-rule fraction. This is the guard the repo's own
+ * iteration-14 lesson asks for: an exact number in prose gets an assertion.
+ */
+describe('the hardness overstatement bound quoted in the scope note', () => {
+  it.each([
+    ['5140', 5.7219, 5.85],
+    ['4340', 0.2719, 6.83],
+  ])('%s at %f °C/s is the worst point, bounded at %f HRC', (id, rate, bound) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const alpha = ttt.equilibriumFerrite;
+    const pearliticHrc = s.hardness.coarsePearlite;
+    expect(alpha * pearliticHrc).toBeCloseTo(bound, 2);
+
+    // At the quoted rate the diffusional product really is entirely ferrite,
+    // at the full equilibrium fraction.
+    const o = predict(s, ttt, AUST, rate);
+    const ferrite = o.fractions.find((f) => f.product === 'proeutectoid ferrite')!.fraction;
+    const pearlite = o.fractions
+      .filter((f) => /pearlite/.test(f.product))
+      .reduce((a, f) => a + f.fraction, 0);
+    expect(pearlite).toBe(0);
+    // Within 0.1% of the cap — the quoted rate is rounded to four decimals,
+    // so it lands just short of the exact saturation point.
+    expect(ferrite).toBeGreaterThan(alpha * 0.999);
+    expect(ferrite).toBeLessThanOrEqual(alpha + 1e-12);
+
+    // And nothing anywhere on the slider beats it, because `alpha` caps ferrite.
+    for (let lg = -2; lg <= 4; lg += 0.001) {
+      const p = predict(s, ttt, AUST, 10 ** lg);
+      const f = p.fractions.find((x) => x.product === 'proeutectoid ferrite')?.fraction ?? 0;
+      expect(f * pearliticHrc).toBeLessThanOrEqual(bound + 0.01);
+    }
+  });
+});

@@ -523,8 +523,14 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
  * One consequence of ferrite-leads to be honest about: on a partial path the
  * diffusional product can be entirely proeutectoid ferrite, and this still
  * prices it at the pearlitic figure. Ferrite is softer, so the hardness is
- * overstated there by at most the ferrite fraction times that figure — under
- * 3 HRC at the worst reachable point (5140 at 10 °C/s, 24% ferrite × 12 HRC).
+ * overstated there by at most the ferrite fraction times that figure. The
+ * worst reachable point is where the product is entirely ferrite at the full
+ * lever-rule fraction, not where the ferrite fraction is largest in absolute
+ * terms — 5140 at 5.7219 °C/s and 4340 at 0.2719 °C/s, both 48.78% ferrite,
+ * bounding the overstatement at **5.85 and 6.83 HRC** against reported
+ * hardnesses of 35.05 and 36.03. An earlier version of this note said "under
+ * 3 HRC at 5140 @ 10 °C/s", which was the wrong point and about half the
+ * figure. Both numbers are now asserted, so they cannot go stale again.
  *
  * Follow-up, not fixed here: all three coarse-pearlite values sit below
  * HRC 20, where the Rockwell C scale is unreliable and the indenter is barely

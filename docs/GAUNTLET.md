@@ -41,7 +41,16 @@ built at all.
   - Prefer SVG and CSS over raster images; when a raster is unavoidable, size it for its
     largest real display size and keep it well under the file limit.
 - **Record the measurement.** Any claim about bundle size, first paint or payload must
-  come from an actual `npm run build`, quoted with the number, not estimated.
+  come from an actual `npm run build`, quoted with the number, not estimated. Three rules
+  that this repo has now got wrong six times between them, so they are written down:
+  - **First paint is the index chunk *plus* the stylesheet.** `dist/index.html` loads the
+    stylesheet render-blocking, so a claim about "first paint" that quotes the JS alone is
+    understated by the whole stylesheet. If you mean the JS, say "first-paint chunk".
+  - **Quote against the commit's own parent**, never against the branch base and never
+    against HEAD. A chunk that grew twice reads as unchanged if you compare the wrong pair.
+  - **Quote every chunk the route now fetches**, not only the ones you edited. A module
+    that gains a shared dependency has grown by it, even though nothing in its own chunk
+    moved. `__vite__mapDeps` in the index chunk is the list.
 
 ### Deciding without asking
 
@@ -599,6 +608,29 @@ Both items came from the user, and both were fair.
   browser · nothing to install"), which already makes the point in the right voice.
   Replaced with "8 crystal structures in 3D", and all four strip values are now asserted in
   `docs.test.ts`.
+
+### Corrections to size claims already committed
+
+Recorded here rather than by rewriting the commits. Each was re-measured with one
+`npm run build` per commit, at the named commit and at its own parent.
+
+| Commit | Claimed | Measured |
+|---|---|---|
+| `be91ef6` | XRD "11.10 + 5.25 = 16.35 → 7.63 + 9.53, **+0.32 kB** gzip" | The route also fetches `metals-QYkHP7hv.js` from this commit on: `__vite__mapDeps` went `[XrdSimulator, miller]` at `8bd636a` to `[XrdSimulator, metals, diffraction]`. Really 16.35 → **18.17 kB raw** and 6.79 → **7.53 kB gzip**, i.e. **+0.74**, not +0.32. The two chunks it did list are quoted correctly; the third is missing. |
+| `a834086` | "First-paint chunk unchanged at 301.10 kB raw / **85.16 kB gzip**" | At its parent `2218d7b` the index chunk is **85.17 kB** gzip, so it fell by 0.01 rather than being unchanged. The raw length really is unchanged at 301,106 B, though the content is not — md5 `3016a627…` → `bb296c13…`. |
+| `948a81d` | Corrosion "20.60 → 25.04 kB raw, **6.59** → 8.01 gzip" | At its parent `a834086` the Corrosion chunk is **6.60 kB** gzip. Raw and the after-figure are right. |
+| `d294681` | Corrosion "25.04 → 32.83 kB raw, **8.01** → 9.99 gzip" | At its parent `4f6b14a` it is **8.00 kB** gzip. Raw and the after-figure are right. |
+
+And two in the branch's own summary report, which is not a commit and cannot be corrected
+in place:
+
+- "**no new first-paint cost**" is false. Under the rule above, first paint at `6818158`
+  is 85.16 + 7.22 = **92.38 kB gzip** and at HEAD 85.17 + 7.78 = **92.95** — the
+  stylesheet grew 34.39 → 37.32 kB raw. The twelve Tier-1 commit bodies each report their
+  own stylesheet delta and are honest; only the summary over them was wrong, which is why
+  they are left alone.
+- "**index chunk untouched**" is false: 301,101 → 301,121 B, md5 `488cd9a6…` →
+  `6bc92d56…` at the time of writing.
 
 ### Standing hazards (unverified, worth checking when touched)
 

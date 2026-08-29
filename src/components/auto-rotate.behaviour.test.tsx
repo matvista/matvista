@@ -26,9 +26,12 @@
  * check recorded in a commit message is a record rather than a gate.
  *
  * jsdom and @testing-library are devDependencies and do not reach the bundle;
- * measured against `npm run build`, first paint 301.10 kB raw / 85.16 kB gzip,
- * unchanged. (An earlier version of this comment said 85.17; the measurement
- * at that commit was 85.16.)
+ * measured against `npm run build`, the first-paint **chunk** 301.10 kB raw /
+ * 85.16 kB gzip, unchanged. (An earlier version of this comment said 85.17;
+ * the measurement at that commit was 85.16. It also called that figure "first
+ * paint", which under this repo's own convention it is not — the stylesheet
+ * loads render-blocking and counts too, and was 34.39 kB / 7.22 kB gzip at
+ * that commit, for 92.38 kB of first paint.)
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';

@@ -412,12 +412,32 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
  * up to 98.3% pearlite — a structure that needs the remaining austenite to
  * hold about −19 wt% carbon, i.e. one that cannot exist at any composition.
  *
- * Ferrite-leads is continuous, monotone in cooling rate, and conserves carbon
- * in the right direction: below `alphaEq` the product is all ferrite and the
- * untransformed austenite is *enriched* — at f = 0.1 it holds
- * (0.40 − 0.1 × 0.022) / 0.9 = 0.442 wt% C — reaching exactly 0.76 wt% at
- * f = alphaEq, which is precisely where pearlite becomes possible. All three
- * properties are asserted.
+ * Ferrite-leads holds the three properties those two broke, but **each one is
+ * narrower than the version of this paragraph written before the ferrite
+ * floor landed**, and the narrowing is what the floor cost:
+ *
+ *  - *Continuity.* The diffusional total is continuous, and so is each product
+ *    across the completion boundary. The **ferrite floor is not**: at the nose
+ *    the ferrite fraction steps from 12.78% to zero as the product relabels.
+ *    That is the same defect in kind as the 48.78-point step rejected two
+ *    paragraphs above, at a quarter the size — worth saying plainly, since the
+ *    argument against the alternative applies here too, only less. Its cost in
+ *    the readout is bounded and asserted: at most 1.7572 HRC (5140) and 1.4670
+ *    (4340) on a fine sweep across the floor.
+ *  - *Monotonicity.* Ferrite and the diffusional total are monotone in cooling
+ *    rate. **Total pearlite is not**, because the floor moves the whole
+ *    diffusional product from the ferrite column to the pearlite one as
+ *    cooling gets faster.
+ *  - *Carbon.* Global conservation holds everywhere. The *direction* holds only
+ *    where ferrite led: below `alphaEq` the product is all ferrite and the
+ *    untransformed austenite is enriched — at f = 0.1 it holds
+ *    (0.40 − 0.1 × 0.022) / 0.9 = 0.442 wt% C — reaching exactly 0.76 wt% at
+ *    f = alphaEq, which is precisely where pearlite becomes possible. Below the
+ *    ferrite floor, where pearlite forms with no proeutectoid ferrite at all,
+ *    the residue is *depleted* instead, to 0.3487 wt% (5140) and 0.3582
+ *    (4340).
+ *
+ * All of that is asserted, in the narrowed form and not the original one.
  *
  * **Bainite is excluded**, and that is a scope note rather than a physical
  * law: a slack-quenched 4340 really does come out ferrite + bainite. This

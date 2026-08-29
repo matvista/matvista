@@ -565,6 +565,19 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
  * showing nothing where nothing quenches, which leaves the diagram's three
  * martensite lines undrawn.
  *
+ * And it runs the other way below the ferrite floor. There the model reports
+ * pearlite with no proeutectoid ferrite, so the residue is *depleted* rather
+ * than enriched — 0.3500 wt% C for 5140, 0.3591 for 4340 — and Andrews on
+ * that residue gives a *higher* Mˢ than the bulk row shown. The row therefore
+ * understates by **21.14 °C** for 5140 at 15.4882 °C/s and **17.31 °C** for
+ * 4340 at 0.8710, taking the worst reachable slider detent in each case; a
+ * 0.00005-decade sweep finds 21.72 and 17.68 between detents. Left as it is
+ * on three grounds: it is an order of magnitude below the 152 °C this series
+ * treated as a defect, it errs low so nothing is claimed harder than it is,
+ * and `untransformedAusteniteCarbon` refuses to resolve a depleted residue at
+ * all, so acting on it would mean feeding the row a number the model declines
+ * to stand behind. Bounded by assertion so it cannot grow unnoticed.
+ *
  * And the enriched Mˢ implies retained austenite the bar does not show.
  * Koistinen–Marburger at 20 °C leaves **8.53%** of the sample untransformed
  * for 5140 at 5.7214 °C/s and **11.87%** for 4340 at 0.2720, reported on the

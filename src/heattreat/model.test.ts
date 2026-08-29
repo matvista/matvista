@@ -1528,3 +1528,45 @@ describe('carbon closes against the enriched martensite', () => {
     }
   });
 });
+
+/**
+ * Below the ferrite floor the Mˢ row understates, in the opposite direction to
+ * the enrichment above it: the residue is depleted, so Andrews on it gives a
+ * *higher* Mˢ than the bulk figure shown. Recorded rather than fixed — see the
+ * note on `withEnrichedMartensiteStart` — and bounded here so it cannot grow
+ * unnoticed.
+ */
+describe('the Mˢ understatement below the ferrite floor', () => {
+  it.each([
+    ['5140', 15.4882, 21.14],
+    ['4340', 0.871, 17.31],
+  ])('%s: worst reachable detent is %f °C/s, understating by %f °C', (id, rate, gap) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const ferrite = (o: ReturnType<typeof predict>) =>
+      o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+    let worst = 0;
+    let worstAt = 0;
+    for (const r of rateDetents()) {
+      const o = predict(s, ttt, AUST, r);
+      if (ferrite(o) > 0) continue;
+      const pearlite = o.fractions
+        .filter((f) => /pearlite/.test(f.product))
+        .reduce((a, f) => a + f.fraction, 0);
+      if (pearlite <= 0) continue;
+      const residue = (s.composition.C - pearlite * EUTECTOID_X) / (1 - pearlite);
+      const delta = martensiteStart({ ...s.composition, C: residue }) - o.ms;
+      if (delta > worst) {
+        worst = delta;
+        worstAt = r;
+      }
+    }
+    expect(worstAt).toBeCloseTo(rate, 3);
+    expect(worst).toBeCloseTo(gap, 2);
+    // It errs low, which is the conservative direction, and stays an order of
+    // magnitude under the 152 °C enrichment the panel does act on.
+    expect(worst).toBeGreaterThan(0);
+    expect(worst).toBeLessThan(25);
+  });
+});

@@ -490,7 +490,7 @@ function CellPanel() {
           />
         </div>
 
-        <CrevicSketch mode={mode} anodeIsInside={cell.anode === 'second'} emf={cell.emf} />
+        <CrevicSketch mode={mode} anodeIsSecond={cell.anode === 'second'} emf={cell.emf} />
 
         <p className="ht-caveat">
           <strong>Both electrodes are the same metal.</strong> Nothing here is a couple: there is
@@ -590,23 +590,35 @@ function fmtPercent(v: number): string {
  * A crevice under a washer, or a plate crossing a waterline.
  *
  * Schematic on purpose: what has to read is that both electrodes are one piece
- * of metal, and that the anode is the enclosed or starved side. The two cases
- * are drawn differently because their geometry is the whole difference — a
- * crevice traps solution, a waterline separates aeration.
+ * of metal, and which of them is being consumed.
+ *
+ * `anodeIsSecond` is the second activity slider's electrode — inside the
+ * crevice in the metal-ion case, the oxygen-starved side in the aeration one.
+ * It used to be called `anodeIsInside` and the aeration branch never read it:
+ * that branch hardcoded "cathode — O₂ reduced here" above the waterline and
+ * "anode — corrodes here" below, which is only true while the aerated side is
+ * the better-aerated one. The two sliders are independent, so
+ * `?panel=cell&cmode=oxygen&ah=-6&al=0` put the anode on the aerated side and
+ * left the sketch asserting the opposite of the table directly below it. Both
+ * branches now read the same field the table does.
  */
 function CrevicSketch({
-  mode, anodeIsInside, emf,
+  mode, anodeIsSecond, emf,
 }: {
   mode: CellMode;
-  anodeIsInside: boolean;
+  anodeIsSecond: boolean;
   emf: number;
 }) {
   const anodeClass = 'co-anode-text';
   const cathodeClass = 'co-cathode-text';
-  const nearLabel = emf === 0 ? '—' : anodeIsInside ? 'anode — corrodes' : 'cathode';
-  const farLabel = emf === 0 ? '—' : anodeIsInside ? 'cathode' : 'anode — corrodes';
-  const nearClass = emf === 0 ? 'ht-edge-label' : anodeIsInside ? anodeClass : cathodeClass;
-  const farClass = emf === 0 ? 'ht-edge-label' : anodeIsInside ? cathodeClass : anodeClass;
+  const nearLabel = emf === 0 ? '—' : anodeIsSecond ? 'anode — corrodes' : 'cathode';
+  const farLabel = emf === 0 ? '—' : anodeIsSecond ? 'cathode' : 'anode — corrodes';
+  const nearClass = emf === 0 ? 'ht-edge-label' : anodeIsSecond ? anodeClass : cathodeClass;
+  const farClass = emf === 0 ? 'ht-edge-label' : anodeIsSecond ? cathodeClass : anodeClass;
+  // O₂ reduction is the cathodic half-reaction, so the clause travels with the
+  // cathode rather than with the top of the picture.
+  const CATHODE = 'cathode — O₂ reduced here';
+  const ANODE = 'anode — corrodes here';
 
   if (mode === 'oxygen') {
     return (
@@ -624,11 +636,11 @@ function CrevicSketch({
 
         {/* One plate, standing through the waterline. */}
         <rect x={200} y={20} width={26} height={165} className="co-metal" />
-        <text x={240} y={100} className={cathodeClass}>
-          {emf === 0 ? '—' : 'cathode — O₂ reduced here'}
+        <text x={240} y={100} className={emf === 0 ? 'ht-edge-label' : anodeIsSecond ? cathodeClass : anodeClass}>
+          {emf === 0 ? '—' : anodeIsSecond ? CATHODE : ANODE}
         </text>
-        <text x={240} y={165} className={anodeClass}>
-          {emf === 0 ? '—' : 'anode — corrodes here'}
+        <text x={240} y={165} className={emf === 0 ? 'ht-edge-label' : anodeIsSecond ? anodeClass : cathodeClass}>
+          {emf === 0 ? '—' : anodeIsSecond ? ANODE : CATHODE}
         </text>
         <text x={213} y={14} className="ht-edge-label" textAnchor="middle">
           one plate

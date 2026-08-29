@@ -97,10 +97,50 @@ describe('the concentration-cell table names the electrode it is quoting', () =>
     expect(mv(anode)).toBeLessThan(mv(cathode));
   });
 
+  /**
+   * The sketch beside the table, which is the other place the reader is told
+   * which electrode is being consumed. The aeration branch used to hardcode
+   * "cathode — O₂ reduced here" above the waterline and "anode — corrodes
+   * here" below, ignoring the field the table reads, so with the sliders
+   * crossed the picture asserted the opposite of the row directly under it.
+   *
+   * Read off the SVG text, in both modes and both slider orderings: exactly
+   * one anode label, exactly one cathode label, and the anode label on the
+   * same side the table calls the anode.
+   */
+  it.each([
+    ['#/corrosion?panel=cell&cm=Iron&ah=-4&al=0', 'Open surface', 'Inside the crevice'],
+    ['#/corrosion?panel=cell&cm=Iron&ah=0&al=-4', 'Open surface', 'Inside the crevice'],
+    ['#/corrosion?panel=cell&cmode=oxygen&ah=-6&al=0', 'Aerated side', 'Starved side'],
+    ['#/corrosion?panel=cell&cmode=oxygen&ah=0&al=-6', 'Aerated side', 'Starved side'],
+  ])('%s: the sketch agrees with the table', async (hash, first, second) => {
+    await renderRoute(hash);
+    // In both sketches the first slider's electrode is drawn first.
+    const drawn = [...document.querySelectorAll('.co-crevice text')]
+      .map((n) => n.textContent!.trim())
+      .filter((t) => /anode|cathode/.test(t));
+    expect(drawn).toHaveLength(2);
+    expect(drawn.filter((t) => t.startsWith('anode'))).toHaveLength(1);
+    expect(drawn.filter((t) => t.startsWith('cathode'))).toHaveLength(1);
+    const tableAnodeIsFirst = row(first).endsWith('— anode');
+    expect(row(second).endsWith('— anode')).toBe(!tableAnodeIsFirst);
+    // The crevice sketch draws the crevice (the second electrode) first; the
+    // waterline sketch draws the aerated side (the first) first. Compare
+    // against the label the table gives each, not against a fixed order.
+    const sketchAnodeIndex = drawn.findIndex((t) => t.startsWith('anode'));
+    const firstIsDrawnFirst = hash.includes('cmode=oxygen');
+    expect(sketchAnodeIndex === 0).toBe(
+      firstIsDrawnFirst ? tableAnodeIsFirst : !tableAnodeIsFirst,
+    );
+  });
+
   it('names neither electrode when the two sides are identical', async () => {
     await renderRoute('#/corrosion?panel=cell&cm=Iron&ah=-2&al=-2');
     expect(row('Open surface')).toBe('Open surface -59.2 mV');
     expect(row('Inside the crevice')).toBe('Inside the crevice -59.2 mV');
     expect(screen.getByText(/no driving force/)).toBeDefined();
+    // …and the sketch names neither side, rather than guessing one.
+    const drawn = [...document.querySelectorAll('.co-crevice text')].map((n) => n.textContent!);
+    expect(drawn.filter((t) => /anode|cathode/.test(t))).toEqual([]);
   });
 });

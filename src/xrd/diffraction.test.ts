@@ -427,12 +427,103 @@ describe('intensity formatting', () => {
  * No Miller label may be built by bare concatenation.
  *
  * 11ea25d claimed both remaining call sites had been converted and named this
- * one; it had not been touched. The pattern it looks for is `${p.h}${p.k}` —
- * two adjacent index interpolations with nothing between them — which is
- * exactly the form that renders (11,1,1) as "1111". A repo-wide scan rather
- * than a list of files, because the list is what went stale.
+ * one; it had not been touched. The form is `${p.h}${p.k}` — two adjacent
+ * index expressions with nothing between them — which renders (11,1,1) as
+ * "1111". A repo-wide scan rather than a list of files, because the list is
+ * what went stale.
+ *
+ * **This scan cannot close the class, and does not claim to.** A source regex
+ * enumerates spellings, and there are unboundedly many; the repo's own
+ * iteration-16 lesson is that enumerating hiding mechanisms is the same losing
+ * game as enumerating source patterns, and that what works is asserting on
+ * what is rendered. The rendering gate is the block below this one. This scan
+ * is kept because it reaches every file in `src` and `scripts`, including the
+ * eight modules the rendering gate does not paint, and because it fails at the
+ * call site rather than at the far end of a route.
+ *
+ * What it covers is stated pattern by pattern; what it still misses is stated
+ * at the end, with the examples that defeat it.
+ *
+ * LABEL GUARD EXEMPTION: this file names the broken forms deliberately.
  */
 describe('Miller labels are always formatted, never concatenated', () => {
+  /**
+   * LABEL GUARD EXEMPTION: this file names the broken forms deliberately.
+   *
+   * Split across the concatenation so the marker's own definition is not the
+   * marker, or every file quoting this comment would exempt itself.
+   */
+  const GUARD_MARKER = 'LABEL GUARD ' + 'EXEMPTION: this file names the broken forms deliberately.';
+
+  /**
+   * An index expression: `h`, `p.h`, `peak.idx.h`. Any depth of dotted path,
+   * because the single optional prefix the first version allowed made
+   * `${peak.idx.h}${peak.idx.k}` invisible.
+   */
+  const IDX = String.raw`(?:[A-Za-z_$][\w$]*\s*\.\s*)*`;
+  const idx = (name: string) => String.raw`${IDX}${name}`;
+
+  // Eight ways to build the same broken label, all of which render (11,1,1)
+  // as "1111". The first version of this guard matched only the first, while
+  // claiming to catch "any file interpolating two adjacent Miller indices
+  // with nothing between them". The count is asserted below, so an entry
+  // added without updating this sentence fails rather than reads wrong.
+  const FORMS: [string, RegExp][] = [
+    // `${p.h}${p.k}`, the destructured `${h}${k}`, and — the evasion that
+    // beat the first version — any adjacent pair that does not start at h,
+    // such as the `${k}${l}` inside `` `${h}·${k}${l}` ``. Anchored on the
+    // *left* index of the pair, whichever of h, k or l that is.
+    ['adjacent interpolation', new RegExp(String.raw`\$\{\s*${idx('[hkl]')}\s*\}\$\{`)],
+    // `"c" + p.h + p.k + p.l`. Anchored on the string literal, because
+    // `(h + k + l) % 2` is the reflection rule and must not be flagged —
+    // in JS the addition is only a concatenation if something in the chain
+    // is a string. A chain whose string-ness comes from a variable rather
+    // than a literal is not caught; that is a real gap, and narrower than
+    // flagging every sum of three indices in the file.
+    [
+      'string concatenation',
+      new RegExp(String.raw`(['"])[^'"]*\1\s*\+\s*${idx('h')}\s*\+\s*${idx('k')}\s*\+`),
+    ],
+    // `String(h) + String(k) + String(l)` — string-ness from the call, so
+    // there is no literal for the pattern above to anchor on.
+    [
+      'String() concatenation',
+      new RegExp(String.raw`String\(\s*${idx('h')}\s*\)\s*\+\s*String\(\s*${idx('k')}\s*\)`),
+    ],
+    // `''.concat(h, k, l)`.
+    [
+      'concat call',
+      new RegExp(String.raw`(['"])\1\s*\.\s*concat\(\s*${idx('h')}\s*,\s*${idx('k')}\s*,`),
+    ],
+    // `<span>{h}{k}{l}</span>` — adjacent JSX children, no template literal
+    // and no operator. This is the form that was actually in the repo, in
+    // the extinction panel's visible text, and none of the others catch it.
+    [
+      'adjacent JSX children',
+      new RegExp(String.raw`\{\s*${idx('[hkl]')}\s*\}\s*\{\s*${idx('[hkl]')}\s*\}`),
+    ],
+    // `<span>{[h, k, l]}</span>` — React renders an array child by
+    // concatenating its elements with no separator, so this prints "1111"
+    // with no operator, no template literal and no adjacent braces
+    // anywhere. Confirmed in situ against the shipped panel.
+    [
+      'array as a JSX child',
+      /\{\s*\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\}/,
+    ],
+    // `[h, k, l].join('')`, and the same through any chain that keeps it an
+    // array first — `[h, k, l].map(String).join('')`.
+    [
+      'array join',
+      /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\](?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*join\(\s*(['"])\1\s*\)/,
+    ],
+    // `[h, k, l].reduce((a, b) => a + b, '')` — a join by another name.
+    [
+      'array reduce',
+      /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\.\s*reduce\s*\(/,
+    ],
+  ];
+    const matchesAny = (source: string) => FORMS.some(([, p]) => p.test(source));
+
   it('finds no bare index concatenation anywhere in src or scripts', () => {
     const modules = import.meta.glob('/{src,scripts}/**/*.{ts,tsx}', {
       query: '?raw',
@@ -443,65 +534,112 @@ describe('Miller labels are always formatted, never concatenated', () => {
     // The glob is load-bearing: an empty match would pass vacuously.
     expect(paths.length).toBeGreaterThan(30);
 
-    // Four ways to build the same broken label, all of which render (11,1,1)
-    // as "1111". The first version of this guard matched only the first,
-    // while claiming to catch "any file interpolating two adjacent Miller
-    // indices with nothing between them". The count is asserted below, so an
-    // entry added without updating this sentence fails rather than reads
-    // wrong.
-    const forms: [string, RegExp][] = [
-      // `${p.h}${p.k}…` and the destructured `${h}${k}…`
-      ['adjacent interpolation', /\$\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\$\{/],
-      // `"c" + p.h + p.k + p.l`. Anchored on the string literal, because
-      // `(h + k + l) % 2` is the reflection rule and must not be flagged —
-      // in JS the addition is only a concatenation if something in the chain
-      // is a string. A chain whose string-ness comes from a variable rather
-      // than a literal is not caught; that is a real gap, and narrower than
-      // flagging every sum of three indices in the file.
-      [
-        'string concatenation',
-        /(['"])[^'"]*\1\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\+/,
-      ],
-      // `<span>{h}{k}{l}</span>` — adjacent JSX children, no template literal
-      // and no operator. This is the form that was actually in the repo, in
-      // the extinction panel's visible text, and the other three patterns all
-      // miss it. (It sits third in this list, not last: an earlier version of
-      // this note said "the first three patterns", which was true only while
-      // it was appended at the end.)
-      [
-        'adjacent JSX children',
-        /\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\s*\{\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\}/,
-      ],
-      // `[p.h, p.k, p.l].join('')`
-      ['array join', /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\.join\(\s*(['"])\1\s*\)/],
-    ];
-    // `familyLabel` itself necessarily contains the raw form — it is the
-    // formatter — so the file that defines it is the one exemption, and it is
-    // identified by that definition rather than by name.
+    // Two scanned files necessarily contain the broken forms: `familyLabel`,
+    // which exists to replace them, and the rendering gate that names them as
+    // samples. Both are identified by their content, and the exempt set is
+    // pinned below, so a third file cannot quietly excuse itself — which is
+    // the weakness of any exemption rule, this one included.
     const exempt = (path: string) =>
-      /diffraction\.test\.ts$/.test(path) || /export function familyLabel/.test(modules[path]);
+      /export function familyLabel/.test(modules[path]) || modules[path].includes(GUARD_MARKER);
+    // `import.meta.glob` excludes the module doing the globbing, so this file
+    // is not among them — which makes the `/diffraction\.test\.ts$/`
+    // exemption the first version carried dead code, and worth stating rather
+    // than deleting silently, because it means this file is the one place in
+    // the repo the scan cannot see.
+    expect(paths).not.toContain('/src/xrd/diffraction.test.ts');
+    expect(paths.filter(exempt).sort()).toEqual([
+      '/src/components/xrd-labels.behaviour.test.tsx',
+      '/src/xrd/diffraction.ts',
+    ]);
     // Each pattern is checked against a sample of the form it is named for,
     // in the suite rather than by hand at the time it was written. A regex
     // that silently stopped matching would otherwise report a clean repo
     // forever, which is the failure mode this whole guard exists to prevent.
     const SAMPLES: Record<string, string> = {
-      'adjacent interpolation': 'key={`${p.h}${p.k}${p.l}`}',
+      'adjacent interpolation': 'key={`${h}·${k}${l}`}',
       'string concatenation': "key={'c' + p.h + p.k + p.l}",
-      'array join': 'key={[p.h, p.k, p.l].join("")}',
-      'adjacent JSX children': '<span>{h}{k}{l}</span>',
+      'String() concatenation': 'key={String(h) + String(k) + String(l)}',
+      'concat call': "key={''.concat(h, k, l)}",
+      'adjacent JSX children': '<span>{peak.idx.h}{peak.idx.k}{peak.idx.l}</span>',
+      'array as a JSX child': '<span>{[h, k, l]}</span>',
+      'array join': 'key={[h, k, l].map(String).join("")}',
+      'array reduce': "key={[h, k, l].reduce((a, b) => a + b, '')}",
     };
-    expect(Object.keys(SAMPLES).sort()).toEqual(forms.map(([n]) => n).sort());
+    expect(Object.keys(SAMPLES).sort()).toEqual(FORMS.map(([n]) => n).sort());
     // The count the comment above states. Kept as an assertion because this
     // series has now corrected a miscounted list in a comment three times.
-    expect(forms).toHaveLength(4);
+    expect(FORMS).toHaveLength(8);
 
-    for (const [name, pattern] of forms) {
+    for (const [name, pattern] of FORMS) {
       expect(pattern.test(SAMPLES[name]), `${name}: pattern no longer matches its own sample`).toBe(
         true,
       );
       const offenders = paths.filter((path) => !exempt(path) && pattern.test(modules[path]));
       expect(offenders, `${name}`).toEqual([]);
     }
+  });
+
+  /**
+   * Every evasion the previous version fell to, kept as its own case so a
+   * pattern that stops matching one of them is named rather than lost among
+   * the eight.
+   *
+   * The first two are the ones confirmed against the shipped suite: both
+   * passed all 882 assertions while rendering (11,1,1) as "1111".
+   */
+  it.each([
+    ['an array child, which React joins with nothing', '<span>{[h, k, l]}</span>'],
+    ['an adjacent pair that does not begin at h', 'key={`${h}·${k}${l}`}'],
+    ['String() around each index', 'const id = String(h) + String(k) + String(l);'],
+    ['concat on an empty literal', "const id = ''.concat(h, k, l);"],
+    ['map then join', "const id = [h, k, l].map(String).join('');"],
+    ['reduce as a join', "const id = [h, k, l].reduce((a, b) => a + b, '');"],
+    ['a nested path', 'key={`${peak.idx.h}${peak.idx.k}${peak.idx.l}`}'],
+    ['nested paths as JSX children', '<span>{peak.idx.h}{peak.idx.k}{peak.idx.l}</span>'],
+  ])('catches %s', (_why, source) => {
+    expect(matchesAny(source)).toBe(true);
+  });
+
+  /**
+   * And the things a source scan must *not* flag, because they are the
+   * physics. `(h + k + l) % 2` is the BCC reflection rule.
+   */
+  it.each([
+    'const sum = h + k + l;',
+    'if ((h + k + l) % 2 !== 0) return false;',
+    'const [h, k, l] = idx;',
+    'return Math.hypot(h, k, l);',
+    'familyLabel(h, k, l)',
+    '{h}{" "}{k}',
+  ])('leaves %s alone', (source) => {
+    expect(matchesAny(source)).toBe(false);
+  });
+
+  /**
+   * **What this scan still misses**, so the class is not reported closed.
+   *
+   * These are checked to *not* match, deliberately: writing them down as
+   * failing cases is the honest form of "not covered", and it means a later
+   * pattern that happens to catch one will fail here and be noticed rather
+   * than quietly widening the claim.
+   *
+   *  - a helper that concatenates parameters named something else —
+   *    `const cat = (a, b, c) => `${a}${b}${c}`` called as `cat(h, k, l)`;
+   *  - a spread, `[...idx].join('')`, where the indices never appear by name;
+   *  - `+` chains whose string-ness comes from a variable rather than a
+   *    literal, which the "string concatenation" note above already records;
+   *  - anything assembled at runtime out of a data structure the scan cannot
+   *    see through.
+   *
+   * The first two of those DO render "1111", and only the rendering gate
+   * below stops them — and only on the route it paints.
+   */
+  it.each([
+    ['a helper with different parameter names', 'const cat = (a, b, c) => `${a}${b}${c}`;'],
+    ['a spread of the index tuple', "const id = [...idx].join('');"],
+    ['string-ness from a variable', 'const id = prefix + h + k + l;'],
+  ])('does not catch %s — stated, not claimed', (_why, source) => {
+    expect(matchesAny(source)).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  XRD_SAMPLES, XRD_SOURCES, computePattern, isAllowed, latticeParameter,
+  XRD_SAMPLES, XRD_SOURCES, computePattern, familyLabel, isAllowed, latticeParameter,
   multiplicity, structureFactorSquared,
 } from './diffraction';
 
@@ -216,5 +216,45 @@ describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
     expect(first).toBeDefined();
     expect(first.d).toBeCloseTo(lambda / 2, 15);
     expect(first.twoTheta).toBeCloseTo(180, 6);
+  });
+});
+
+/**
+ * Labelling families once the index can exceed 9.
+ *
+ * `${h}${k}${l}` is fine while every index is a single digit and was fine
+ * while the sweep stopped at 8. It is not fine now: silicon under Mo Kα
+ * reaches index 15, so 28 of its 79 rows printed something that reads as a
+ * different reflection — "1111" for (11,1,1), sitting in the same column as
+ * the genuine (111), and aluminium's (10,0,0) printing as "1000", which reads
+ * as (100).
+ */
+describe('family labels', () => {
+  it('leaves single-digit families exactly as they were', () => {
+    expect(familyLabel(1, 1, 1)).toBe('111');
+    expect(familyLabel(3, 1, 1)).toBe('311');
+    expect(familyLabel(9, 3, 1)).toBe('931');
+  });
+
+  it('separates the moment any index reaches double digits', () => {
+    expect(familyLabel(11, 1, 1)).toBe('11,1,1');
+    expect(familyLabel(10, 0, 0)).toBe('10,0,0');
+    expect(familyLabel(15, 5, 3)).toBe('15,5,3');
+  });
+
+  it('never collides — a label identifies exactly one family', () => {
+    expect(familyLabel(11, 1, 1)).not.toBe(familyLabel(1, 1, 1));
+    expect(familyLabel(10, 0, 0)).not.toBe(familyLabel(1, 0, 0));
+    expect(familyLabel(1, 11, 1)).not.toBe(familyLabel(11, 1, 1));
+  });
+
+  it('is injective across every shipped sample × source', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda);
+        const labels = peaks.map((p) => familyLabel(p.h, p.k, p.l));
+        expect(new Set(labels).size).toBe(peaks.length);
+      }
+    }
   });
 });

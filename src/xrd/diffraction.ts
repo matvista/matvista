@@ -234,6 +234,23 @@ export function computePattern(
 }
 
 /**
+ * Label for an {hkl} family.
+ *
+ * Bare juxtaposition — "311" — is the crystallographic convention and it
+ * works only while every index is a single digit. Once the Bragg bound lets
+ * the sweep past 9 (silicon under Mo Kα reaches 15) it stops identifying the
+ * family: (11,1,1) and (1,1,1) both render "1111"/"111" in a way that reads
+ * as the low-index reflection, and (10,0,0) renders "1000", which reads as
+ * (100). Commas are the standard separator for exactly this case.
+ *
+ * Single-digit families are left untouched, so every label the module has
+ * ever shown is unchanged.
+ */
+export function familyLabel(h: number, k: number, l: number): string {
+  return h > 9 || k > 9 || l > 9 ? `${h},${k},${l}` : `${h}${k}${l}`;
+}
+
+/**
  * Lattice parameter from atomic radius, for the elemental cubic structures
  * (Callister ch. 3): FCC a = 2R√2, BCC a = 4R/√3, SC a = 2R,
  * diamond cubic a = 8R/√3.

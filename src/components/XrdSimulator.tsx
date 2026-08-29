@@ -5,6 +5,7 @@ import {
   XRD_SOURCES,
   computePattern,
   dSpacing,
+  familyLabel,
   isAllowed,
   multiplicity,
   type XrdLattice,
@@ -93,7 +94,7 @@ export function XrdSimulator() {
             ))}
 
           {peaks.map((p) => {
-            const id = `${p.h}${p.k}${p.l}`;
+            const id = familyLabel(p.h, p.k, p.l);
             const isSel = selected === id;
             return (
               <g key={id} className="xrd-peak-group" onClick={() => setSelected(isSel ? null : id)}>
@@ -164,7 +165,7 @@ export function XrdSimulator() {
           </thead>
           <tbody>
             {peaks.map((p) => {
-              const id = `${p.h}${p.k}${p.l}`;
+              const id = familyLabel(p.h, p.k, p.l);
               return (
                 <tr
                   key={id}

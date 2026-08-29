@@ -1,14 +1,35 @@
 import { NAV_GROUPS } from '../nav';
+import { MODULE_MARKS } from './moduleMarks';
+import { useReveal } from '../landing/motion';
+import { LatticePlate } from '../assets/figures/LatticePlate';
+import { PhaseFigure } from '../assets/figures/PhaseFigure';
+import { FatigueFigure } from '../assets/figures/FatigueFigure';
+import { AshbyFigure } from '../assets/figures/AshbyFigure';
+import { XrdFigure } from '../assets/figures/XrdFigure';
+import '../landing.css';
 
 /**
  * The front door.
  *
- * Deliberately the only eagerly-loaded view, so it must stay cheap: every
- * graphic here is inline SVG drawn from CSS custom properties. No raster
- * images, no icon font, no external stylesheet — partly because the deployment
- * is static assets on Cloudflare Pages with no runtime fetches, and partly
- * because SVG is what the modules themselves draw with, so the page looks like
- * the thing it is advertising.
+ * Set as a textbook plate rather than a product page, and the figures on it are
+ * real: Figures 2 to 5 are emitted by the scripts in `scripts/`, which import
+ * the same model code the modules run. That is the whole argument the page is
+ * making — "computed from the published relations, not drawn to look right" —
+ * so illustrating it with invented artwork would have undercut the one claim
+ * worth making. It also means a figure cannot drift from the data behind it
+ * without `figures.test.ts` noticing. Figure 1 is drawn from
+ * `landing/lattice.ts`, which belongs to this page rather than to a module,
+ * and the copy is careful not to claim otherwise.
+ *
+ * Deliberately the only eagerly-loaded view, so it must stay cheap. The plates
+ * are inline SVG, which costs bundle bytes but no request and — the reason it
+ * is worth it — inherits the page's custom properties, so one asset themes for
+ * light, dark and system rather than needing a copy per theme.
+ *
+ * The hero used to run an animated canvas. It is a still plate now: at the
+ * quality a rotating lattice needed to look good it was re-projecting and
+ * re-shading sixty-three atoms every frame, forever, on the one view every
+ * visitor loads, to say something a single well-drawn image says at rest.
  *
  * Every module link is a real anchor rather than a button: routing is
  * hash-based, so `href="#/miller?..."` works natively, survives middle-click
@@ -19,370 +40,399 @@ interface ModuleCard {
   id: string;
   title: string;
   href: string;
-  blurb: string;
   /** What a reader can actually answer with it — concrete, not adjectives. */
   detail: string;
   art: React.ReactNode;
 }
-
-/* ------------------------------------------------------------------ artwork */
-/* Each thumbnail is the module's own visual signature, reduced to its outline:
-   a reader who has used the app should recognise the module before reading. */
-
-const artPeriodic = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    {Array.from({ length: 9 }, (_, c) =>
-      Array.from({ length: 5 }, (_, r) => (
-        <rect
-          key={`${c}-${r}`}
-          x={4 + c * 10}
-          y={4 + r * 10}
-          width={8}
-          height={8}
-          rx={1.5}
-          fill="var(--ld-art)"
-          opacity={0.25 + ((c + r * 2) % 7) * 0.11}
-        />
-      )),
-    )}
-  </svg>
-);
-
-const artCrystal = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <g stroke="var(--ld-art)" strokeWidth="1" fill="none" opacity="0.55">
-      <path d="M28 18h30v26H28z" />
-      <path d="M40 10h30v26H40z" />
-      <path d="M28 18l12-8M58 18l12-8M58 44l12-8M28 44l12-8" />
-    </g>
-    {[[28, 18], [58, 18], [28, 44], [58, 44], [40, 10], [70, 10], [70, 36], [40, 36], [49, 27]].map(
-      ([cx, cy], i) => (
-        <circle key={i} cx={cx} cy={cy} r={i === 8 ? 6 : 4.5} fill="var(--ld-art)" />
-      ),
-    )}
-  </svg>
-);
-
-const artMiller = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <g stroke="var(--ld-art)" strokeWidth="1" fill="none" opacity="0.5">
-      <path d="M26 16h34v30H26z" />
-      <path d="M38 8h34v30H38z" />
-      <path d="M26 16l12-8M60 16l12-8M60 46l12-8M26 46l12-8" />
-    </g>
-    <path d="M26 46L60 16l12-8-34 30z" fill="var(--ld-art)" opacity="0.42" />
-    <path d="M26 46L60 16" stroke="var(--ld-art)" strokeWidth="1.6" fill="none" />
-  </svg>
-);
-
-const artDefects = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    {Array.from({ length: 6 }, (_, c) =>
-      Array.from({ length: 4 }, (_, r) => {
-        const gap = c === 3 && r === 1;
-        return gap ? (
-          <circle
-            key={`${c}-${r}`}
-            cx={14 + c * 14}
-            cy={12 + r * 12}
-            r={4.5}
-            fill="none"
-            stroke="var(--ld-art)"
-            strokeDasharray="2 2"
-          />
-        ) : (
-          <circle
-            key={`${c}-${r}`}
-            cx={14 + c * 14}
-            cy={12 + r * 12}
-            r={4.5}
-            fill="var(--ld-art)"
-            opacity={0.75}
-          />
-        );
-      }),
-    )}
-  </svg>
-);
-
-const artPhase = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    <path d="M12 16Q40 44 52 44Q66 44 86 20" fill="none" stroke="var(--ld-art)" strokeWidth="1.6" />
-    <path d="M12 30Q34 44 52 44Q70 44 86 34" fill="none" stroke="var(--ld-art)" strokeWidth="1.2" opacity="0.6" />
-    <path d="M12 44h74" stroke="var(--ld-art)" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
-    <circle cx="52" cy="44" r="3.2" fill="var(--ld-accent)" />
-  </svg>
-);
-
-const artHeat = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    <path d="M22 12Q52 22 34 30Q52 40 74 48" fill="none" stroke="var(--ld-art)" strokeWidth="1.6" />
-    <path d="M30 12Q66 24 46 32Q64 42 84 48" fill="none" stroke="var(--ld-art)" strokeWidth="1.1" strokeDasharray="3 2" opacity="0.6" />
-    <path d="M14 10L76 46" stroke="var(--ld-accent)" strokeWidth="1.5" fill="none" />
-  </svg>
-);
-
-const artStress = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    <path d="M12 50L30 20Q46 8 62 14Q74 19 80 34" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
-    <path d="M20 50L34 27" stroke="var(--ld-accent)" strokeWidth="1.1" strokeDasharray="3 2" fill="none" />
-    <circle cx="62" cy="14" r="3" fill="var(--ld-accent)" />
-  </svg>
-);
-
-const artXrd = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M10 50h78" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    {[[20, 16], [30, 34], [42, 24], [52, 42], [60, 30], [70, 44], [80, 40]].map(([x, y], i) => (
-      <path key={i} d={`M${x} 50V${y}`} stroke="var(--ld-art)" strokeWidth="2.2" strokeLinecap="round" />
-    ))}
-  </svg>
-);
-
-const artSelection = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    {[[26, 34], [34, 24], [44, 30], [40, 16], [56, 22], [64, 36], [70, 18], [50, 40], [78, 28]].map(
-      ([cx, cy], i) => (
-        <circle key={i} cx={cx} cy={cy} r={3.4} fill="var(--ld-art)" opacity={0.7} />
-      ),
-    )}
-    <path d="M16 46L82 12" stroke="var(--ld-accent)" strokeWidth="1.5" strokeDasharray="4 3" fill="none" />
-  </svg>
-);
-
-const artFailure = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    <path d="M12 50h74M12 50V8" stroke="var(--ld-art)" strokeWidth="1" opacity="0.5" fill="none" />
-    {/* an S–N curve that knees over into an endurance limit */}
-    <path d="M16 14Q40 34 58 40H84" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
-    <path d="M58 40H84" fill="none" stroke="var(--ld-accent)" strokeWidth="1.8" />
-    {/* a crack opening from the edge */}
-    <path d="M20 50l4-6 3 5 3-6" fill="none" stroke="var(--ld-accent)" strokeWidth="1.4" strokeLinejoin="round" />
-  </svg>
-);
-
-const artCorrosion = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    {/* two metals joined, with the anode pitting away beneath the electrolyte */}
-    <path d="M10 44h34v10H10z" fill="var(--ld-accent)" opacity="0.55" />
-    <path d="M52 44h34v10H52z" fill="var(--ld-art)" opacity="0.5" />
-    <path d="M44 49h8" stroke="var(--ld-art)" strokeWidth="1.6" />
-    <path d="M8 34h80" stroke="var(--ld-art)" strokeWidth="1" strokeDasharray="3 3" opacity="0.6" fill="none" />
-    {[16, 24, 32].map((x, i) => (
-      <circle key={i} cx={x} cy={44} r={3.2} fill="var(--ld-art)" opacity="0.85" />
-    ))}
-    {/* current arcs from anode to cathode */}
-    <path d="M24 40Q48 18 70 40" fill="none" stroke="var(--ld-accent)" strokeWidth="1.3" />
-  </svg>
-);
-
-const artSemi = (
-  <svg viewBox="0 0 96 60" role="img" aria-hidden="true">
-    {/* bands bending across a junction, with the flat Fermi level */}
-    <path d="M10 20h30q8 0 12 -9h34" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
-    <path d="M10 46h30q8 0 12 -9h34" fill="none" stroke="var(--ld-art)" strokeWidth="1.8" />
-    <path d="M10 33h76" fill="none" stroke="var(--ld-accent)" strokeWidth="1.3" strokeDasharray="4 3" />
-    <rect x="38" y="8" width="18" height="44" fill="var(--ld-accent)" opacity="0.16" />
-  </svg>
-);
 
 const CARDS: ModuleCard[] = [
   {
     id: 'trends',
     title: 'Periodic trends',
     href: '#/trends?el=W&prop=melt',
-    blurb: 'Heatmap the periodic table by any property.',
     detail: 'Colour the whole table by electronegativity, ionisation energy, melting point or density, and read the trend across a period or down a group. Elements with no measured value for a property are shown as having none.',
-    art: artPeriodic,
+    art: MODULE_MARKS.trends,
   },
   {
     id: 'crystals',
     title: 'Crystal structures',
     href: '#/crystals',
-    blurb: '3D unit cells and theoretical density.',
     detail: 'Eight structures from simple cubic to perovskite, in ball-and-stick or space-filling, with a density calculator that lands within a fraction of a percent for the cubic metals — and shows you where the ideal-c/a assumption breaks down for HCP.',
-    art: artCrystal,
+    art: MODULE_MARKS.crystals,
   },
   {
     id: 'miller',
     title: 'Miller indices',
     href: '#/miller?plane=111',
-    blurb: 'Planes, directions and slip systems.',
     detail: 'Type any (hkl) and watch the plane cut the cell, with intercepts, d-spacing, family members and a Schmid-factor ranking across all 12 FCC or 48 BCC slip systems.',
-    art: artMiller,
+    art: MODULE_MARKS.miller,
   },
   {
     id: 'defects',
     title: 'Defects & diffusion',
     href: '#/defects',
-    blurb: 'Vacancies, impurities and case hardening.',
     detail: 'Put a point defect into a lattice, compute the equilibrium vacancy fraction, and solve Fick’s second law for a carburising profile.',
-    art: artDefects,
+    art: MODULE_MARKS.defects,
   },
   {
     id: 'phase',
     title: 'Phase diagrams',
     href: '#/phase?T=650&sys=fe-c&x=0.4',
-    blurb: 'Tie lines, the lever rule, steel microstructure.',
     detail: 'Click anywhere on Cu–Ni, Pb–Sn or Fe–Fe₃C and get the phases present, the tie line, lever-rule mass fractions and the microstructure that results.',
-    art: artPhase,
+    art: MODULE_MARKS.phase,
   },
   {
     id: 'heattreat',
     title: 'Heat treatment',
     href: '#/heattreat',
-    blurb: 'TTT curves, quenching, hardenability.',
     detail: 'Drag a cooling rate across an isothermal diagram and see the products it produces, read by Scheil additivity, with a Jominy end-quench comparison across three grades.',
-    art: artHeat,
+    art: MODULE_MARKS.heattreat,
   },
   {
     id: 'mechanical',
     title: 'Mechanical properties',
     href: '#/mechanical',
-    blurb: 'Stress–strain curves and Hall–Petch.',
     detail: 'Engineering curves for seven metals with the 0.2% offset construction, resilience and toughness areas, a true-stress overlay, and grain-size strengthening.',
-    art: artStress,
+    art: MODULE_MARKS.mechanical,
   },
   {
     id: 'failure',
     title: 'Failure analysis',
     href: '#/failure',
-    blurb: 'Fracture, fatigue, crack growth and creep.',
     detail: 'Find the critical crack size for a real alloy, read an S–N curve that only flattens for the alloys that actually have a fatigue limit, grow a crack by Paris’ law, and trade temperature against time with Larson–Miller.',
-    art: artFailure,
+    art: MODULE_MARKS.failure,
   },
   {
     id: 'semiconductors',
     title: 'Semiconductors',
     href: '#/semiconductors',
-    blurb: 'Band gaps, doping and the p–n junction.',
     detail: 'Compare band gaps against the visible spectrum, dope a crystal and watch conductivity cross from extrinsic to intrinsic as it heats, then bend the bands across a junction and read off the built-in potential.',
-    art: artSemi,
+    art: MODULE_MARKS.semiconductors,
   },
   {
     id: 'corrosion',
     title: 'Corrosion',
     href: '#/corrosion',
-    blurb: 'Galvanic couples, the Nernst equation, Pourbaix.',
     detail: 'Pair any two alloys and see which one corrodes, how hard the couple is driven, and why a small anode beside a large cathode is the dangerous arrangement — then read the pH–potential map that says whether a metal is immune, passive or dissolving.',
-    art: artCorrosion,
+    art: MODULE_MARKS.corrosion,
   },
   {
     id: 'xrd',
     title: 'XRD simulator',
     href: '#/xrd',
-    blurb: 'Powder patterns and indexed peaks.',
     detail: 'Generate a diffraction pattern for four lattice types across four X-ray sources, with every peak indexed and the extinction rules shown working.',
-    art: artXrd,
+    art: MODULE_MARKS.xrd,
   },
   {
     id: 'selection',
     title: 'Material selection',
     href: '#/selection',
-    blurb: 'Ashby charts and performance indices.',
     detail: 'A log–log chart of 54 materials with movable guide lines for E/ρ, E^½/ρ, E^⅓/ρ, σ/ρ and σ^⅔/ρ, ranking candidates live as you move the line.',
-    art: artSelection,
+    art: MODULE_MARKS.selection,
   },
 ];
 
-const GROUP_OF: Record<string, string> = Object.fromEntries(
-  NAV_GROUPS.flatMap((g) => g.items.map((i) => [i.id, g.label])),
-);
+const CARD_OF: Record<string, ModuleCard> = Object.fromEntries(CARDS.map((c) => [c.id, c]));
+
+/**
+ * What each course group is *for*, in one line.
+ *
+ * The four groups and their membership come from `NAV_GROUPS`, so the index
+ * below cannot list a module the header menu does not have. Only this
+ * sentence lives here — it is landing-page copy, and the header has no room
+ * for it.
+ */
+const GROUP_NOTE: Record<string, string> = {
+  structure: 'What the material is, at the scale of atoms and their arrangement.',
+  microstructure: 'What is going on inside it, and what heat and time do to that.',
+  properties: 'How it behaves when you load it, heat it, or wire it into a circuit.',
+  analysis: 'How you measure what you have, and choose what you need.',
+};
+
+/**
+ * Headline figures. Each is asserted against the data it describes in
+ * `docs.test.ts`, so a module added without updating this list fails the suite
+ * rather than quietly leaving a wrong number on the front page.
+ */
+const FACTS: { n: string; label: string }[] = [
+  { n: String(NAV_GROUPS.flatMap((g) => g.items).length), label: 'interactive modules' },
+  { n: '118', label: 'elements in the table' },
+  { n: '54', label: 'materials in the Ashby chart' },
+  { n: '8', label: 'crystal structures in 3D' },
+];
+
+/**
+ * The worked example, at 0.4 wt% C just below the eutectoid.
+ *
+ * These are not illustrative numbers. Every one is asserted in
+ * `docs.test.ts` against `steelMicrostructure(0.4)` and `lever()` from
+ * `phase/systems`, which is the same code the phase module calls — so if the
+ * model changes, the front page fails the suite instead of quietly lying about
+ * what the app computes. They are written out rather than computed here to
+ * keep `phase/systems` out of the eagerly-loaded chunk.
+ */
+const WORKED = {
+  href: '#/phase?T=650&sys=fe-c&x=0.4',
+  rows: [
+    { term: 'Proeutectoid α (ferrite)', value: '48.8 %', key: true },
+    { term: 'Pearlite', value: '51.2 %', key: true },
+    { term: 'Total α (ferrite)', value: '94.3 %', key: false },
+    { term: 'Total Fe₃C (cementite)', value: '5.7 %', key: false },
+  ],
+};
+
+/**
+ * The three figures shown at full width further down, each paired with what it
+ * is for and the module it came from. Kept as data because the markup for the
+ * three is identical — three hand-written copies of it is three places for a
+ * caption to go stale.
+ */
+const SHOWCASE: { n: number; title: string; body: string; href: string; cta: string; figure: React.ReactNode }[] =
+  [
+    {
+      n: 3,
+      title: 'Not every alloy has a fatigue limit',
+      body:
+        'Steel and titanium flatten out: below a certain amplitude — 190 MPa for this 1020 — they survive indefinitely. Nickel has no such limit, and its curve keeps falling until it crosses under the steel it started above. For an alloy like that, "infinite life" is a decision about a number of cycles rather than a property you can lean on.',
+      href: '#/failure',
+      cta: 'Open failure analysis',
+      figure: <FatigueFigure />,
+    },
+    {
+      n: 4,
+      title: 'Choosing a material is choosing a slope',
+      body:
+        'Stiffness against density for 54 materials, log on both axes. A performance index is a straight line on this chart, and moving it sweeps out the candidates that beat a given value — which is why the answer for a light stiff beam is not the same as for a light stiff tie.',
+      href: '#/selection',
+      cta: 'Open material selection',
+      figure: <AshbyFigure />,
+    },
+    {
+      n: 5,
+      title: 'The missing peaks are the information',
+      body:
+        'Copper, indexed. Every reflection on this plate is all-odd or all-even, and that is the whole identification: in an FCC crystal the structure factor extinguishes the mixed indices, so (100) and (110) are not weak here, they are absent. Switch the sample in the module and a different set goes missing.',
+      href: '#/xrd',
+      cta: 'Open the XRD simulator',
+      figure: <XrdFigure />,
+    },
+  ];
 
 export function Landing() {
   return (
     <div className="ld">
       <section className="ld-hero">
         <div className="ld-hero-copy">
-          <p className="ld-eyebrow">Interactive materials science</p>
-          <h1 className="ld-title">
-            See why materials
-            <br />
-            behave the way they do.
-          </h1>
+          <p className="ld-kicker">Interactive materials science</p>
+          <h1 className="ld-h1">See why materials behave the way they do.</h1>
           <p className="ld-lede">
-            MatVista turns the core of an undergraduate materials course into twelve things you
-            can actually drive: rotate a unit cell, drag a cooling rate across a TTT diagram,
-            move a tie line and watch the phase fractions follow. Every number is computed
-            from the published relations, not drawn to look right.
+            Twelve modules covering the core of an undergraduate materials course, each one
+            something you drive rather than read: rotate a unit cell, drag a cooling rate
+            across a TTT diagram, move a tie line and watch the phase fractions follow.
           </p>
           <div className="ld-cta">
-            <a className="ld-btn ld-btn-primary" href="#/trends">
-              Start with the periodic table
+            <a className="ld-btn" href="#/trends">
+              Open the periodic table
+              <span className="ld-arrow" aria-hidden="true">
+                →
+              </span>
             </a>
-            <a className="ld-btn" href="#modules">
-              Browse all twelve modules
+            <a className="ld-link" href="#modules">
+              See all twelve modules
+              <span className="ld-arrow" aria-hidden="true">
+                ↓
+              </span>
             </a>
           </div>
           <p className="ld-note">
             Free and open source · runs entirely in your browser · nothing to install
           </p>
         </div>
-        <div className="ld-hero-art" aria-hidden="true">
-          <HeroArt />
-        </div>
+
+        <figure className="ld-plate ld-hero-art">
+          <div className="ld-plate-art">
+            <LatticePlate />
+          </div>
+          <figcaption>
+            <span className="ld-fig-n">Fig. 1</span>
+            The face-centred cubic lattice, two cells on a side, with one unit cell outlined.
+            The arrangement behind aluminium, copper, nickel and austenite.
+          </figcaption>
+        </figure>
       </section>
 
-      <section className="ld-strip">
-        {[
-          ['12', 'interactive modules'],
-          ['118', 'elements in the table'],
-          ['54', 'materials in the Ashby chart'],
-          ['8', 'crystal structures in 3D'],
-        ].map(([n, label]) => (
-          <div key={label} className="ld-stat">
-            <strong>{n}</strong>
-            <span>{label}</span>
+      <section className="ld-facts">
+        {FACTS.map((f) => (
+          <div key={f.label} className="ld-fact">
+            <strong>{f.n}</strong>
+            <span>{f.label}</span>
           </div>
         ))}
       </section>
 
-      <section className="ld-section" id="modules">
-        <h2 className="ld-h2">The twelve modules</h2>
-        <p className="ld-sub">
-          Grouped the way a course is: what the material <em>is</em>, what is going on inside
-          it, how it <em>behaves</em>, and how you measure or choose it.
-        </p>
-        <div className="ld-grid">
-          {CARDS.map((c) => (
-            <a key={c.id} className="ld-card" href={c.href}>
-              <div className="ld-card-art">{c.art}</div>
-              <div className="ld-card-body">
-                <span className="ld-card-group">{GROUP_OF[c.id]}</span>
-                <h3>{c.title}</h3>
-                <p className="ld-card-blurb">{c.blurb}</p>
-                <p className="ld-card-detail">{c.detail}</p>
-              </div>
-            </a>
-          ))}
-        </div>
-      </section>
+      <Reveal className="ld-section ld-worked">
+        <div className="ld-worked-copy">
+          <p className="ld-kicker">A worked example</p>
+          <h2 className="ld-h2">Computed, not drawn to look right.</h2>
+          <p className="ld-sub">
+            Take a plain carbon steel at 0.4 wt% C and cool it just below the eutectoid at
+            727 °C. The diagram beside this is the app's own Fe–Fe₃C construction; the
+            fractions below are what the lever rule gives on that tie line, from the same
+            function the module calls.
+          </p>
 
-      <section className="ld-section">
-        <h2 className="ld-h2">Built to be trusted with</h2>
-        <div className="ld-features">
-          <article className="ld-feature">
+          <div className="ld-readout">
+            <p className="ld-readout-h">Fe–0.4 wt% C, just below 727 °C</p>
+            <dl>
+              {WORKED.rows.map((r) => (
+                <div key={r.term} style={{ display: 'contents' }}>
+                  <dt>{r.term}</dt>
+                  <dd className={r.key ? 'is-key' : undefined}>{r.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <p className="ld-note">
+            Microconstituent and phase fractions differ, and both are given — pearlite is a
+            two-phase lamellar mixture, so its ferrite counts toward the total.
+          </p>
+
+          <p style={{ margin: '1.4rem 0 0' }}>
+            <a className="ld-link" href={WORKED.href}>
+              Open this exact point in the module
+              <span className="ld-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+          </p>
+        </div>
+
+        <figure className="ld-plate">
+          <PlateArt label="Figure 2. The iron–iron carbide phase diagram, with the eutectoid marked and a tie line at 0.4 wt% carbon and 650 °C.">
+            <PhaseFigure />
+          </PlateArt>
+          <figcaption>
+            <span className="ld-fig-n">Fig. 2</span>
+            The iron–iron carbide diagram, with the eutectoid marked and the tie line drawn
+            at the composition and temperature above.
+          </figcaption>
+        </figure>
+      </Reveal>
+
+      <Reveal className="ld-section" id="modules">
+        <p className="ld-kicker">The modules</p>
+        <h2 className="ld-h2">Grouped the way a course is.</h2>
+        <p className="ld-sub">
+          Four families, three modules each. Every one stands alone as something you can
+          teach with, study from, or reach for as a reference.
+        </p>
+
+        {NAV_GROUPS.map((group, i) => (
+          <div key={group.id} className="ld-group">
+            <div className="ld-group-head">
+              <h3>
+                <span className="ld-group-n">{String(i + 1).padStart(2, '0')}</span>
+                {group.label}
+              </h3>
+              <p>{GROUP_NOTE[group.id]}</p>
+            </div>
+            <ul className="ld-index">
+              {group.items.map((item) => {
+                const card = CARD_OF[item.id];
+                // `docs.test.ts` asserts every nav id has a card, so this is
+                // unreachable — but the landing page is the one eagerly-loaded
+                // view, and a missing entry here would blank the whole site
+                // rather than one module.
+                if (!card) return null;
+                return (
+                  <li key={item.id}>
+                    {/* No `aria-label`. The natural name — title then detail
+                        — runs long, but `detail` is rendered nowhere else, so
+                        overriding the name to the bare title is not trimming a
+                        duplicate, it is deleting the description for anyone
+                        who cannot see it. */}
+                    <a className="ld-row" href={card.href}>
+                      <span className="ld-row-mark" aria-hidden="true">
+                        {card.art}
+                      </span>
+                      <span>
+                        <span className="ld-row-title">{card.title}</span>
+                        <span className="ld-row-blurb">{card.detail}</span>
+                      </span>
+                      <span className="ld-row-go" aria-hidden="true">
+                        →
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </Reveal>
+
+      <Reveal className="ld-section">
+        <p className="ld-kicker">What it draws</p>
+        <h2 className="ld-h2">Three more of the app's own figures.</h2>
+        <p className="ld-sub">
+          Generated by the same model code the modules run, not redrawn for this page. Each
+          one is the static form of something you can move in the module behind it.
+        </p>
+
+        {/* Each row is one <figure>: the plate and the prose beside it are a
+            figure and its caption, and splitting them across two unrelated
+            siblings would leave a figure with no caption next to a paragraph
+            with no subject. */}
+        {SHOWCASE.map((s) => (
+          <figure key={s.n} className="ld-showcase">
+            <div className="ld-plate">
+              <PlateArt label={`Figure ${s.n}. ${s.title}.`}>{s.figure}</PlateArt>
+            </div>
+            <figcaption className="ld-showcase-copy">
+              <p className="ld-fig-n">Fig. {s.n}</p>
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+              <a className="ld-link" href={s.href}>
+                {s.cta}
+                <span className="ld-arrow" aria-hidden="true">
+                  →
+                </span>
+              </a>
+            </figcaption>
+          </figure>
+        ))}
+      </Reveal>
+
+      <Reveal className="ld-section">
+        <p className="ld-kicker">How the numbers are made</p>
+        <h2 className="ld-h2">Four commitments the modules keep.</h2>
+        <p className="ld-sub">
+          A teaching tool earns its place by being honest about what it knows, and about
+          where the knowing stops.
+        </p>
+        <div className="ld-principles">
+          <article className="ld-principle">
+            <span className="ld-principle-n">01</span>
             <h3>Data and interpolation are kept apart</h3>
             <p>
-              Fixed points — invariant reactions, solubility limits, tabulated radii and moduli
-              — are cited to Callister &amp; Rethwisch. The curves between them are constructed,
-              and every module says which is which rather than implying a precision it does not
-              have.
+              Fixed points — invariant reactions, solubility limits, tabulated radii and
+              moduli — are cited to Callister &amp; Rethwisch. The curves between them are
+              constructed, and every module says which is which rather than implying a
+              precision it does not have.
             </p>
           </article>
-          <article className="ld-feature">
+          <article className="ld-principle">
+            <span className="ld-principle-n">02</span>
             <h3>Approximations say so</h3>
             <p>
               Laying a continuous cooling path over an isothermal diagram is a textbook
-              construction, not a measurement, so the heat-treatment module tells you that and
-              explains which way the answer leans.
+              construction, not a measurement, so the heat-treatment module tells you that
+              and explains which way the answer leans.
             </p>
           </article>
-          <article className="ld-feature">
+          <article className="ld-principle">
+            <span className="ld-principle-n">03</span>
             <h3>Surprises get explained, not hidden</h3>
             <p>
               When 1080 shows M90 below room temperature, that is retained austenite, and the
@@ -390,18 +440,20 @@ export function Landing() {
               suppressing.
             </p>
           </article>
-          <article className="ld-feature">
+          <article className="ld-principle">
+            <span className="ld-principle-n">04</span>
             <h3>Every view has a link</h3>
             <p>
-              A specific plane, steel or cooling rate lives in the URL, so a worked example can
-              be handed to a class as a link and it opens exactly as you left it.
+              A specific plane, steel or cooling rate lives in the URL, so a worked example
+              can be handed to a class as a link and it opens exactly as you left it.
             </p>
           </article>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="ld-section ld-audience">
-        <h2 className="ld-h2">Who it is for</h2>
+      <Reveal className="ld-section">
+        <p className="ld-kicker">Who it is for</p>
+        <h2 className="ld-h2">Three ways people use it.</h2>
         <div className="ld-cols">
           <div>
             <h3>Students</h3>
@@ -413,28 +465,38 @@ export function Landing() {
           <div>
             <h3>Instructors</h3>
             <p>
-              Set up a case, copy the address bar, paste it into a worksheet. The link carries
-              the state, so everyone opens the same diagram.
+              Set up a case, copy the address bar, paste it into a worksheet. The link
+              carries the state, so everyone opens the same diagram.
             </p>
           </div>
           <div>
             <h3>Engineers</h3>
             <p>
-              A quick reference for the relations you half-remember — d-spacing, Schmid factors,
-              hardenability, performance indices — with the working shown.
+              A quick reference for the relations you half-remember — d-spacing, Schmid
+              factors, hardenability, performance indices — with the working shown.
             </p>
           </div>
         </div>
-      </section>
+      </Reveal>
 
-      <section className="ld-final">
-        <h2>Pick something and start pulling on it.</h2>
+      <section className="ld-close">
+        <h2 className="ld-h2">Pick something and start pulling on it.</h2>
+        <p>
+          Nothing to sign up for and nothing to install. Every module opens straight from a
+          link, and every view you reach has one of its own.
+        </p>
         <div className="ld-cta">
-          <a className="ld-btn ld-btn-primary" href="#/crystals">
+          <a className="ld-btn" href="#/crystals">
             Open a unit cell
+            <span className="ld-arrow" aria-hidden="true">
+              →
+            </span>
           </a>
-          <a className="ld-btn" href="#/heattreat">
+          <a className="ld-link" href="#/heattreat">
             Quench some steel
+            <span className="ld-arrow" aria-hidden="true">
+              →
+            </span>
           </a>
         </div>
       </section>
@@ -443,49 +505,52 @@ export function Landing() {
 }
 
 /**
- * Hero artwork: a close-packed plane fading into its lattice, with one cell
- * outlined. Drawn rather than photographed so it themes with the page and costs
- * nothing to load.
+ * The frame around a data figure.
+ *
+ * Two jobs, both of them about small screens. The plates are drawn on a
+ * 640-unit viewBox with 11px axis labels, and at 390px the figure renders about
+ * 340px wide, which puts the tick labels at an effective six pixels — a figure
+ * nobody can read, on a page whose entire argument is that its figures are
+ * real. So below 700px the art scrolls inside its own box at a floor width
+ * instead of shrinking, which is the same treatment `index.css` gives a wide
+ * table.
+ *
+ * That makes it a scroll container, and a scroll container has to be reachable
+ * from the keyboard — Chrome and Firefox now focus one automatically, Safari
+ * does not, so the `tabIndex` is explicit rather than inherited from browser
+ * behaviour. The label it needs to carry as a focus target is worth having
+ * anyway: the SVG inside is `aria-hidden`, so without it a screen-reader user
+ * has no way to encounter the figure at all.
  */
-function HeroArt() {
-  const rows = 6;
-  const cols = 7;
-  const dots: React.ReactNode[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = 34 + c * 42 + (r % 2 ? 21 : 0);
-      const y = 34 + r * 38;
-      const d = Math.hypot(x - 150, y - 130);
-      dots.push(
-        <circle
-          key={`${r}-${c}`}
-          cx={x}
-          cy={y}
-          r={13}
-          fill="var(--ld-accent)"
-          opacity={Math.max(0.1, 0.78 - d / 420)}
-        />,
-      );
-    }
-  }
+function PlateArt({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <svg viewBox="0 0 340 280" className="ld-hero-svg" role="img" aria-hidden="true">
-      <g stroke="var(--ld-art)" strokeWidth="1" opacity="0.35" fill="none">
-        {Array.from({ length: rows }, (_, r) => (
-          <path key={`h${r}`} d={`M20 ${34 + r * 38}H330`} />
-        ))}
-        {Array.from({ length: cols }, (_, c) => (
-          <path key={`d${c}`} d={`M${34 + c * 42} 24L${34 + c * 42 + 96} 240`} />
-        ))}
-      </g>
-      {dots}
-      <path
-        d="M76 110h84v76H76z"
-        fill="none"
-        stroke="var(--ld-ring)"
-        strokeWidth="2"
-        strokeDasharray="5 4"
-      />
-    </svg>
+    <div className="ld-plate-art" role="group" tabIndex={0} aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A section that fades in when it is scrolled to.
+ *
+ * The hidden resting state lives in CSS, so the guarantee that matters is the
+ * one `useReveal` makes: under reduced motion, or in a browser without
+ * `IntersectionObserver`, `shown` starts true and the section is simply there.
+ * A reveal that can strand content invisible is worse than no reveal.
+ */
+function Reveal({
+  className,
+  id,
+  children,
+}: {
+  className?: string;
+  id?: string;
+  children: React.ReactNode;
+}) {
+  const { ref, shown } = useReveal<HTMLElement>();
+  return (
+    <section ref={ref} id={id} className={`${className ?? ''} ld-reveal${shown ? ' is-in' : ''}`}>
+      {children}
+    </section>
   );
 }

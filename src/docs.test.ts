@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+// Read as text through Vite's `?raw`, not `node:fs`: the app tsconfig sets
+// `types: ["vite/client"]`, so Node's built-ins are not in this program.
+import landingSource from './components/Landing.tsx?raw';
+import fatiguePlate from './assets/figures/FatigueFigure.tsx?raw';
 import { NAV_GROUPS, findItem, findItemOrNull } from './nav';
 import { STRUCTURES } from './crystal/structures';
 import { SLIP_MODES, slipSystems } from './crystal/miller';
 import { MECH_MATERIALS } from './mechanical/materials';
 import { INDICES, SELECTION_MATERIALS } from './selection/materials';
 import { XRD_SAMPLES, XRD_SOURCES } from './xrd/diffraction';
-import { PHASE_SYSTEMS } from './phase/systems';
+import { CEMENTITE_X, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS, lever, steelMicrostructure } from './phase/systems';
 import { JOMINY_DISTANCES, JOMINY_RATES, STEELS } from './heattreat/steels';
 import { DIFFUSION_SYSTEMS } from './diffusion/model';
 import { BRITTLE_SOLIDS, FATIGUE_BEHAVIOUR, FRACTURE_ALLOYS, GROWTH_CLASSES } from './failure/materials';
@@ -97,5 +101,101 @@ describe('landing page stats strip', () => {
     expect((elementsRaw as unknown[]).length).toBe(118);
     expect(SELECTION_MATERIALS).toHaveLength(54);
     expect(STRUCTURES).toHaveLength(8);
+  });
+});
+
+/**
+ * The landing page shows a worked example — Fe–0.4 wt% C just below the
+ * eutectoid — and prints the four fractions it produces. Those numerals are
+ * written into `Landing.tsx` rather than computed there, to keep `phase/systems`
+ * out of the eagerly-loaded chunk. This is the price of that: the front page's
+ * arithmetic is asserted against the function the phase module actually calls,
+ * so a change to the model breaks the suite instead of quietly leaving a wrong
+ * number on the most-read page in the product.
+ */
+describe('landing page worked example — Fe–0.4 wt% C', () => {
+  const C0 = 0.4;
+  const result = steelMicrostructure(C0);
+
+  /** Percentages as the page prints them: one decimal place. */
+  const pct = (fraction: number): string => `${(fraction * 100).toFixed(1)} %`;
+
+  it('is a hypoeutectoid steel, so the proeutectoid phase is ferrite', () => {
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe('hypoeutectoid');
+    expect(result!.proeutectoid).toBe('α (ferrite)');
+  });
+
+  it('prints 48.8 % proeutectoid ferrite and 51.2 % pearlite', () => {
+    expect(pct(result!.proeutectoidFraction)).toBe('48.8 %');
+    expect(pct(result!.pearlite)).toBe('51.2 %');
+  });
+
+  it('prints 94.3 % total ferrite and 5.7 % total cementite', () => {
+    expect(pct(result!.totalFerrite)).toBe('94.3 %');
+    expect(pct(result!.totalCementite)).toBe('5.7 %');
+  });
+
+  it('agrees with the lever rule taken directly across the α + Fe₃C field', () => {
+    expect(result!.totalFerrite).toBeCloseTo(lever(C0, FERRITE_MAX, CEMENTITE_X), 12);
+  });
+
+  it('quotes the eutectoid the caption names: 0.76 wt% C at 727 °C', () => {
+    expect(EUTECTOID_X).toBe(0.76);
+    expect(EUTECTOID_T).toBe(727);
+  });
+
+  it('sits below the eutectoid composition, which is what makes it hypoeutectoid', () => {
+    expect(C0).toBeLessThan(EUTECTOID_X);
+    expect(C0).toBeGreaterThan(FERRITE_MAX);
+  });
+});
+
+/**
+ * Two things the landing page depends on that nothing else was checking.
+ *
+ * The first is structural: the module index is built by walking `NAV_GROUPS`
+ * and looking each id up in the page's own `CARDS`. A module added to the nav
+ * without a card would render nothing for it — on the one view that is loaded
+ * eagerly.
+ *
+ * The second is a claim. Figure 3's caption names the alloys the plate draws,
+ * and an earlier draft named aluminium while the generator plotted nickel — a
+ * factual error on the page whose whole argument is that its figures are real.
+ * The figure test checks that *some* alloy has a fatigue limit and *some* does
+ * not; this checks that the ones named in the prose are the ones on the plate.
+ */
+describe('landing page and the data behind it', () => {
+  it('has a card for every module in the navigation', () => {
+    for (const item of NAV_GROUPS.flatMap((g) => g.items)) {
+      expect(landingSource).toContain(`id: '${item.id}'`);
+    }
+  });
+
+  it("names, in Fig. 3's caption, the alloys the plate actually draws", () => {
+    const source = landingSource;
+    const plate = fatiguePlate;
+
+    // The alloys the generator chose, as the plate labels them.
+    const plotted = ['Titanium', 'Steel (1020)', 'Nickel'];
+    for (const alloy of plotted) expect(plate).toContain(`>${alloy}<`);
+    expect(plate).toContain('no fatigue limit');
+
+    // Fig. 3's caption alone — not the whole file, where "steel" appears in
+    // half a dozen unrelated sentences and would make this pass for free.
+    const entry = source.slice(source.indexOf('n: 3,'), source.indexOf('n: 4,'));
+    const body = entry.slice(entry.indexOf("body:"), entry.indexOf('href:'));
+    expect(body.length).toBeGreaterThan(80);
+
+    // Every alloy the caption names must be one the plate draws, and the
+    // caption must name at least the two that carry its point.
+    const mentioned = ['Aluminium', 'Copper', 'Brass', 'Titanium', 'Steel', 'Nickel'].filter((a) =>
+      body.includes(a),
+    );
+    expect(mentioned).not.toHaveLength(0);
+    for (const alloy of mentioned) {
+      expect(plotted.some((p) => p.startsWith(alloy))).toBe(true);
+    }
+    expect(mentioned).toContain('Nickel');
   });
 });

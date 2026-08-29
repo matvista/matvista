@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "figures": "node --experimental-strip-types scripts/gen-lattice-plate.ts && node --experimental-strip-types scripts/gen-module-figures.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

@@ -629,12 +629,21 @@ writing the table above — which is the point of having it:
 | `56037ff` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | The raw length is unchanged at 301,121 B, but the gzip figure went 85.17 → **85.18 kB**. |
 | `7c1161b` | the same sentence | 301,121 B again, gzip 85.17 → **85.16 kB**. |
 
-Both are the `a834086` shape exactly: the index chunk's *length* holds while its content
-moves, because the lazy-chunk filename table inside it changes whenever any module chunk
-does, and the gzip figure wobbles by 0.01 kB with it. Every other commit on this branch
-holds at 301,121 B / 85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet, checked one
-build per commit. **"Unchanged" needs the gzip figure compared, not assumed** — the raw
-length is the part that does not move.
+| `bd9de77` | "First-paint chunk 301,121 B raw / 85.16 kB gzip … unchanged from the parent's own build" | 301,121 B again, gzip 85.16 → **85.17 kB**. Written after the two rows above, which is the point of the rule below. |
+
+All three are the `a834086` shape exactly, and the mechanism is worth stating as a rule of
+its own:
+
+> **The index chunk's raw length is stable; its gzip figure is not.** The lazy-chunk
+> filename table lives inside that chunk, so any commit that changes *any* module chunk
+> changes the index chunk's bytes without changing its length, and the reported gzip
+> figure wobbles by ±0.01 kB. Quote it as a pair — parent value and commit value, both
+> from a build — and never write "unchanged" for it on the strength of the raw length
+> holding.
+
+Fourteen of the seventeen commits on this branch really do hold at 301,121 B / 85.17 kB
+gzip with a 37,320 B / 7.78 kB stylesheet, checked one build per commit; the three above
+are the ones that moved.
 
 And two in the branch's own summary report, which is not a commit and cannot be corrected
 in place:

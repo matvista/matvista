@@ -371,10 +371,20 @@ export function untransformedAusteniteCarbon(outcome: Outcome, bulkC: number): n
  * remains has been enriched to the eutectoid composition. What is *not* real
  * is the amount. Having no ferrite kinetics, this holds at its own bound over
  * much of each steel's range and then drops to nothing at the ferrite floor,
- * where measured dilatometry has ferrite well below equilibrium and declining
- * steadily — 52 → 22 vol% from 1.0 to 7.0 °C/s. So read the number as a
- * ceiling the true value sits under by a margin that widens as the quench
- * gets faster.
+ * where measurement has ferrite well below equilibrium and declining steadily
+ * with cooling rate. So read the number as a ceiling the true value sits under
+ * by a margin that widens as the quench gets faster.
+ *
+ * **The two sources cited across this module do not describe the same steel,
+ * and the difference is hardenability, not disagreement.** The 4340
+ * dilatometry (Materials 2020, 13, 5585) finds proeutectoid ferrite only at
+ * 0.01–0.1 °C/s, because 4340 is the deep-hardening grade — that is the whole
+ * point of it, and this model puts its own ferrite band at 0.01–0.86 °C/s,
+ * the same order. The 52 → 22 vol% decline from 1.0 to 7.0 °C/s is the
+ * leaner-alloyed 0.4 wt% C comparison, where ferrite survives to much faster
+ * quenches; against that, this model's own 5140 band runs to 15.16 °C/s. Read
+ * the first for where ferrite stops and the second for how it declines, and
+ * do not read either as covering both grades.
  *
  * The two steels differ enough that no single pair of figures describes both,
  * which is why `ferriteBand` computes them per steel and the UI prints those:
@@ -466,17 +476,15 @@ function splitProeutectoid(
 function describeParts(parts: { product: Product; fraction: number }[]): {
   /** "49% proeutectoid ferrite and 25% coarse pearlite" — one figure each. */
   phrase: string;
-  /** The bare names, for the branch that quantifies nothing. */
-  names: string;
   total: number;
 } {
   const shown = parts.filter((p) => p.fraction >= TRACE_FRACTION);
   const each = shown.map((p) => `${Math.round(p.fraction * 100)}% ${p.product}`);
-  const join = (xs: string[]) =>
-    xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
   return {
-    phrase: join(each),
-    names: join(shown.map((p) => p.product)),
+    phrase:
+      each.length <= 1
+        ? (each[0] ?? '')
+        : `${each.slice(0, -1).join(', ')} and ${each[each.length - 1]}`,
     total: shown.reduce((a, p) => a + p.fraction, 0),
   };
 }

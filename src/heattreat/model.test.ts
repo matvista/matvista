@@ -711,3 +711,100 @@ describe('the prose names only phases the bar draws', () => {
     expect(o.summary).toMatch(/embedded in martensite/);
   });
 });
+
+/**
+ * Where each diffusional product is allowed to form.
+ *
+ * `productAt` has been byte-identical to the base commit through this whole
+ * series, and it is the actual defect the ferrite work kept circling. Its
+ * pearlite/bainite divide is the arithmetic midpoint of the sub-nose range —
+ * 395 °C for 5140 and 4340 — so the bainite field measured at 476–480 °C for
+ * 4340 (dilatometric CCT, Materials 2020, 13, 5585) was labelled "fine
+ * pearlite", and `splitProeutectoid` fires on pearlitic labels, so
+ * ferrite-leads then reported the whole of it as proeutectoid ferrite. That is
+ * how the model came to claim proeutectoid ferrite forming at 396.5 °C against
+ * a measured ferrite start near 700 °C.
+ *
+ * The fix is a floor on the pearlitic field, not a new invented temperature:
+ * in a hypoeutectoid steel the product below the pearlite nose is bainite. The
+ * nose is shipped digitised data, it is the lowest temperature at which this
+ * model has any evidence of a pearlitic reaction at all, and it errs toward
+ * under-reporting ferrite rather than over-reporting it.
+ */
+describe('the pearlitic field has a floor', () => {
+  const ferriteOf = (o: ReturnType<typeof predict>) =>
+    o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+  it.each(['5140', '4340'])('%s reports no ferrite below its pearlite nose', (id) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    let lowest = Infinity;
+    for (let lg = -2; lg <= 4; lg += 0.001) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      if (ferriteOf(o) > 0 && o.startTemp !== null) lowest = Math.min(lowest, o.startTemp);
+    }
+    expect(lowest).toBeGreaterThanOrEqual(s.nose.temp);
+    // Measured before this change: 403.0 °C for 5140, 396.5 °C for 4340.
+    expect(lowest).toBeGreaterThan(400);
+  });
+
+  it('gives a hypoeutectoid steel no fine-pearlite field', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.0005) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        expect(o.fractions.map((f) => f.product)).not.toContain('fine pearlite');
+      }
+    }
+  });
+
+  it('closes the narrow fine-pearlite window a reviewer found in 4340', () => {
+    // 1.9877–2.0082 °C/s reported "fine pearlite" starting near 396 °C, which
+    // ferrite-leads then rendered as proeutectoid ferrite.
+    const s = getSteel('4340');
+    const ttt = buildTtt(s);
+    for (const rate of [1.9877, 1.99, 2.0, 2.0082]) {
+      const o = predict(s, ttt, AUST, rate);
+      expect(o.fractions.map((f) => f.product)).not.toContain('fine pearlite');
+      expect(ferriteOf(o)).toBe(0);
+      expect(o.fractions.map((f) => f.product)).toContain('bainite');
+    }
+  });
+
+  it('leaves 1080 — the eutectoid grade — classified exactly as before', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    // coarse ≥ 540, fine ≥ (540+250)/2 = 395, bainite below: the shipped divide.
+    const seen = new Set<string>();
+    for (let lg = -2; lg <= 4; lg += 0.001) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      for (const f of o.fractions) {
+        if (f.fraction > 0) seen.add(f.product);
+      }
+      if (o.startTemp === null) continue;
+      const expected =
+        o.startTemp >= 540 ? 'coarse pearlite' : o.startTemp >= 395 ? 'fine pearlite' : 'bainite';
+      expect(o.fractions.map((f) => f.product)).toContain(expected);
+    }
+    // 1080 still reaches all three diffusional products.
+    expect(seen).toContain('coarse pearlite');
+    expect(seen).toContain('fine pearlite');
+    expect(seen).toContain('bainite');
+    expect(seen).not.toContain('proeutectoid ferrite');
+  });
+
+  /**
+   * `productAt` only labels; it never touches the Scheil run that decides
+   * whether the nose was missed. The critical rates must therefore be bit-,
+   * not merely close-to-, identical.
+   */
+  it.each([
+    ['1080', 233.41044666842697],
+    ['5140', 36.46135678530757],
+    ['4340', 2.133696798237151],
+  ])('%s: critical cooling rate is bit-identical', (id, expected) => {
+    const s = getSteel(id);
+    expect(criticalCoolingRate(s, buildTtt(s), AUST)).toBe(expected);
+  });
+});

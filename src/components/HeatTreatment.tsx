@@ -12,6 +12,7 @@ import {
   coolingPath,
   criticalCoolingRate,
   predict,
+  productCarbon,
   tangentCoolingRate,
   TRACE_FRACTION,
   type CurvePoint,
@@ -74,6 +75,21 @@ export function HeatTreatment() {
     () => predict(steel, ttt, AUSTENITISE, rate),
     [steel, ttt, rate],
   );
+  // Ferrite actually reported for this path, used to gate the two disclosures
+  // below — the enrichment caveat only means anything once ferrite has formed.
+  const ferriteFraction =
+    outcome.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
+
+  const solid = outcome.fractions
+    .filter((f) => f.product !== 'martensite')
+    .reduce((a, f) => a + f.fraction, 0);
+  const carbonInSolid = outcome.fractions.reduce(
+    (a, f) => a + f.fraction * productCarbon(f.product, steel.composition.C),
+    0,
+  );
+  const enrichedCarbon =
+    solid < 1 ? (steel.composition.C - carbonInSolid) / (1 - solid) : steel.composition.C;
+
   const critical = useMemo(
     () => criticalCoolingRate(steel, ttt, AUSTENITISE),
     [steel, ttt],
@@ -300,7 +316,10 @@ export function HeatTreatment() {
             )}
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
-              <td>{Math.round(martensiteStart(steel.composition))} °C</td>
+              <td>
+                {Math.round(martensiteStart(steel.composition))} °C
+                {ferriteFraction > 0 && ' (bulk composition)'}
+              </td>
             </tr>
             <tr>
               <th scope="row">M90</th>
@@ -311,7 +330,7 @@ export function HeatTreatment() {
           </tbody>
         </table>
 
-        {outcome.fractions.some((f) => f.product === 'proeutectoid ferrite') && (
+        {ferriteFraction > 0 && (
           <p className="ht-caveat">
             <strong>The ferrite fraction is an upper bound.</strong> It comes from the lever rule on
             the <em>binary</em> Fe–Fe₃C diagram, against the eutectoid at 0.76 wt% C. Manganese,
@@ -321,6 +340,18 @@ export function HeatTreatment() {
             would give roughly 35–40% rather than{' '}
             {(ttt.equilibriumFerrite * 100).toFixed(0)}%. Ae₃ above is Andrews' regression over the
             whole composition and does account for the alloying; the fraction does not.
+          </p>
+        )}
+
+        {ferriteFraction > 0 && (
+          <p className="ht-caveat">
+            <strong>Mˢ is computed from the bulk composition.</strong> Rejecting ferrite leaves the
+            untransformed austenite richer in carbon than the steel as a whole — here about{' '}
+            {enrichedCarbon.toFixed(2)} wt% C against {steel.composition.C.toFixed(2)} — and carbon
+            is the term that dominates Andrews' Mˢ. The real Mˢ for that austenite is roughly{' '}
+            {Math.round(423 * (enrichedCarbon - steel.composition.C))} °C below the figure above.
+            Feeding the enrichment back would move the whole construction, including every critical
+            cooling rate, so it is not done here — the number is stated as it is computed.
           </p>
         )}
 

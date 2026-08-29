@@ -4,7 +4,7 @@ import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
   tangentCoolingRate,
 } from './model';
-import { EUTECTOID_T, steelMicrostructure } from '../phase/systems';
+import { EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, steelMicrostructure } from '../phase/systems';
 
 const AUST = 850;
 const martensite = (id: string, rate: number) => {
@@ -337,21 +337,20 @@ describe('proeutectoid ferrite', () => {
    * whatever pearlite a 0.40 wt% C steel forms must be accompanied by
    * proeutectoid ferrite in the lever-rule ratio.
    */
-  it('keeps ferrite and pearlite in the lever-rule ratio wherever it splits', () => {
+  it('reduces to the lever-rule ratio on a completed transformation', () => {
     for (const id of ['5140', '4340']) {
       const s = getSteel(id);
       const ttt = buildTtt(s);
       const eq = ttt.equilibriumFerrite;
       for (let lg = -2; lg <= 4; lg += 0.02) {
         const o = predict(s, ttt, AUST, 10 ** lg);
+        if (!o.complete || o.startTemp === null) continue;
         const f = ferriteOf(o);
         const p = o.fractions
           .filter((x) => x.product === 'coarse pearlite' || x.product === 'fine pearlite')
           .reduce((a, x) => a + x.fraction, 0);
-        // The split is claimed only for a completed transformation; a path cut
-        // short at Mˢ reports the undivided product, so `f` is 0 there.
-        if (f > 0) expect(f / (f + p)).toBeCloseTo(eq, 12);
-        else if (o.complete && p > 0) expect(eq).toBe(0);
+        expect(f).toBeCloseTo(eq, 12);
+        expect(p).toBeCloseTo(1 - eq, 12);
       }
     }
   });
@@ -396,42 +395,54 @@ describe('proeutectoid ferrite', () => {
 });
 
 /**
- * Where the ferrite split may and may not be claimed.
+ * Prose and bar must describe the same structure.
  *
- * The lever rule fixes the *equilibrium* ferrite fraction. It says nothing
- * about how a half-finished transformation divides, and this model has no
- * ferrite kinetics to say it with — so the split is claimed only where the
- * diffusional transformation ran to completion.
+ * `TRACE_FRACTION` filters what the bar draws. When the prose was built from a
+ * different number than the bar, a product just above the floor could be split
+ * into parts just below it and the prose would quantify something no segment
+ * showed. Both are now gated on the same fractions, by `describeParts`.
  *
- * The regression these guard against: the split was applied in the
- * partially-transformed branch too, where `TRACE_FRACTION` gates the prose on
- * the *unsplit* fraction and the bar on the *split* fractions. In the window
- * 0.005 ≤ f < 0.005/(1 − 0.4878) the prose quantified a product the bar had
- * already filtered out — the exact contradiction the constant exists to
- * prevent.
+ * (This block previously asserted that the split applied only to a completed
+ * transformation. That rule is withdrawn — it put a 48.78-point step across an
+ * infinitesimal rate change and broke carbon conservation; see the
+ * ferrite-leads block below. What survives is the prose/bar invariant, which
+ * was the part worth keeping.)
  */
-describe('the ferrite split is only claimed where the model determines it', () => {
+describe('prose and bar never disagree', () => {
   const ferriteOf = (o: ReturnType<typeof predict>) =>
     o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
 
-  it('reports ferrite only when the transformation ran to completion', () => {
-    for (const s of STEELS) {
+  it('a partially transformed hypoeutectoid path forms ferrite first', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
       const ttt = buildTtt(s);
+      let sawPartialFerrite = false;
       for (let lg = -2; lg <= 4; lg += 0.005) {
         const o = predict(s, ttt, AUST, 10 ** lg);
-        if (ferriteOf(o) > 0) expect(o.complete).toBe(true);
+        if (!o.complete && ferriteOf(o) > 0) sawPartialFerrite = true;
       }
+      // The withdrawn rule made this impossible; ferrite-leads requires it.
+      expect(sawPartialFerrite).toBe(true);
     }
   });
 
-  it('never splits a product that is cut short at Mˢ', () => {
-    for (const s of STEELS) {
+  /**
+   * The defining relation of ferrite-leads, asserted directly: pearlite exists
+   * only once ferrite has reached its equilibrium fraction, and while ferrite
+   * is still short of that there is no pearlite at all.
+   */
+  it('pearlite appears only after ferrite has saturated', () => {
+    for (const id of ['5140', '4340']) {
+      const s = getSteel(id);
       const ttt = buildTtt(s);
-      for (let lg = -2; lg <= 4; lg += 0.005) {
+      const alpha = ttt.equilibriumFerrite;
+      for (let lg = -2; lg <= 4; lg += 0.002) {
         const o = predict(s, ttt, AUST, 10 ** lg);
-        if (!o.complete) {
-          expect(o.fractions.map((f) => f.product)).not.toContain('proeutectoid ferrite');
-        }
+        const pearlite = o.fractions
+          .filter((f) => f.product === 'coarse pearlite' || f.product === 'fine pearlite')
+          .reduce((a, f) => a + f.fraction, 0);
+        if (pearlite > 0) expect(ferriteOf(o)).toBeCloseTo(alpha, 12);
+        if (ferriteOf(o) < alpha - 1e-12) expect(pearlite).toBe(0);
       }
     }
   });
@@ -461,10 +472,8 @@ describe('the ferrite split is only claimed where the model determines it', () =
   });
 
   /**
-   * The three reachable slider detents a reviewer found. On the parent each
-   * drew a single ~0.91% segment; the split pushed both halves under
-   * TRACE_FRACTION so the bar showed martensite alone while the prose still
-   * claimed 1%.
+   * The three reachable slider detents a reviewer found, where the prose
+   * claimed 1% of a product the bar had filtered out entirely.
    */
   it.each([
     ['5140', 33.1131],
@@ -473,12 +482,161 @@ describe('the ferrite split is only claimed where the model determines it', () =
   ])('%s at %f °C/s draws every product its prose quantifies', (id, rate) => {
     const s = getSteel(id);
     const o = predict(s, buildTtt(s), AUST, rate);
-    const displayed = o.fractions.filter((f) => f.fraction >= TRACE_FRACTION);
-    // The diffusional product is ~0.91% here — above the trace floor, so it
-    // must survive to the bar rather than being split into two invisible parts.
-    expect(displayed.map((f) => f.product)).toContain(
-      o.fractions.find((f) => f.product !== 'martensite')!.product,
-    );
-    expect(ferriteOf(o)).toBe(0);
+    const quantified = o.summary.match(/roughly (\d+)% ([^,.]+?) embedded/)!;
+    expect(quantified).not.toBeNull();
+    for (const name of quantified[2].split(' + ').map((x) => x.trim())) {
+      const part = o.fractions.find((f) => f.product === name)!;
+      expect(part.fraction).toBeGreaterThanOrEqual(TRACE_FRACTION);
+    }
+  });
+});
+
+/**
+ * The three invariants the ferrite split has to satisfy.
+ *
+ * Two earlier attempts each failed one of them and had to be replaced:
+ * a proportional split applied at every rate credited ferrite where the
+ * model's kinetics forbid it, and restricting the split to the completed
+ * branch installed a 48.78-point discontinuity across a 2×10⁻¹⁴ % change in
+ * cooling rate, broke carbon conservation (up to 98.3% pearlite in a 0.40 wt%
+ * C steel, which needs the remaining austenite to hold −19 wt% C), and made
+ * the pearlite fraction non-monotone in rate by 48.7 points.
+ *
+ * The model asserted here is ferrite-leads: ferrite is the faster reaction and
+ * runs ahead of pearlite, so the first `alphaEq` of any diffusional
+ * transformation is proeutectoid ferrite and only the remainder is pearlite.
+ *
+ *     ferrite  = min(f, alphaEq)
+ *     pearlite = max(0, f − alphaEq)
+ *
+ * At f = 1 that reduces to exactly the lever rule already shipped.
+ */
+describe('ferrite-leads: continuity, monotonicity, carbon balance', () => {
+  const HYPO = ['5140', '4340'];
+  const fracOf = (o: ReturnType<typeof predict>, p: string) =>
+    o.fractions.find((f) => f.product === p)?.fraction ?? 0;
+  const ferriteOf = (o: ReturnType<typeof predict>) => fracOf(o, 'proeutectoid ferrite');
+  const pearliteOf = (o: ReturnType<typeof predict>) =>
+    fracOf(o, 'coarse pearlite') + fracOf(o, 'fine pearlite');
+
+  /** The slowest rate whose transformation does not run to completion. */
+  function completionBoundary(id: string): number {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    // `complete` is also true on the fully-martensitic branch, so the search
+    // is confined below the critical rate and asks for a *diffusional*
+    // transformation that finished.
+    const done = (r: number) => {
+      const o = predict(s, ttt, AUST, r);
+      return o.complete && o.startTemp !== null;
+    };
+    let lo = 0.001; // finishes
+    let hi = criticalCoolingRate(s, ttt, AUST)! * 0.9; // does not
+    expect(done(lo)).toBe(true);
+    expect(done(hi)).toBe(false);
+    for (let i = 0; i < 200; i++) {
+      const mid = Math.sqrt(lo * hi);
+      if (done(mid)) lo = mid;
+      else hi = mid;
+    }
+    return hi;
+  }
+
+  it.each(HYPO)('%s: every product is continuous across the completion boundary', (id) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const edge = completionBoundary(id);
+    const below = predict(s, ttt, AUST, edge * (1 - 1e-9));
+    const above = predict(s, ttt, AUST, edge * (1 + 1e-9));
+    expect(below.complete && below.startTemp !== null).toBe(true);
+    expect(above.complete).toBe(false);
+    // The regression this replaces jumped 48.78 points here.
+    expect(Math.abs(ferriteOf(above) - ferriteOf(below))).toBeLessThan(0.001);
+    expect(Math.abs(pearliteOf(above) - pearliteOf(below))).toBeLessThan(0.001);
+  });
+
+  /**
+   * The two rates a reviewer found, where the completed/partial branch flip
+   * used to swap a ferrite + pearlite structure for 100% pearlite at the same
+   * start temperature and the same hardness.
+   */
+  it.each([
+    ['5140', 3.038446399],
+    ['4340', 0.142246453],
+  ])('%s at %f °C/s reads the same either side of the branch flip', (id, rate) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const lo = predict(s, ttt, AUST, rate * (1 - 1e-12));
+    const hi = predict(s, ttt, AUST, rate * (1 + 1e-12));
+    expect(Math.abs(ferriteOf(hi) - ferriteOf(lo))).toBeLessThan(0.001);
+    expect(Math.abs(pearliteOf(hi) - pearliteOf(lo))).toBeLessThan(0.001);
+  });
+
+  it.each(HYPO)('%s: ferrite and pearlite are both monotone in cooling rate', (id) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    let prevFerrite = 1;
+    let prevPearlite = 1;
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      expect(ferriteOf(o)).toBeLessThanOrEqual(prevFerrite + 1e-9);
+      expect(pearliteOf(o)).toBeLessThanOrEqual(prevPearlite + 1e-9);
+      prevFerrite = ferriteOf(o);
+      prevPearlite = pearliteOf(o);
+    }
+  });
+
+  /**
+   * Carbon conservation. Ferrite holds 0.022 wt% C and pearlite 0.76, both
+   * from the phase module. Their combined carbon can never exceed the steel's,
+   * and what is left in the austenite can only be richer than the bulk — that
+   * is the direction ferrite rejection moves it.
+   */
+  it.each(HYPO)('%s: carbon balances, and the austenite is enriched not depleted', (id) => {
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const C0 = s.composition.C;
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      const inFerrite = ferriteOf(o) * FERRITE_MAX;
+      const inPearlite = pearliteOf(o) * EUTECTOID_X;
+      const consumed = inFerrite + inPearlite;
+      const solid = ferriteOf(o) + pearliteOf(o);
+      expect(consumed).toBeLessThanOrEqual(C0 + 1e-12);
+      if (solid < 1 - 1e-9) {
+        const remaining = (C0 - consumed) / (1 - solid);
+        expect(remaining).toBeGreaterThanOrEqual(C0 - 1e-9);
+        // and never past the eutectoid, which is where ferrite rejection stops
+        expect(remaining).toBeLessThanOrEqual(EUTECTOID_X + 1e-9);
+      }
+    }
+  });
+
+  it.each(HYPO)('%s: pearlite never exceeds what the carbon allows', (id) => {
+    // A steel at C0 can produce at most C0/0.76 of pearlite by mass.
+    const s = getSteel(id);
+    const ttt = buildTtt(s);
+    const ceiling = s.composition.C / EUTECTOID_X;
+    expect(ceiling).toBeCloseTo(0.5263, 4);
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      expect(pearliteOf(predict(s, ttt, AUST, 10 ** lg))).toBeLessThanOrEqual(ceiling + 1e-9);
+    }
+  });
+
+  it('still reduces to the lever rule on a slow cool', () => {
+    for (const id of HYPO) {
+      const s = getSteel(id);
+      const o = predict(s, buildTtt(s), AUST, 0.01);
+      expect(ferriteOf(o)).toBeCloseTo(equilibriumFerriteFraction(s), 12);
+      expect(pearliteOf(o)).toBeCloseTo(1 - equilibriumFerriteFraction(s), 12);
+    }
+  });
+
+  it('leaves 1080 with no ferrite at any rate', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      expect(ferriteOf(predict(s, ttt, AUST, 10 ** lg))).toBe(0);
+    }
   });
 });

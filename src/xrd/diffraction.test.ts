@@ -124,3 +124,97 @@ describe('domain guard', () => {
     }
   });
 });
+
+/**
+ * The reachable reflection index is set by the Bragg limit, not by a constant.
+ * d = a/√(h²+k²+l²) and sin θ = λ/2d ≤ 1 together give
+ *
+ *     √(h²+k²+l²) ≤ 2a/λ,
+ *
+ * so no index can exceed 2a/λ. A fixed cap truncates the pattern whenever
+ * 2a/λ runs past it — measured: silicon (a = 0.5431 nm) with Mo Kα
+ * (λ = 0.07107 nm) has 2a/λ ≈ 15.3, so a cap of 8 silently drops 41 of its
+ * 79 lines.
+ */
+describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
+  /**
+   * Independent enumeration to a generous index, applying the same
+   * one-representative-per-family rule as `computePattern`: the family is
+   * keyed by its indices sorted descending, and only the sorted member is
+   * kept.
+   */
+  function bruteForceFamilies(
+    lattice: 'sc' | 'bcc' | 'fcc' | 'diamond',
+    a: number,
+    lambda: number,
+    maxTwoTheta = 140,
+  ): Set<string> {
+    const BRUTE_INDEX = 25;
+    const fams = new Set<string>();
+    for (let h = 0; h <= BRUTE_INDEX; h++) {
+      for (let k = 0; k <= h; k++) {
+        for (let l = 0; l <= k; l++) {
+          if (h + k + l === 0) continue;
+          if (!isAllowed(lattice, h, k, l)) continue;
+          const d = a / Math.sqrt(h * h + k * k + l * l);
+          const sinTheta = lambda / (2 * d);
+          if (sinTheta > 1) continue;
+          const twoTheta = (2 * Math.asin(sinTheta) * 180) / Math.PI;
+          if (twoTheta > maxTwoTheta) continue;
+          fams.add(`${h},${k},${l}`);
+        }
+      }
+    }
+    return fams;
+  }
+
+  for (const sample of XRD_SAMPLES) {
+    for (const source of XRD_SOURCES) {
+      it(`${sample.id} × ${source.id}: every Bragg-reachable family is returned`, () => {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda);
+        const got = new Set(peaks.map((p) => `${p.h},${p.k},${p.l}`));
+        const want = bruteForceFamilies(sample.lattice, sample.a, source.lambda);
+        // Same set, both directions — no misses and no spurious extras.
+        expect([...got].sort()).toEqual([...want].sort());
+      });
+    }
+  }
+
+  it('recovers silicon’s 79 lines under Mo Kα (shipped cap of 8 returned 38)', () => {
+    const si = XRD_SAMPLES.find((s) => s.id === 'si')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    expect(computePattern(si.lattice, si.a, mo.lambda)).toHaveLength(79);
+  });
+
+  it('recovers copper’s (911) and (931) under Mo Kα', () => {
+    const cu = XRD_SAMPLES.find((s) => s.id === 'cu')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    const peaks = computePattern(cu.lattice, cu.a, mo.lambda);
+    const fams = peaks.map((p) => `${p.h}${p.k}${p.l}`);
+    expect(fams).toContain('911');
+    expect(fams).toContain('931');
+    expect(peaks).toHaveLength(40);
+  });
+
+  it('never returns a spacing below the Bragg limit d_min = λ/2', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        const peaks = computePattern(sample.lattice, sample.a, source.lambda, 180);
+        for (const p of peaks) {
+          expect(p.d).toBeGreaterThanOrEqual(source.lambda / 2);
+        }
+      }
+    }
+  });
+
+  it('reaches d_min = λ/2 exactly when a family lands on it', () => {
+    // sinθ = 1 requires d = λ/2 exactly. Simple cubic with a = λ/2 puts
+    // (100) precisely on the limit, so the pattern must still contain it.
+    const lambda = 0.15406;
+    const peaks = computePattern('sc', lambda / 2, lambda, 180);
+    const first = peaks.find((p) => `${p.h}${p.k}${p.l}` === '100')!;
+    expect(first).toBeDefined();
+    expect(first.d).toBeCloseTo(lambda / 2, 15);
+    expect(first.twoTheta).toBeCloseTo(180, 6);
+  });
+});

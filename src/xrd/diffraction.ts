@@ -154,7 +154,39 @@ export function dSpacing(a: number, h: number, k: number, l: number): number {
 }
 
 /**
+ * Hard ceiling on the enumeration, as a defence against an absurd a/λ.
+ *
+ * `braggIndexBound` is the physically correct bound, but it is driven by
+ * caller-supplied numbers: a tiny λ or a huge `a` would ask for a loop of
+ * unbounded size. 64 corresponds to a/λ ≥ 32, an order of magnitude past any
+ * real lab combination — the widest shipped case is silicon with Mo Kα at
+ * 2a/λ ≈ 15.3. Enumerating sorted triples to 64 is ~46 000 iterations, so the
+ * guard costs nothing when it is not needed and cannot be reached by any
+ * shipped sample × source pair.
+ */
+const INDEX_CEILING = 64;
+
+/**
+ * Largest reflection index that can satisfy Bragg's law.
+ *
+ * d = a/√(h²+k²+l²) and sinθ = λ/2d ≤ 1 give √(h²+k²+l²) ≤ 2a/λ, and
+ * no single index can exceed that root, so `ceil(2a/λ)` bounds every index
+ * from above. Equivalently: no spacing below d_min = λ/2 is reachable.
+ * `ceil` rather than `floor` so an exact integer ratio — the case where a
+ * family lands precisely on sinθ = 1 — is still enumerated.
+ */
+function braggIndexBound(a: number, lambda: number): number {
+  if (!(a > 0) || !(lambda > 0)) return 0;
+  return Math.min(Math.ceil((2 * a) / lambda), INDEX_CEILING);
+}
+
+/**
  * Generates the powder pattern.
+ *
+ * The index sweep is bounded by `braggIndexBound`, not by a constant: the
+ * reachable index depends on both the lattice parameter and the wavelength,
+ * so a fixed cap truncates short-wavelength patterns. A cap of 8 returned 38
+ * of silicon's 79 lines under Mo Kα.
  *
  * @param lattice  cubic lattice type
  * @param a        lattice parameter, nm
@@ -168,18 +200,14 @@ export function computePattern(
   maxTwoTheta = 140,
 ): Peak[] {
   const peaks: Peak[] = [];
-  const seenFamilies = new Set<string>();
-  const MAX_INDEX = 8;
+  const maxIndex = braggIndexBound(a, lambda);
 
-  for (let h = 0; h <= MAX_INDEX; h++) {
-    for (let k = 0; k <= MAX_INDEX; k++) {
-      for (let l = 0; l <= MAX_INDEX; l++) {
+  // Enumerating h ≥ k ≥ l visits each {hkl} family exactly once, so no
+  // separate seen-set is needed to deduplicate.
+  for (let h = 0; h <= maxIndex; h++) {
+    for (let k = 0; k <= h; k++) {
+      for (let l = 0; l <= k; l++) {
         if (h + k + l === 0) continue;
-        // One representative per family: sorted descending.
-        const fam = [h, k, l].sort((x, y) => y - x);
-        const key = fam.join(',');
-        if (seenFamilies.has(key)) continue;
-        if (h !== fam[0] || k !== fam[1] || l !== fam[2]) continue;
         if (!isAllowed(lattice, h, k, l)) continue;
 
         const d = dSpacing(a, h, k, l);
@@ -189,7 +217,6 @@ export function computePattern(
         const twoTheta = (2 * theta * 180) / Math.PI;
         if (twoTheta > maxTwoTheta) continue;
 
-        seenFamilies.add(key);
         const m = multiplicity(h, k, l);
         const raw =
           m *

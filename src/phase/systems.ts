@@ -38,6 +38,23 @@ export interface Invariant {
   T: number;
   reaction: string;
   type: 'eutectic' | 'eutectoid';
+  /**
+   * The two **solid** phases the reaction leaves behind, with their
+   * compositions at the invariant temperature, left one first.
+   *
+   * Present only where the invariant bounds a fully solid two-phase field,
+   * which is what makes a microconstituent split meaningful. The Fe–C eutectic
+   * at 1147 °C does not qualify: it produces γ, and γ is gone by 727 °C.
+   *
+   * These are a second copy of numbers the boundary polylines already carry,
+   * so a test cross-checks them against `evaluate`'s own tie line.
+   */
+  products?: [
+    { name: string; composition: number },
+    { name: string; composition: number },
+  ];
+  /** What the eutectic/eutectoid mixture is called, where it has a name. */
+  microconstituent?: string;
 }
 
 export interface PhaseSystem {
@@ -208,6 +225,10 @@ export const PB_SN: PhaseSystem = {
       T: EUT_T,
       reaction: 'L (61.9 wt% Sn) ⇌ α (18.3 wt% Sn) + β (97.8 wt% Sn)',
       type: 'eutectic',
+      products: [
+        { name: 'α', composition: ALPHA_MAX },
+        { name: 'β', composition: BETA_MAX },
+      ],
     },
   ],
   regionLabels: [
@@ -336,6 +357,11 @@ export const FE_C: PhaseSystem = {
       T: EUTECTOID_T,
       reaction: 'γ (0.76 wt% C) ⇌ α (0.022 wt% C) + Fe₃C (6.70 wt% C)',
       type: 'eutectoid',
+      products: [
+        { name: 'α', composition: FERRITE_MAX },
+        { name: 'Fe₃C', composition: CEMENTITE_X },
+      ],
+      microconstituent: 'Pearlite',
     },
     {
       label: 'Eutectic',
@@ -481,47 +507,119 @@ export interface SteelResult {
   totalCementite: number;
 }
 
+/** The microconstituent split of an alloy cooled just past an invariant. */
+export interface MicroconstituentResult {
+  /** The invariant the structure forms at. */
+  invariant: Invariant;
+  kind: 'hypoeutectic' | 'hypereutectic' | 'eutectic' | 'hypoeutectoid' | 'hypereutectoid' | 'eutectoid';
+  /** Name of the primary (proeutectic / proeutectoid) phase; null at the invariant composition. */
+  primary: string | null;
+  /** The primary phase's own composition — the terminal solubility limit on its side. */
+  primaryComposition: number;
+  primaryFraction: number;
+  /** Mass fraction of the eutectic / eutectoid microconstituent. */
+  eutecticFraction: number;
+  /** Total phase fractions, which are **not** the microconstituent fractions. */
+  left: { name: string; composition: number; fraction: number };
+  right: { name: string; composition: number; fraction: number };
+}
+
+/**
+ * Primary phase, eutectic constituent and total phase fractions for an alloy
+ * cooled to just below its invariant isotherm.
+ *
+ * Three lever rules over three different segments of the same tie line, which
+ * is the point: for 40 wt% Sn just below 183 °C the alloy is 50% primary α and
+ * 50% eutectic constituent, and yet **73%** α by phase, because the eutectic
+ * constituent contains α as well. Students who have understood
+ * pearlite-vs-ferrite very often fail to transfer it, because Fe–C is taught
+ * with different vocabulary.
+ *
+ * The invariant used is the **lowest-temperature one that declares solid
+ * products** — the eutectoid for Fe–C, whose 1147 °C eutectic produces γ that
+ * no longer exists by 727 °C.
+ *
+ * Returns null inside the terminal solid solutions, where there is no eutectic
+ * constituent to report. Absent, not zeroed: clamping a fraction to hide an
+ * out-of-domain computation is what hid the missing α field in iteration 9.
+ */
+export function microconstituents(
+  system: PhaseSystem,
+  x: number,
+): MicroconstituentResult | null {
+  const invariant = system.invariants
+    .filter((i) => i.products)
+    .reduce<Invariant | null>((best, i) => (best == null || i.T < best.T ? i : best), null);
+  if (!invariant?.products) return null;
+
+  const [a, b] = invariant.products;
+  if (x < a.composition || x > b.composition) return null;
+
+  const leftFraction = lever(x, a.composition, b.composition);
+  const left = { name: a.name, composition: a.composition, fraction: leftFraction };
+  const right = { name: b.name, composition: b.composition, fraction: 1 - leftFraction };
+
+  const eutectoid = invariant.type === 'eutectoid';
+  if (Math.abs(x - invariant.x) < 1e-9) {
+    return {
+      invariant,
+      kind: eutectoid ? 'eutectoid' : 'eutectic',
+      primary: null,
+      primaryComposition: x,
+      primaryFraction: 0,
+      eutecticFraction: 1,
+      left,
+      right,
+    };
+  }
+
+  // The mixture forms from whatever reached the invariant composition; the
+  // primary phase is what separated out before that, sitting at its own
+  // solubility limit.
+  const hypo = x < invariant.x;
+  const primaryComposition = hypo ? a.composition : b.composition;
+  const eutecticFraction = hypo
+    ? (x - a.composition) / (invariant.x - a.composition)
+    : (b.composition - x) / (b.composition - invariant.x);
+
+  return {
+    invariant,
+    kind: eutectoid
+      ? hypo
+        ? 'hypoeutectoid'
+        : 'hypereutectoid'
+      : hypo
+        ? 'hypoeutectic'
+        : 'hypereutectic',
+    primary: hypo ? a.name : b.name,
+    primaryComposition,
+    primaryFraction: 1 - eutecticFraction,
+    eutecticFraction,
+    left,
+    right,
+  };
+}
+
 /**
  * Microconstituent and total-phase fractions just below the eutectoid, for a
  * steel of overall composition C0 (Callister §9.19).
+ *
+ * A thin wrapper over `microconstituents` since M8 generalised it, keeping the
+ * shape `heattreat/model.ts` and the Fe–C panel read, and keeping the **steel**
+ * domain: past 2.14 wt% C the primary constituent comes from the 1147 °C
+ * eutectic instead, and the alloy is a cast iron rather than a steel.
  */
 export function steelMicrostructure(C0: number): SteelResult | null {
   if (C0 < FERRITE_MAX || C0 > GAMMA_MAX) return null;
-
-  const totalFerrite = (CEMENTITE_X - C0) / (CEMENTITE_X - FERRITE_MAX);
-  const totalCementite = 1 - totalFerrite;
-
-  if (Math.abs(C0 - EUTECTOID_X) < 1e-9) {
-    return {
-      kind: 'eutectoid',
-      proeutectoid: null,
-      pearlite: 1,
-      proeutectoidFraction: 0,
-      totalFerrite,
-      totalCementite,
-    };
-  }
-
-  if (C0 < EUTECTOID_X) {
-    // Pearlite forms from austenite that reached the eutectoid composition.
-    const pearlite = (C0 - FERRITE_MAX) / (EUTECTOID_X - FERRITE_MAX);
-    return {
-      kind: 'hypoeutectoid',
-      proeutectoid: 'α (ferrite)',
-      pearlite,
-      proeutectoidFraction: 1 - pearlite,
-      totalFerrite,
-      totalCementite,
-    };
-  }
-
-  const pearlite = (CEMENTITE_X - C0) / (CEMENTITE_X - EUTECTOID_X);
+  const m = microconstituents(FE_C, C0);
+  if (!m) return null;
   return {
-    kind: 'hypereutectoid',
-    proeutectoid: 'Fe₃C (cementite)',
-    pearlite,
-    proeutectoidFraction: 1 - pearlite,
-    totalFerrite,
-    totalCementite,
+    kind: m.kind as SteelResult['kind'],
+    proeutectoid:
+      m.primary == null ? null : m.primary === 'α' ? 'α (ferrite)' : 'Fe₃C (cementite)',
+    pearlite: m.eutecticFraction,
+    proeutectoidFraction: m.primaryFraction,
+    totalFerrite: m.left.fraction,
+    totalCementite: m.right.fraction,
   };
 }

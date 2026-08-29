@@ -6,7 +6,8 @@ import {
   GAMMA_MAX,
   PHASE_SYSTEMS,
   gibbsPhaseRule,
-  steelMicrostructure,
+  microconstituents,
+  type MicroconstituentResult,
   type PhaseRuleResult,
   type PhaseSystem,
 } from '../phase/systems';
@@ -99,10 +100,18 @@ export function PhaseDiagrams() {
     [system, clamped.x, clamped.T],
   );
 
-  const steel =
-    system.id === 'fe-c' && clamped.x >= FERRITE_MAX && clamped.x <= GAMMA_MAX
-      ? steelMicrostructure(clamped.x)
-      : null;
+  /**
+   * The microconstituent split, now for any system whose invariant leaves two
+   * solid phases behind — Pb–Sn as well as Fe–C.
+   *
+   * The Fe–C gate stays: past 2.14 wt% C the primary constituent comes from
+   * the 1147 °C eutectic rather than the eutectoid, and the alloy is a cast
+   * iron with a microstructure this panel does not describe.
+   */
+  const micro = useMemo(() => {
+    if (system.id === 'fe-c' && (clamped.x < FERRITE_MAX || clamped.x > GAMMA_MAX)) return null;
+    return microconstituents(system, clamped.x);
+  }, [system, clamped.x]);
 
   const xTicks = tickValues(system.xMin, system.xMax);
   const tTicks = tickValues(system.tMin, system.tMax);
@@ -219,6 +228,36 @@ export function PhaseDiagrams() {
             </g>
           )}
 
+          {/* M8 — the three lever rules, drawn at the invariant isotherm so it
+              is visible that they are taken over different segments of one tie
+              line. Offset above and below the isotherm, and given different
+              strokes, because they overlap along their whole shared length. */}
+          {micro && (
+            <g>
+              <LeverSegment
+                from={micro.left.composition}
+                to={micro.right.composition}
+                y={sy(micro.invariant.T) - 8}
+                sx={sx}
+                className="pd-lever-total"
+              />
+              <LeverSegment
+                from={micro.primary === micro.right.name ? micro.invariant.x : micro.left.composition}
+                to={micro.primary === micro.right.name ? micro.right.composition : micro.invariant.x}
+                y={sy(micro.invariant.T) + 8}
+                sx={sx}
+                className="pd-lever-micro"
+              />
+              <line
+                x1={sx(clamped.x)}
+                x2={sx(clamped.x)}
+                y1={sy(micro.invariant.T) - 13}
+                y2={sy(micro.invariant.T) + 13}
+                className="pd-lever-mark"
+              />
+            </g>
+          )}
+
           {/* The point of interest. */}
           <line x1={sx(clamped.x)} x2={sx(clamped.x)} y1={PAD.t} y2={PAD.t + plotH} className="pd-cross" />
           <circle cx={sx(clamped.x)} cy={sy(clamped.T)} r={6} className="pd-point" />
@@ -320,50 +359,8 @@ export function PhaseDiagrams() {
           </div>
         )}
 
-        {steel && (
-          <div className="density-box">
-            <h3>Microstructure below 727 °C</h3>
-            <table className="detail-props">
-              <tbody>
-                <tr>
-                  <th scope="row">Classification</th>
-                  <td>{steel.kind}</td>
-                </tr>
-                {steel.proeutectoid && (
-                  <tr>
-                    <th scope="row">Proeutectoid phase</th>
-                    <td>{steel.proeutectoid}</td>
-                  </tr>
-                )}
-                <tr>
-                  <th scope="row">Pearlite</th>
-                  <td>{(steel.pearlite * 100).toFixed(1)}%</td>
-                </tr>
-                {steel.proeutectoid && (
-                  <tr>
-                    <th scope="row">Proeutectoid</th>
-                    <td>{(steel.proeutectoidFraction * 100).toFixed(1)}%</td>
-                  </tr>
-                )}
-                <tr>
-                  <th scope="row">Total α (ferrite)</th>
-                  <td>{(steel.totalFerrite * 100).toFixed(1)}%</td>
-                </tr>
-                <tr>
-                  <th scope="row">Total Fe₃C</th>
-                  <td>{(steel.totalCementite * 100).toFixed(1)}%</td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="density-note">
-              Note the two sets of numbers differ. <strong>Microconstituent</strong> fractions
-              (pearlite vs proeutectoid) describe what you see under a microscope;{' '}
-              <strong>phase</strong> fractions (total ferrite vs cementite) describe what the alloy
-              is made of. Pearlite is not a phase — it is a two-phase lamellar mixture, so its
-              ferrite counts toward the total.
-            </p>
-          </div>
-        )}
+        {micro && <MicroPanel micro={micro} x={clamped.x} unit={system.xLabel} />}
+
       </aside>
     </div>
   );
@@ -438,6 +435,123 @@ function PhaseRuleBox({ rule }: { rule: PhaseRuleResult }) {
             every field that meets there.
           </>
         )}
+      </p>
+    </div>
+  );
+}
+
+/** One lever-rule segment with end caps, drawn along the invariant isotherm. */
+function LeverSegment({
+  from, to, y, sx, className,
+}: {
+  from: number; to: number; y: number; sx: (v: number) => number; className: string;
+}) {
+  return (
+    <g className={className}>
+      <line x1={sx(from)} x2={sx(to)} y1={y} y2={y} />
+      <line x1={sx(from)} x2={sx(from)} y1={y - 4} y2={y + 4} />
+      <line x1={sx(to)} x2={sx(to)} y1={y - 4} y2={y + 4} />
+    </g>
+  );
+}
+
+/**
+ * Microconstituent vs phase, for any eutectic or eutectoid system.
+ *
+ * This panel used to exist for Fe–C alone. The distinction it draws — what you
+ * see down a microscope against what the alloy is made of — is the single most
+ * reliable exam trap in eutectic systems, and students who have understood
+ * pearlite-versus-ferrite routinely fail to transfer it to Pb–Sn because the
+ * two are taught with different vocabulary. Showing the same construction on
+ * both diagrams is what makes the transfer happen.
+ */
+function MicroPanel({
+  micro, x, unit,
+}: {
+  micro: MicroconstituentResult;
+  x: number;
+  unit: string;
+}) {
+  const inv = micro.invariant;
+  const mixture = inv.microconstituent ?? `${inv.type === 'eutectoid' ? 'Eutectoid' : 'Eutectic'} constituent`;
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="density-box">
+      <h3>Microstructure just below {inv.T} °C</h3>
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Classification</th>
+            <td>{micro.kind}</td>
+          </tr>
+          {micro.primary && (
+            <tr>
+              <th scope="row">Primary phase</th>
+              <td>
+                {micro.primary} at {micro.primaryComposition} {unit}
+              </td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">{mixture}</th>
+            <td>{pct(micro.eutecticFraction)}</td>
+          </tr>
+          {micro.primary && (
+            <tr>
+              <th scope="row">Primary {micro.primary}</th>
+              <td>{pct(micro.primaryFraction)}</td>
+            </tr>
+          )}
+          <tr>
+            <th scope="row">Total {micro.left.name}</th>
+            <td>{pct(micro.left.fraction)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Total {micro.right.name}</th>
+            <td>{pct(micro.right.fraction)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ul className="pd-lever-key">
+        <li>
+          <svg viewBox="0 0 24 6" aria-hidden="true" className="pd-lever-total">
+            <line x1="1" x2="23" y1="3" y2="3" />
+          </svg>
+          <span>
+            <strong>Phases</strong> — {micro.left.composition} to {micro.right.composition} {unit}
+          </span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 6" aria-hidden="true" className="pd-lever-micro">
+            <line x1="1" x2="23" y1="3" y2="3" />
+          </svg>
+          <span>
+            <strong>Constituents</strong> —{' '}
+            {micro.primary === micro.right.name
+              ? `${inv.x} to ${micro.right.composition}`
+              : `${micro.left.composition} to ${inv.x}`}{' '}
+            {unit}
+          </span>
+        </li>
+      </ul>
+
+      <p className="density-note">
+        Both splits are lever rules, taken over <em>different segments of the same tie line</em> —
+        drawn on the isotherm above. The phase split runs the whole way,{' '}
+        {micro.left.composition} to {micro.right.composition} {unit}; the constituent split stops at
+        the invariant composition, {inv.x} {unit}. At {x.toFixed(2)} {unit} they give{' '}
+        {micro.primary
+          ? `${pct(micro.primaryFraction)} primary ${micro.primary} against ${pct(micro.left.name === micro.primary ? micro.left.fraction : micro.right.fraction)} total ${micro.primary}`
+          : 'no primary phase at all'}
+        .
+      </p>
+      <p className="density-note">
+        <strong>Microconstituent</strong> fractions describe what you see under a microscope;{' '}
+        <strong>phase</strong> fractions describe what the alloy is made of. The {mixture.toLowerCase()} is
+        not a phase — it is a two-phase lamellar mixture, so its {micro.left.name} counts toward the
+        total as well.
       </p>
     </div>
   );

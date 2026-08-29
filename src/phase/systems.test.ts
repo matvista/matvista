@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CU_NI, PHASE_SYSTEMS, gibbsPhaseRule, lever, steelMicrostructure,
+  CEMENTITE_X, CU_NI, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS, gibbsPhaseRule, lever,
+  microconstituents, steelMicrostructure,
 } from './systems';
 
 describe('Fe–C microstructure (Callister ex. 9.4: 0.35 wt% C)', () => {
@@ -208,6 +209,189 @@ describe('the Gibbs phase rule', () => {
     const pbsn = PHASE_SYSTEMS.find((s) => s.id === 'pb-sn')!;
     expect(pbsn.evaluate(61.9, 183).phases).toHaveLength(1);
     expect(gibbsPhaseRule(pbsn, 61.9, 183).P).toBe(3);
+  });
+});
+
+/**
+ * M8 — the microconstituent split, generalised off Fe–C.
+ *
+ * Callister §9.16, the standard eutectic worked example: a 40 wt% Sn alloy
+ * cooled to just below 183 °C is 50% primary α and 50% eutectic constituent,
+ * yet **73%** of it is α by phase — because the eutectic constituent contains
+ * α too. That gap between microconstituent and phase is the single most
+ * reliable exam trap in eutectic systems, and it is the same distinction the
+ * module already teaches well for steel.
+ */
+describe('Pb–Sn microconstituents (Callister §9.16: 40 wt% Sn)', () => {
+  const pbsn = PHASE_SYSTEMS.find((s) => s.id === 'pb-sn')!;
+  const m = microconstituents(pbsn, 40)!;
+
+  it('forms at the eutectic, and names it', () => {
+    expect(m.invariant.type).toBe('eutectic');
+    expect(m.invariant.T).toBe(183);
+    expect(m.invariant.x).toBe(61.9);
+  });
+
+  it('is hypoeutectic with primary α', () => {
+    expect(m.kind).toBe('hypoeutectic');
+    expect(m.primary).toBe('α');
+    expect(m.primaryComposition).toBeCloseTo(18.3, 9);
+  });
+
+  it('gives 50% primary α and 50% eutectic constituent', () => {
+    expect(m.primaryFraction).toBeCloseTo(0.5, 2);
+    expect(m.eutecticFraction).toBeCloseTo(0.5, 2);
+    expect(m.primaryFraction + m.eutecticFraction).toBeCloseTo(1, 12);
+  });
+
+  it('gives 73% total α and 27% total β — not 50/50', () => {
+    expect(m.left.name).toBe('α');
+    expect(m.right.name).toBe('β');
+    expect(m.left.fraction).toBeCloseTo(0.73, 2);
+    expect(m.right.fraction).toBeCloseTo(0.27, 2);
+    expect(m.left.fraction + m.right.fraction).toBeCloseTo(1, 12);
+    // The trap, stated as an assertion: the two splits genuinely differ.
+    expect(Math.abs(m.left.fraction - m.primaryFraction)).toBeGreaterThan(0.2);
+  });
+
+  it('computes total α the same way twice', () => {
+    // Directly by the lever rule over the whole α–β tie line …
+    const direct = lever(40, 18.3, 97.8);
+    expect(m.left.fraction).toBeCloseTo(direct, 12);
+    // … and by adding the α inside the eutectic constituent to the primary α.
+    const alphaInEutectic = m.eutecticFraction * lever(61.9, 18.3, 97.8);
+    expect(m.primaryFraction + alphaInEutectic).toBeCloseTo(m.left.fraction, 12);
+  });
+
+  it('handles the hypereutectic side, where the primary is β', () => {
+    const h = microconstituents(pbsn, 80)!;
+    expect(h.kind).toBe('hypereutectic');
+    expect(h.primary).toBe('β');
+    expect(h.primaryComposition).toBeCloseTo(97.8, 9);
+    // Primary β grows toward pure β and vanishes at the eutectic, so it is
+    // the lever taken from the eutectic side — the mirror of the α case, and
+    // the same form `steelMicrostructure` has always used above 0.76 wt% C.
+    expect(h.primaryFraction).toBeCloseTo((80 - 61.9) / (97.8 - 61.9), 12);
+    expect(h.eutecticFraction).toBeCloseTo((97.8 - 80) / (97.8 - 61.9), 12);
+    expect(h.left.fraction).toBeCloseTo(lever(80, 18.3, 97.8), 12);
+    // total β two ways, as on the hypoeutectic side
+    expect(h.primaryFraction + h.eutecticFraction * (1 - lever(61.9, 18.3, 97.8))).toBeCloseTo(
+      h.right.fraction,
+      12,
+    );
+  });
+
+  it('is wholly eutectic at the eutectic composition', () => {
+    const e = microconstituents(pbsn, 61.9)!;
+    expect(e.kind).toBe('eutectic');
+    expect(e.primary).toBeNull();
+    expect(e.eutecticFraction).toBeCloseTo(1, 12);
+    expect(e.primaryFraction).toBeCloseTo(0, 12);
+  });
+
+  /**
+   * Inside the terminal solid solutions there is no eutectic constituent at
+   * all, so the panel must be **absent** rather than showing zeros. Clamping
+   * a fraction to hide an out-of-domain computation is the iteration-9 defect.
+   */
+  it('refuses compositions outside the α + β field', () => {
+    expect(microconstituents(pbsn, 10)).toBeNull();
+    expect(microconstituents(pbsn, 99)).toBeNull();
+    expect(microconstituents(pbsn, 0)).toBeNull();
+    expect(microconstituents(pbsn, 100)).toBeNull();
+  });
+
+  it('refuses a system with no invariant at all', () => {
+    expect(microconstituents(CU_NI, 35)).toBeNull();
+  });
+
+  it('keeps every fraction in range and summing to one across the field', () => {
+    for (let x = 18.4; x < 97.8; x += 0.1) {
+      const r = microconstituents(pbsn, x)!;
+      expect(r).not.toBeNull();
+      expect(r.primaryFraction + r.eutecticFraction).toBeCloseTo(1, 12);
+      expect(r.left.fraction + r.right.fraction).toBeCloseTo(1, 12);
+      for (const v of [r.primaryFraction, r.eutecticFraction, r.left.fraction, r.right.fraction]) {
+        expect(v).toBeGreaterThanOrEqual(-1e-12);
+        expect(v).toBeLessThanOrEqual(1 + 1e-12);
+      }
+    }
+  });
+});
+
+/**
+ * The declared invariant products are a second copy of numbers the boundary
+ * polylines already carry, so they are cross-checked against the diagram's own
+ * evaluator rather than trusted. Probe at the tie line's midpoint, which is
+ * inside the two-phase field for both systems — the invariant composition
+ * itself sits on the Pb–Sn liquidus and evaluates as L.
+ */
+describe('invariant products agree with the diagram that declares them', () => {
+  it.each(PHASE_SYSTEMS.flatMap((s) => s.invariants.filter((i) => i.products).map((i) => [s.id, i.label] as const)))(
+    '%s %s',
+    (sid, label) => {
+      const sys = PHASE_SYSTEMS.find((s) => s.id === sid)!;
+      const inv = sys.invariants.find((i) => i.label === label)!;
+      const [a, b] = inv.products!;
+      const mid = (a.composition + b.composition) / 2;
+      const at = sys.evaluate(mid, inv.T);
+      expect(at.phases.map((p) => p.name)).toEqual([a.name, b.name]);
+      expect(Math.min(at.tieLine!.x1, at.tieLine!.x2)).toBeCloseTo(a.composition, 9);
+      expect(Math.max(at.tieLine!.x1, at.tieLine!.x2)).toBeCloseTo(b.composition, 9);
+      expect(a.composition).toBeLessThan(inv.x);
+      expect(b.composition).toBeGreaterThan(inv.x);
+    },
+  );
+
+  it('leaves the Fe–C eutectic without products — γ is gone by 727 °C', () => {
+    const feC = PHASE_SYSTEMS.find((s) => s.id === 'fe-c')!;
+    expect(feC.invariants.find((i) => i.label === 'Eutectic')!.products).toBeUndefined();
+    // and so the microconstituent split is taken at the eutectoid
+    expect(microconstituents(feC, 0.4)!.invariant.label).toBe('Eutectoid');
+  });
+});
+
+/**
+ * `steelMicrostructure` is now a wrapper. Its published behaviour — the values
+ * `heattreat/model.ts` and the Fe–C panel read — has to be bit-for-bit what the
+ * closed forms give, so the closed forms are restated here rather than the
+ * wrapper being trusted to agree with itself.
+ */
+describe('steelMicrostructure still computes exactly what it did', () => {
+  it('matches the closed forms across the whole steel range', () => {
+    for (let c = FERRITE_MAX; c <= 2.14; c += 0.001) {
+      const r = steelMicrostructure(c)!;
+      expect(r).not.toBeNull();
+      expect(r.totalFerrite).toBeCloseTo((CEMENTITE_X - c) / (CEMENTITE_X - FERRITE_MAX), 12);
+      expect(r.totalCementite).toBeCloseTo(1 - r.totalFerrite, 12);
+      const pearlite =
+        c < EUTECTOID_X
+          ? (c - FERRITE_MAX) / (EUTECTOID_X - FERRITE_MAX)
+          : (CEMENTITE_X - c) / (CEMENTITE_X - EUTECTOID_X);
+      expect(r.pearlite).toBeCloseTo(Math.min(1, pearlite), 12);
+      expect(r.proeutectoidFraction).toBeCloseTo(1 - r.pearlite, 12);
+      expect(r.kind).toBe(
+        Math.abs(c - EUTECTOID_X) < 1e-9
+          ? 'eutectoid'
+          : c < EUTECTOID_X
+            ? 'hypoeutectoid'
+            : 'hypereutectoid',
+      );
+    }
+  });
+
+  it('keeps its own domain — cast iron is not steel', () => {
+    expect(steelMicrostructure(0.021)).toBeNull();
+    expect(steelMicrostructure(2.15)).toBeNull();
+    expect(steelMicrostructure(FERRITE_MAX)).not.toBeNull();
+    expect(steelMicrostructure(2.14)).not.toBeNull();
+  });
+
+  it('reports zero pearlite, not null, at ferrite’s solubility limit', () => {
+    const r = steelMicrostructure(FERRITE_MAX)!;
+    expect(r.pearlite).toBeCloseTo(0, 12);
+    expect(r.proeutectoidFraction).toBeCloseTo(1, 12);
+    expect(r.totalFerrite).toBeCloseTo(1, 12);
   });
 });
 

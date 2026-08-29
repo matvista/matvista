@@ -2337,3 +2337,44 @@ input[type='range'] {
   border-color: var(--muted);
   background: none;
 }
+
+/* M8 — the two lever segments drawn on the invariant isotherm. They overlap
+   along their whole shared length, so they differ in colour *and* dash, and
+   each is labelled in the panel key. */
+.pd-lever-total line {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.pd-lever-micro line {
+  stroke: #eb6834;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.pd-lever-mark {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.pd-lever-key {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.pd-lever-key li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pd-lever-key svg {
+  flex: none;
+  width: 24px;
+  height: 6px;
+}

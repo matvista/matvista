@@ -98,7 +98,14 @@ describe('vacancies', () => {
  * a constant: the profile does not care about temperature and time separately,
  * only about their product through D. That invariance is what students almost
  * never extract from the erf solution, and it is what makes
- * "1000 °C for 7 h ≡ 1100 °C for 1.4 h" a calculation rather than a slogan.
+ * "1000 °C for 7 h ≡ 1100 °C for 2.53 h" a calculation rather than a slogan.
+ *
+ * An earlier version of this line said 1.4 h, which is not this model's
+ * answer and is not consistent with the rest of the file: with the shipped
+ * Qd = 148 000 J/mol, D(1373.15)/D(1273.15) is 2.7697, so 7 h becomes 2.527 h.
+ * A ratio of 5 would need about 1165 °C, and 1.4 h also contradicts the
+ * 3.295x-per-100-°C figure asserted thirty lines below. The equivalences are
+ * computed below now rather than quoted.
  */
 describe('inverse error function', () => {
   it.each([0, 0.2763, 0.5205, 0.8427, 0.9953])('round-trips erf at %s', (y) => {
@@ -186,6 +193,52 @@ describe('the equal-Dt process curve', () => {
     const closedForm = Math.exp((sys.Qd / 8.31) * (1 / 1173.15 - 1 / 1273.15));
     expect(ratio).toBeCloseTo(closedForm, 9);
     expect(ratio).toBeCloseTo(3.3, 1);
+  });
+
+  /**
+   * The two equivalences this module states in prose — one in the describe
+   * above, one in the panel's own docstring — computed rather than quoted.
+   * Both were wrong when written, so both are pinned now.
+   *
+   * The ratio is not one number: it is D(T₂)/D(T₁), which falls as the pair
+   * moves up the scale. 100 °C is worth 3.295x at 900 -> 1000, 3.006x at
+   * 950 -> 1050 and 2.770x at 1000 -> 1100, and that is why a single
+   * "100 °C buys you 3x" figure cannot be reused at another temperature.
+   */
+  it.each([
+    [1000, 7, 1100, 2.5273],
+    [950, 5, 1050, 1.6636],
+  ])('%i °C for %s h is %i °C for %s h', (T1, h1, T2, h2) => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    const D = (T: number) => diffusionCoefficient(sys, T + 273.15);
+    // Equal Dt, so the times go inversely as the diffusion coefficients.
+    expect((h1 * D(T1)) / D(T2)).toBeCloseTo(h2, 4);
+    // …and the profile really is the same one, through the erf solution.
+    // Compared as a ratio: h2 above is quoted to four places, which is the
+    // precision the prose states, not the precision the model holds to.
+    const dt = D(T1) * h1 * 3600;
+    expect((D(T2) * h2 * 3600) / dt).toBeCloseTo(1, 4);
+    expect(concentrationAt(x, h2 * 3600, D(T2), C0, Cs)).toBeCloseTo(
+      concentrationAt(x, h1 * 3600, D(T1), C0, Cs),
+      4,
+    );
+  });
+
+  /**
+   * What the 0.5 h snap on the time slider costs, since the panel discloses it
+   * in words ("the setting is snapped, the curve is not") without a figure.
+   * The 1050 °C chip for a 950 °C / 5 h treatment wants 1.6636 h and sets
+   * 1.5 h.
+   */
+  it('quantifies the snap the equal-Dt chips disclose', () => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+    const D = (T: number) => diffusionCoefficient(sys, T + 273.15);
+    const want = D(950) * 5 * 3600;
+    const got = D(1050) * 1.5 * 3600;
+    expect(Math.round(1.6636 / 0.5) * 0.5).toBe(1.5);
+    expect(1 - got / want).toBeCloseTo(0.0983, 4);
+    // Depth goes as √(Dt), so a 9.8% shortfall in Dt is a 5.0% shallower case.
+    expect(1 - Math.sqrt(got / want)).toBeCloseTo(0.0504, 4);
   });
 
   /**

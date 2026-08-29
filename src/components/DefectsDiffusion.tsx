@@ -185,9 +185,15 @@ function hourLabel(e: number): string {
  *
  * Fick's second law fixes the profile through the single group x/2√(Dt), so a
  * concentration at a depth demands a value of **Dt**, not of D and not of t.
- * The consequence — 950 °C for 5 h and 1050 °C for 1.5 h are the same
+ * The consequence — 950 °C for 5 h and 1050 °C for 1 h 40 min are the same
  * treatment — is what students almost never extract from the erf solution, and
  * it is invisible while the two sliders are only ever moved one at a time.
+ *
+ * (This line used to say 1.5 h and call it an identity. 1.5 h is the *snapped*
+ * value the chip sets, not the equivalence: with the shipped Qd,
+ * D(1050)/D(950) = 3.0055, so the equal-Dt time is 1.6636 h and 1.5 h is
+ * 9.8% short in Dt — a 5.0% shallower case. The snap is disclosed to the
+ * reader below; it is not what makes the two treatments equal.)
  *
  * The target is the reader's own current setting: the depth at which carbon
  * reaches the case-hardening threshold right now. So the curve passes through

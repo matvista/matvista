@@ -13,6 +13,7 @@ import {
   isAllowed,
   multiplicity,
   type XrdSample,
+  type XrdSource,
 } from '../xrd/diffraction';
 
 const W = 760;
@@ -204,7 +205,7 @@ export function XrdSimulator() {
           </tbody>
         </table>
 
-        <ExtinctionPanel sample={sample} lambda={source.lambda} />
+        <ExtinctionPanel sample={sample} source={source} />
       </aside>
     </div>
   );
@@ -215,12 +216,27 @@ export function XrdSimulator() {
  * absences are what identify the structure, so they deserve to be visible
  * rather than merely missing from the pattern.
  */
-function ExtinctionPanel({ sample, lambda }: { sample: XrdSample; lambda: number }) {
+function ExtinctionPanel({ sample, source }: { sample: XrdSample; source: XrdSource }) {
   const { lattice, a } = sample;
-  // The reverse of S12's link: an allowed reflection opens in the Miller
-  // module, on the same lattice and — where the sample is one of Callister's
-  // table-3.1 metals — the same metal, so `a` and therefore d agree.
-  const metal = METALS.find((m) => m.symbol.toLowerCase() === sample.id);
+  const lambda = source.lambda;
+  /**
+   * The reverse of S12's link: an allowed reflection opens in the Miller
+   * module, on the same metal, so `a` — and therefore d, the verdict and the
+   * angle — agree.
+   *
+   * **Only where that metal exists.** The Miller module answers "is this
+   * reflection allowed" for its *selected metal*, reading the lattice off the
+   * metal and not off the `s` param this link also sets. Silicon and polonium
+   * are shipped samples with no entry in `crystal/metals.ts`, so a link from
+   * them arrived with no metal, fell back to copper, and answered a different
+   * question: six of polonium's twelve chips read "allowed" here and
+   * "extinct" on arrival, and silicon's (111) went from 28.44° to copper's
+   * 43.32°. Those chips are no longer links. The `hcp` filter mirrors the
+   * Miller module's own metal list, which is cubic-only.
+   */
+  const metal = METALS.find(
+    (m) => m.symbol.toLowerCase() === sample.id && m.structure !== 'hcp',
+  );
   const CANDIDATES: [number, number, number][] = [
     [1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 0, 0], [2, 1, 0], [2, 1, 1],
     [2, 2, 0], [3, 0, 0], [3, 1, 0], [3, 1, 1], [2, 2, 2], [4, 0, 0],
@@ -249,11 +265,13 @@ function ExtinctionPanel({ sample, lambda }: { sample: XrdSample; lambda: number
             </>
           );
           // Forbidden families are not linked: there is nothing to look at.
-          return ok ? (
+          // Nor is anything, when the sample is not a metal the Miller module
+          // can select — see above.
+          return ok && metal ? (
             <a
               key={label}
               className={`xrd-chip xrd-chip-link ${cls}`}
-              href={`#/miller?plane=${label}&s=${lattice}${metal ? `&metal=${metal.symbol}` : ''}`}
+              href={`#/miller?plane=${label}&s=${lattice}&metal=${metal.symbol}&source=${source.id}`}
             >
               {body}
             </a>
@@ -271,8 +289,20 @@ function ExtinctionPanel({ sample, lambda }: { sample: XrdSample; lambda: number
         which peaks are <em>missing</em> is how a structure is identified.
       </p>
       <p className="density-note">
-        Every reachable index above is a link into the Miller module, which draws that plane in the
-        cell and shows where its spacing comes from.
+        {metal ? (
+          <>
+            Every reachable index above is a link into the Miller module, which draws that plane in
+            the cell and shows where its spacing comes from — on {metal.name.toLowerCase()}, at this
+            same anode, so the verdict and the angle there are the ones in the table.
+          </>
+        ) : (
+          <>
+            These indices are not links. The Miller module answers the same question against a
+            metal from its own list, and {sample.name.replace(/\s*\(.*\)$/, '').toLowerCase()} is
+            not on it — the link would silently answer for copper instead, which is a different
+            lattice and a different spacing.
+          </>
+        )}
       </p>
       <p className="density-note">
         Indices marked <span className="xrd-chip xrd-far">λ/2d &gt; 1</span> are the other kind of

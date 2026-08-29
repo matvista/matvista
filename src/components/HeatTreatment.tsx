@@ -646,6 +646,7 @@ function JominyChart({ activeId, onPick }: { activeId: string; onPick: (id: stri
         {STEELS.map((s) => (
           <button
             key={s.id}
+            aria-pressed={s.id === activeId}
             className={`mi-chip ${s.id === activeId ? 'mi-chip-on' : ''}`}
             onClick={() => onPick(s.id)}
           >

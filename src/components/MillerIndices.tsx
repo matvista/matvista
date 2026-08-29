@@ -388,15 +388,22 @@ export function MillerIndices() {
           <div className="mi-family">
             <h3>{formatFamily(reduce(plane), 'plane')} members</h3>
             <div className="mi-family-list">
-              {planeFamily.map((m) => (
+              {planeFamily.map((m) => {
+                const on = m.join(',') === plane.join(',');
+                return (
                 <button
                   key={m.join(',')}
-                  className={`mi-chip ${m.join(',') === plane.join(',') ? 'mi-chip-on' : ''}`}
+                  // `mi-chip-on` is a colour and a weight. Without this the
+                  // selected chip is indistinguishable from its neighbours to
+                  // anything that is not looking at it.
+                  aria-pressed={on}
+                  className={`mi-chip ${on ? 'mi-chip-on' : ''}`}
                   onClick={() => setPlaneText(bareIndices(m))}
                 >
                   {formatIndices(m, 'plane')}
                 </button>
-              ))}
+                );
+              })}
             </div>
             <p className="density-note">
               Every member is crystallographically identical — same atomic arrangement, same

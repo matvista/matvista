@@ -338,6 +338,7 @@ function EqualDtPanel({
           return (
             <button
               key={o.tempC}
+              aria-pressed={o.tempC === tempC}
               className={`mi-chip ${o.tempC === tempC ? 'mi-chip-on' : ''}`}
               onClick={() => {
                 setTempC(o.tempC);

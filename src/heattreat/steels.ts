@@ -20,7 +20,19 @@ export interface Steel {
   name: string;
   /** Weight percent of each alloying element. */
   composition: { C: number; Mn: number; Ni: number; Cr: number; Mo: number };
-  /** Eutectoid/A₁ temperature, °C. */
+  /**
+   * Eutectoid/A₁ temperature, °C — the equilibrium temperature the C-curve is
+   * anchored on, shared by all three grades and equal to the phase module's
+   * eutectoid.
+   *
+   * It is deliberately *not* composition-corrected, and nothing
+   * composition-corrected is displayed beside it. A per-steel Ac₁ from
+   * Andrews would be an on-heating temperature driving a cooling
+   * construction, and it moves every critical cooling rate — measured, at
+   * this austenitising temperature: 1080 233.4 → 221.6, 5140 36.5 → 36.8,
+   * 4340 2.13 → 1.84 °C/s. That is a larger decision than the display it was
+   * raised by, and it is recorded here rather than made in passing.
+   */
   a1: number;
   /**
    * Nose of the pearlite-start curve: the shortest incubation time and the
@@ -108,35 +120,6 @@ export function getSteel(id: string): Steel {
  */
 export function martensiteStart(c: Steel['composition']): number {
   return 539 - 423 * c.C - 30.4 * c.Mn - 17.7 * c.Ni - 12.1 * c.Cr - 7.5 * c.Mo;
-}
-
-/**
- * Ae₃, °C — the temperature at which a hypoeutectoid steel leaves the
- * single-phase γ field, from Andrews' linear regression (1965):
- *
- *   Ae₃ = 910 − 203·√C − 15.2·Ni + 44.7·Si + 104·V + 31.5·Mo + 13.1·W
- *              − 30·Mn − 11·Cr − 20·Cu + 700·P + 400·Al + 120·As + 400·Ti
- *
- * Same paper as `martensiteStart` above, which is why it is used here rather
- * than the binary Fe–Fe₃C boundary: that boundary is a function of carbon
- * alone, so it hands 5140 and 4340 the identical 814.63 °C and erases the only
- * difference between them, while sitting 66–82 °C above where either steel
- * actually leaves the γ field.
- *
- * **Only the terms this repo has data for are evaluated** — C, Ni, Mo, Mn, Cr.
- * The shipped `composition` carries no silicon, and these grades nominally
- * hold 0.15–0.35 wt% Si, so the values here run about 11 °C low against a
- * calculation that includes it. No silicon figure is invented to close that
- * gap; the shortfall is stated instead.
- *
- * Returns null above the eutectoid, where there is no γ → α + γ boundary to
- * report and the regression is outside its domain.
- */
-export function ae3(c: Steel['composition']): number | null {
-  if (c.C >= 0.76) return null;
-  return (
-    910 - 203 * Math.sqrt(c.C) - 15.2 * c.Ni + 31.5 * c.Mo - 30 * c.Mn - 11 * c.Cr
-  );
 }
 
 /**

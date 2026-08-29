@@ -304,12 +304,6 @@ export function HeatTreatment() {
               <th scope="row">Critical rate</th>
               <td>{critical == null ? 'faster than this model resolves' : `${fmtRate(critical)} °C/s`}</td>
             </tr>
-            {ttt.a3 !== null && (
-              <tr>
-                <th scope="row">Ae₃ (Andrews)</th>
-                <td>{Math.round(ttt.a3)} °C</td>
-              </tr>
-            )}
             <tr>
               <th scope="row">Mˢ (Andrews)</th>
               <td>
@@ -337,7 +331,8 @@ export function HeatTreatment() {
             section is univariant rather than invariant, so a multicomponent steel has no single
             eutectoid <em>point</em>, the published pseudo-binary sections are explicitly not
             superposable, and there is no linear-additive formula for eutectoid carbon to combine
-            them with. Ae₃ above <em>is</em> composition-corrected; this fraction is not.
+            them with. Read {(ttt.equilibriumFerrite * 100).toFixed(0)}% as the ceiling, not the
+            answer.
           </p>
         )}
 

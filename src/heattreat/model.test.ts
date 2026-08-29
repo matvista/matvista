@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STEELS, ae3, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
+import { STEELS, getSteel, martensiteStart, martensiteFractionTemp } from './steels';
 import {
   TRACE_FRACTION, buildTtt, criticalCoolingRate, equilibriumFerriteFraction, predict,
   tangentCoolingRate, untransformedAusteniteCarbon,
@@ -146,67 +146,38 @@ describe('proeutectoid ferrite', () => {
     o.fractions.find((f) => f.product === 'proeutectoid ferrite')?.fraction ?? 0;
 
   /**
-   * The A₃ shown must be *this steel's*, not the binary Fe–Fe₃C diagram's.
+   * One provenance for every transformation temperature the module reports.
    *
-   * The binary boundary is a function of carbon alone, so it returns the same
-   * 814.63 °C for 5140 and for 4340 — erasing the alloying difference the two
-   * grades exist to teach — and it is 66–82 °C above where either steel
-   * actually leaves the γ field. Andrews' Ae₃ regression takes the whole
-   * composition, and it is the same author whose Mˢ equation this module
-   * already uses.
+   * This replaces five assertions on an `ae3()` helper that has been removed
+   * along with the row it fed. The history is worth keeping, because the
+   * removal is the second correction to the same number:
+   *
+   *  - It began as the binary Fe–Fe₃C A₃, which is a function of carbon alone
+   *    and so handed 5140 and 4340 the identical 814.63 °C.
+   *  - It became Andrews' regression, which is composition-corrected — but the
+   *    formula is Andrews' **Ac₃**, an on-heating temperature, and it was
+   *    labelled Ae₃; it also under-predicts published Ac₃ for these chromium
+   *    steels by 20–30 °C.
+   *  - And its partner never moved: `a1` is a hard-coded 727 for all three
+   *    grades, so 4340's displayed intercritical window was 5.3 °C against a
+   *    published ~38. Correcting `a1` too means feeding an on-heating Ac₁ into
+   *    a cooling construction and moving every critical cooling rate, which is
+   *    a larger decision than this one.
+   *
+   * So the module now reports exactly one equilibrium temperature, `a1`, and
+   * it is the binary eutectoid the C-curve is anchored on, consistent with the
+   * phase-diagram module. This guards that: nothing composition-corrected may
+   * be exposed beside it without revisiting the whole set.
    */
-  it('follows Andrews’ Ae₃ regression term by term', () => {
-    // Ae₃ = 910 − 203√C − 15.2Ni + 31.5Mo − 30Mn − 11Cr, over the elements the
-    // shipped composition carries.
-    const c = { C: 0.4, Mn: 0.8, Ni: 0, Cr: 0.85, Mo: 0 };
-    expect(ae3(c)).toBeCloseTo(910 - 203 * Math.sqrt(0.4) - 30 * 0.8 - 11 * 0.85, 9);
-    const d = { C: 0.4, Mn: 0.7, Ni: 1.8, Cr: 0.8, Mo: 0.25 };
-    expect(ae3(d)).toBeCloseTo(
-      910 - 203 * Math.sqrt(0.4) - 15.2 * 1.8 + 31.5 * 0.25 - 30 * 0.7 - 11 * 0.8,
-      9,
-    );
-  });
-
-  it('gives the two 0.40 wt% C steels different Ae₃ — the alloying difference', () => {
-    const a = ae3(getSteel('5140').composition)!;
-    const b = ae3(getSteel('4340').composition)!;
-    expect(a).toBeCloseTo(748.26, 2);
-    expect(b).toBeCloseTo(732.33, 2);
-    // Not the same number, which the binary boundary made them.
-    expect(Math.abs(a - b)).toBeGreaterThan(10);
-    // 4340's extra nickel is the dominant term, and nickel lowers Ae₃.
-    expect(b).toBeLessThan(a);
-  });
-
-  it('sits far below the binary Fe–C boundary, and above A₁', () => {
-    // The binary diagram's A₃ at 0.40 wt% C, which is what used to be shown.
-    const binary = 912 - (0.4 / 0.76) * (912 - 727);
-    expect(binary).toBeCloseTo(814.63, 2);
-    for (const id of ['5140', '4340']) {
-      const s = getSteel(id);
-      const t = ae3(s.composition)!;
-      expect(binary - t).toBeGreaterThan(60);
-      expect(binary - t).toBeLessThan(85);
-      // There must still be a band between Ae₃ and A₁ for ferrite to form in.
-      expect(t).toBeGreaterThan(s.a1);
+  it('exposes no composition-corrected boundary beside the constant A₁', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      expect(Object.keys(ttt)).not.toContain('a3');
+      expect(ttt.a1).toBe(EUTECTOID_T);
     }
-  });
-
-  it('is monotone in every alloying term, with the right signs', () => {
-    const base = { C: 0.4, Mn: 0.8, Ni: 0.5, Cr: 0.5, Mo: 0.1 };
-    const bump = (k: keyof typeof base, d: number) => ae3({ ...base, [k]: base[k] + d })!;
-    const at = ae3(base)!;
-    // Austenite stabilisers lower it; molybdenum, a ferrite stabiliser, raises it.
-    expect(bump('C', 0.1)).toBeLessThan(at);
-    expect(bump('Mn', 0.1)).toBeLessThan(at);
-    expect(bump('Ni', 0.1)).toBeLessThan(at);
-    expect(bump('Cr', 0.1)).toBeLessThan(at);
-    expect(bump('Mo', 0.1)).toBeGreaterThan(at);
-  });
-
-  it('is not defined for a steel that is not hypoeutectoid', () => {
-    // Above the eutectoid there is no γ → α + γ boundary to report.
-    expect(ae3(getSteel('1080').composition)).toBeNull();
+    // All three share it, which is what makes it a construction anchor rather
+    // than a property of the individual steel.
+    expect(new Set(STEELS.map((s) => s.a1)).size).toBe(1);
   });
 
   it('every shipped steel’s A₁ is the phase module’s eutectoid temperature', () => {
@@ -243,7 +214,6 @@ describe('proeutectoid ferrite', () => {
     for (let lg = -2; lg <= 4; lg += 0.02) {
       expect(ferriteOf(predict(s, ttt, AUST, 10 ** lg))).toBe(0);
     }
-    expect(ttt.a3).toBeNull();
     expect(ttt.equilibriumFerrite).toBe(0);
   });
 
@@ -320,16 +290,6 @@ describe('proeutectoid ferrite', () => {
         expect(ferriteOf(predict(s, ttt, AUST, r))).toBe(0);
       }
     }
-  });
-
-  it('reports A₃ for the hypoeutectoid steels and null otherwise', () => {
-    for (const id of ['5140', '4340']) {
-      const s = getSteel(id);
-      expect(buildTtt(s).a3).toBeCloseTo(ae3(s.composition)!, 9);
-      // and not the binary diagram's 814.63 °C, which it used to be.
-      expect(buildTtt(s).a3).toBeLessThan(760);
-    }
-    expect(buildTtt(getSteel('1080')).a3).toBeNull();
   });
 
   /**

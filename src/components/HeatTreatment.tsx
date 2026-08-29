@@ -286,11 +286,8 @@ export function HeatTreatment() {
             </tr>
             {ttt.a3 !== null && (
               <tr>
-                <th scope="row">A₃</th>
-                <td>
-                  {Math.round(ttt.a3)} °C — below it, {(ttt.equilibriumFerrite * 100).toFixed(0)}%
-                  proeutectoid ferrite
-                </td>
+                <th scope="row">Ae₃ (Andrews)</th>
+                <td>{Math.round(ttt.a3)} °C</td>
               </tr>
             )}
             <tr>
@@ -305,6 +302,19 @@ export function HeatTreatment() {
             </tr>
           </tbody>
         </table>
+
+        {outcome.fractions.some((f) => f.product === 'proeutectoid ferrite') && (
+          <p className="ht-caveat">
+            <strong>The ferrite fraction is an upper bound.</strong> It comes from the lever rule on
+            the <em>binary</em> Fe–Fe₃C diagram, against the eutectoid at 0.76 wt% C. Manganese,
+            chromium, nickel and molybdenum all lower the eutectoid carbon, so an alloy steel
+            reaches the eutectoid composition sooner and rejects <em>less</em> proeutectoid ferrite
+            than this: for {steel.name.split(' —')[0]} an effective eutectoid near 0.60–0.65 wt% C
+            would give roughly 35–40% rather than{' '}
+            {(ttt.equilibriumFerrite * 100).toFixed(0)}%. Ae₃ above is Andrews' regression over the
+            whole composition and does account for the alloying; the fraction does not.
+          </p>
+        )}
 
         {ttt.m90 < 20 && (
           <p className="ht-caveat">

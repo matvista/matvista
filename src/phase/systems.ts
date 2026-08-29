@@ -277,22 +277,6 @@ const FEC_TMIN = 400;
 const A3_PURE = 912;
 
 const a3X = (T: number) => lerp(T, A3_PURE, 0, EUTECTOID_T, EUTECTOID_X);
-
-/**
- * A₃ — the temperature at which a hypoeutectoid steel of composition `C0`
- * first crosses out of the single-phase γ field, and so the temperature at
- * which proeutectoid ferrite begins to be rejected.
- *
- * The inverse of the `a3X` boundary above, exported so the heat-treatment
- * module can read the same line the phase diagram draws instead of retyping
- * 912 °C and 0.76 wt% C. Runs from pure iron's 912 °C down to the eutectoid at
- * 727 °C; above `EUTECTOID_X` there is no proeutectoid ferrite and the
- * function returns `EUTECTOID_T`, the A₁ isotherm.
- */
-export function a3Temperature(C0: number): number {
-  if (C0 >= EUTECTOID_X) return EUTECTOID_T;
-  return lerp(Math.max(C0, 0), 0, A3_PURE, EUTECTOID_X, EUTECTOID_T);
-}
 /**
  * The α/(α+γ) boundary between the eutectoid and pure iron's A₃.
  *

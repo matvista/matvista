@@ -10,8 +10,9 @@
  * is not a substitute for a measured CCT diagram.
  */
 
-import { a3Temperature, steelMicrostructure } from '../phase/systems';
+import { steelMicrostructure } from '../phase/systems';
 import {
+  ae3,
   martensiteFractionTemp,
   martensiteStart,
   type Steel,
@@ -96,9 +97,10 @@ export interface TttModel {
   m90: number;
   a1: number;
   /**
-   * A₃ for this steel's carbon level, °C — the temperature at which it leaves
-   * the single-phase γ field and starts rejecting proeutectoid ferrite. Null
-   * for a steel that rejects none.
+   * Ae₃ for this steel's whole composition, °C — the temperature at which it
+   * leaves the single-phase γ field and starts rejecting proeutectoid ferrite.
+   * Null for a steel that rejects none. From Andrews, not from the binary
+   * Fe–Fe₃C boundary: see `ae3` in `steels.ts` for why.
    */
   a3: number | null;
   /** Lever-rule proeutectoid ferrite fraction, at full transformation. */
@@ -115,7 +117,7 @@ export function buildTtt(steel: Steel): TttModel {
     m50: martensiteFractionTemp(ms, 0.5),
     m90: martensiteFractionTemp(ms, 0.9),
     a1: steel.a1,
-    a3: equilibriumFerrite > 0 ? a3Temperature(steel.composition.C) : null,
+    a3: equilibriumFerrite > 0 ? ae3(steel.composition) : null,
     equilibriumFerrite,
   };
 }
@@ -293,7 +295,7 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
       complete: true,
       summary:
         alpha > 0
-          ? `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ. Because this steel is hypoeutectoid, it must first reject ${Math.round(alpha * 100)}% proeutectoid ferrite — pearlite is eutectoid at 0.76 wt% C, and the lever rule against ${ttt.a3 === null ? 'A₃' : `A₃ (${Math.round(ttt.a3)} °C)`} is what enriches the remaining austenite to that composition. Quenching afterwards changes nothing — there is no austenite left to harden.`
+          ? `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ. Because this steel is hypoeutectoid, it must first reject proeutectoid ferrite — pearlite is eutectoid at 0.76 wt% C, and rejecting the carbon-poor ferrite between Ae₃ and A₁ is what enriches the remaining austenite to that composition. The binary Fe–Fe₃C lever rule puts that at ${Math.round(alpha * 100)}%, which is an upper bound: alloying lowers the eutectoid carbon, so the true figure for this grade is lower. Quenching afterwards changes nothing — there is no austenite left to harden.`
           : `Transformation begins at ${Math.round(hitStart.T)} °C and runs to completion above Mˢ, giving ${product} throughout. Quenching afterwards changes nothing — there is no austenite left to harden.`,
     };
   }

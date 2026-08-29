@@ -111,6 +111,35 @@ export function martensiteStart(c: Steel['composition']): number {
 }
 
 /**
+ * Ae₃, °C — the temperature at which a hypoeutectoid steel leaves the
+ * single-phase γ field, from Andrews' linear regression (1965):
+ *
+ *   Ae₃ = 910 − 203·√C − 15.2·Ni + 44.7·Si + 104·V + 31.5·Mo + 13.1·W
+ *              − 30·Mn − 11·Cr − 20·Cu + 700·P + 400·Al + 120·As + 400·Ti
+ *
+ * Same paper as `martensiteStart` above, which is why it is used here rather
+ * than the binary Fe–Fe₃C boundary: that boundary is a function of carbon
+ * alone, so it hands 5140 and 4340 the identical 814.63 °C and erases the only
+ * difference between them, while sitting 66–82 °C above where either steel
+ * actually leaves the γ field.
+ *
+ * **Only the terms this repo has data for are evaluated** — C, Ni, Mo, Mn, Cr.
+ * The shipped `composition` carries no silicon, and these grades nominally
+ * hold 0.15–0.35 wt% Si, so the values here run about 11 °C low against a
+ * calculation that includes it. No silicon figure is invented to close that
+ * gap; the shortfall is stated instead.
+ *
+ * Returns null above the eutectoid, where there is no γ → α + γ boundary to
+ * report and the regression is outside its domain.
+ */
+export function ae3(c: Steel['composition']): number | null {
+  if (c.C >= 0.76) return null;
+  return (
+    910 - 203 * Math.sqrt(c.C) - 15.2 * c.Ni + 31.5 * c.Mo - 30 * c.Mn - 11 * c.Cr
+  );
+}
+
+/**
  * Temperature at which the given fraction of austenite has become martensite.
  * Koistinen–Marburger: f = 1 − exp(−0.011·(Mˢ − T)), inverted for T.
  */

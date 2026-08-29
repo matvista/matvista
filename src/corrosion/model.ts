@@ -181,14 +181,25 @@ export const OXYGEN_E0 = 1.229;
 /* ------------------------------------------------------ concentration cells */
 
 export interface ConcentrationCellResult {
-  /** Potential of the concentrated electrode, relative to the standard state, V. */
-  eHigh: number;
-  /** Potential of the depleted electrode, same reference, V. */
-  eLow: number;
+  /**
+   * Potential of the electrode at the **first** activity given, relative to
+   * the standard state, V.
+   *
+   * Named for the argument it arrived as, not for how concentrated it is.
+   * These were once `eHigh`/`eLow`, sorted by activity, while `anode` was
+   * `'high' | 'low'` meaning the first or second argument — two meanings of
+   * high and low in one four-field result, which is exactly how the panel came
+   * to print each electrode's potential on the other one's row. There is one
+   * ordering here now, and it is the caller's: the caller is the only party
+   * that knows which electrode is the crevice and which is the open surface.
+   */
+  eFirst: number;
+  /** Potential of the electrode at the **second** activity given, same reference, V. */
+  eSecond: number;
   /** Cell voltage, V. Never negative. */
   emf: number;
-  /** Which of the two given activities belongs to the electrode that corrodes. */
-  anode: 'high' | 'low' | 'neither';
+  /** Which of the two electrodes corrodes, named by the argument it arrived as. */
+  anode: 'first' | 'second' | 'neither';
 }
 
 /**
@@ -209,6 +220,10 @@ export interface ConcentrationCellResult {
  *
  * The same arithmetic with n = 4 over the oxygen half-cell is differential
  * aeration, where "activity" is the dissolved-oxygen level instead.
+ *
+ * The two activities may be given in either order. `emf` is the magnitude of
+ * the difference and `anode` names the argument that corrodes, so nothing
+ * downstream has to know which of the two was the larger.
  */
 export function concentrationCell(
   n: number,
@@ -218,14 +233,13 @@ export function concentrationCell(
 ): ConcentrationCellResult | null {
   if (!(n > 0) || !(activityA > 0) || !(activityB > 0)) return null;
   const shift = (a: number) => (nernstSlope(T_K) / n) * Math.log10(a);
-  const eA = shift(activityA);
-  const eB = shift(activityB);
-  const [eHigh, eLow] = eA >= eB ? [eA, eB] : [eB, eA];
-  const emf = eHigh - eLow;
+  const eFirst = shift(activityA);
+  const eSecond = shift(activityB);
   return {
-    eHigh,
-    eLow,
-    emf,
-    anode: emf === 0 ? 'neither' : eA < eB ? 'high' : 'low',
+    eFirst,
+    eSecond,
+    emf: Math.abs(eFirst - eSecond),
+    // The more active electrode — the lower potential — is the one consumed.
+    anode: eFirst === eSecond ? 'neither' : eFirst < eSecond ? 'first' : 'second',
   };
 }

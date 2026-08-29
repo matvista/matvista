@@ -407,7 +407,7 @@ describe('concentration cells', () => {
           nernstPotential(E0, n, hi) - nernstPotential(E0, n, lo),
           12,
         );
-        expect(cell.eHigh - cell.eLow).toBeCloseTo(cell.emf, 12);
+        expect(cell.eFirst - cell.eSecond).toBeCloseTo(cell.emf, 12);
       }
     },
   );
@@ -416,16 +416,59 @@ describe('concentration cells', () => {
    * The mechanism, and the reason a crevice is dangerous: the *depleted* side
    * is the anode. Dilute the metal ion and the metal there becomes more
    * active, so it corrodes — against the identical metal a millimetre away.
+   *
+   * **Both argument orderings, deliberately.** This sweep used to run
+   * `for (l = -6; l < h; …)`, visiting only the 78 pairs where the first
+   * argument is already the more concentrated one — so it could not reach the
+   * branch where the *first* electrode is the anode, which is the branch the
+   * panel's two independent sliders reach whenever `ah < al`.
    */
-  it('always makes the depleted side the anode', () => {
+  it('always makes the depleted side the anode, whichever argument it arrived as', () => {
+    let firstAnodic = 0;
+    let secondAnodic = 0;
     for (let h = -6; h <= 0; h += 0.5) {
-      for (let l = -6; l < h; l += 0.5) {
+      for (let l = -6; l <= 0; l += 0.5) {
         const cell = concentrationCell(2, 10 ** h, 10 ** l)!;
-        expect(cell.anode).toBe('low');
+        if (h === l) {
+          expect(cell.anode).toBe('neither');
+          expect(cell.emf).toBe(0);
+          continue;
+        }
+        expect(cell.anode).toBe(h < l ? 'first' : 'second');
         expect(cell.emf).toBeGreaterThan(0);
-        expect(cell.eLow).toBeLessThan(cell.eHigh);
+        const [eAnode, eCathode] =
+          cell.anode === 'first' ? [cell.eFirst, cell.eSecond] : [cell.eSecond, cell.eFirst];
+        expect(eAnode).toBeLessThan(eCathode);
+        expect(eCathode - eAnode).toBeCloseTo(cell.emf, 12);
+        if (cell.anode === 'first') firstAnodic++;
+        else secondAnodic++;
       }
     }
+    // Both branches have to be exercised, or this is the old sweep again.
+    expect(firstAnodic).toBe(secondAnodic);
+    expect(firstAnodic).toBeGreaterThan(0);
+  });
+
+  /**
+   * The result the panel reads its two rows off. Each electrode's potential
+   * belongs to *that* electrode: `eFirst`/`eSecond` are in argument order, not
+   * sorted by activity, because the caller is the only party that knows which
+   * side is the crevice.
+   *
+   * This is `#/corrosion?panel=cell&cm=Iron&ah=-4&al=0`, where the sliders put
+   * the depleted electrode first.
+   */
+  it('keeps each electrode’s potential with that electrode', () => {
+    const cell = concentrationCell(2, 1e-4, 1)!;
+    expect(cell.eFirst * 1000).toBeCloseTo(-118.3125, 3);
+    expect(cell.eSecond).toBe(0);
+    expect(cell.anode).toBe('first');
+    expect(cell.emf * 1000).toBeCloseTo(118.3125, 3);
+    // …and mirrored, the same two numbers swap rows rather than staying put.
+    const mirrored = concentrationCell(2, 1, 1e-4)!;
+    expect(mirrored.eFirst).toBe(0);
+    expect(mirrored.eSecond * 1000).toBeCloseTo(-118.3125, 3);
+    expect(mirrored.anode).toBe('second');
   });
 
   it('gives exactly zero, and no anode, at equal activity', () => {
@@ -440,8 +483,10 @@ describe('concentration cells', () => {
     const a = concentrationCell(2, 1e-1, 1e-4)!;
     const b = concentrationCell(2, 1e-4, 1e-1)!;
     expect(b.emf).toBeCloseTo(a.emf, 12);
-    expect(b.anode).toBe('high');
-    expect(a.anode).toBe('low');
+    expect(a.anode).toBe('second');
+    expect(b.anode).toBe('first');
+    expect(b.eFirst).toBe(a.eSecond);
+    expect(b.eSecond).toBe(a.eFirst);
   });
 
   it('falls with n — a trivalent metal shifts a third as far per decade', () => {
@@ -460,7 +505,7 @@ describe('concentration cells', () => {
     const cell = concentrationCell(4, 1, 1e-2)!;
     expect(cell.emf).toBeCloseTo((0.0592 / 4) * 2, 4);
     expect(cell.emf).toBeCloseTo(0.0296, 4);
-    expect(cell.anode).toBe('low');
+    expect(cell.anode).toBe('second');
   });
 
   it('scales with temperature exactly as the Nernst slope does', () => {

@@ -490,7 +490,7 @@ function CellPanel() {
           />
         </div>
 
-        <CrevicSketch mode={mode} anodeIsInside={cell.anode === 'low'} emf={cell.emf} />
+        <CrevicSketch mode={mode} anodeIsInside={cell.anode === 'second'} emf={cell.emf} />
 
         <p className="ht-caveat">
           <strong>Both electrodes are the same metal.</strong> Nothing here is a couple: there is
@@ -505,7 +505,7 @@ function CellPanel() {
         <p className="detail-meta">
           {cell.anode === 'neither'
             ? 'no driving force — the two sides are identical'
-            : `driving the ${(cell.anode === 'low' ? sideLow : sideHigh).toLowerCase()} anodic`}
+            : `driving the ${(cell.anode === 'second' ? sideLow : sideHigh).toLowerCase()} anodic`}
         </p>
 
         <p className="density-eq">
@@ -530,16 +530,19 @@ function CellPanel() {
             </tr>
             <tr>
               <th scope="row">{sideHigh}</th>
-              <td className={cell.anode === 'high' ? 'err-off' : 'err-ok'}>
-                {(Math.max(cell.eHigh, cell.eLow) * 1000).toFixed(1)} mV
-                {cell.anode === 'high' ? ' — anode' : cell.anode === 'low' ? ' — cathode' : ''}
+              <td className={cell.anode === 'first' ? 'err-off' : 'err-ok'}>
+                {/* This electrode's own potential, not the higher of the two.
+                    The sliders are independent, so the side labelled here is
+                    not necessarily the more concentrated one. */}
+                {(cell.eFirst * 1000).toFixed(1)} mV
+                {cell.anode === 'first' ? ' — anode' : cell.anode === 'second' ? ' — cathode' : ''}
               </td>
             </tr>
             <tr>
               <th scope="row">{sideLow}</th>
-              <td className={cell.anode === 'low' ? 'err-off' : 'err-ok'}>
-                {(Math.min(cell.eHigh, cell.eLow) * 1000).toFixed(1)} mV
-                {cell.anode === 'low' ? ' — anode' : cell.anode === 'high' ? ' — cathode' : ''}
+              <td className={cell.anode === 'second' ? 'err-off' : 'err-ok'}>
+                {(cell.eSecond * 1000).toFixed(1)} mV
+                {cell.anode === 'second' ? ' — anode' : cell.anode === 'first' ? ' — cathode' : ''}
               </td>
             </tr>
           </tbody>

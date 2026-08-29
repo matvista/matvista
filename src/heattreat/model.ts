@@ -565,8 +565,10 @@ function predictWithMs(
   // The matrix is subject to the same rule as the product: if the bar does not
   // draw the martensite, the prose must not say the structure is embedded in
   // it. Just below full transformation that fraction goes under the display
-  // floor — 1080 at 23.44 °C/s left 0.098% — and the sentence named a phase
-  // that was not on screen.
+  // floor — 1080 at 23.44 °C/s leaves 0.4722%, against a 0.5% floor — and the
+  // sentence named a phase
+  // that was not on screen. Exactly one slider detent per steel reaches this
+  // branch, and only for 1080; the figure is asserted so it cannot drift.
   const matrixDrawn = 1 - fraction >= TRACE_FRACTION;
   return {
     fractions: [...parts, { product: 'martensite', fraction: 1 - fraction }],

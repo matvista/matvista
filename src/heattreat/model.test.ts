@@ -640,7 +640,10 @@ describe('untransformed austenite carbon', () => {
  * does not draw it — so the sentence names a phase that is not on screen. The
  * mirror image of the defect fixed for the product itself, and it was there
  * before the ferrite work started: 1080 at 23.44 °C/s reads "roughly 100%
- * coarse pearlite embedded in martensite" with 0.098% martensite.
+ * coarse pearlite embedded in martensite" with 0.4722% martensite, against a
+ * 0.5% display floor. (An earlier version of this comment said 0.098%, which
+ * was wrong by 4.8×, and claimed "34–53 detents per steel"; the real count is
+ * one detent, on 1080 alone. Both are now asserted.)
  */
 describe('the prose names only phases the bar draws', () => {
   it('never says "embedded in martensite" when no martensite is drawn', () => {
@@ -663,6 +666,7 @@ describe('the prose names only phases the bar draws', () => {
     const o = predict(s, buildTtt(s), AUST, 23.44);
     const m = o.fractions.find((f) => f.product === 'martensite')!.fraction;
     expect(m).toBeLessThan(TRACE_FRACTION);
+    expect(m * 100).toBeCloseTo(0.4722, 3);
     expect(o.summary).not.toMatch(/embedded in martensite/);
     // and it still says what did happen
     expect(o.summary).toMatch(/coarse pearlite/);
@@ -1033,5 +1037,27 @@ describe('untransformed austenite carbon refuses outside its domain', () => {
     const s = getSteel('5140');
     const o = predict(s, buildTtt(s), AUST, 10);
     expect(untransformedAusteniteCarbon(o, 0.4)!).toBeCloseTo(0.519, 2);
+  });
+});
+
+/**
+ * Counts written into comments, asserted so they cannot drift.
+ *
+ * Both of these were quoted in a commit message and a code comment with
+ * nothing checking them, and both were wrong — the repo's own iteration-14
+ * lesson, applied to my own prose for the second time this series.
+ */
+describe('the near-complete branch is as rare as the comment says', () => {
+  /** The slider steps 0.01 decades from 0.01 to 5000 °C/s: 571 detents. */
+  const DETENTS = Array.from({ length: 571 }, (_, i) => 10 ** (-2 + i * 0.01));
+
+  it('is reachable at exactly one detent, on 1080 alone', () => {
+    const counts = STEELS.map((s) => {
+      const ttt = buildTtt(s);
+      return DETENTS.filter((r) => /very nearly completes/.test(predict(s, ttt, AUST, r).summary))
+        .length;
+    });
+    expect(counts).toEqual([1, 0, 0]);
+    expect(STEELS.map((s) => s.id)).toEqual(['1080', '5140', '4340']);
   });
 });

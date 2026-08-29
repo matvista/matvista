@@ -6,6 +6,7 @@ import {
   STEELS,
   getSteel,
   martensiteStart,
+  type Steel,
 } from '../heattreat/steels';
 import {
   buildTtt,
@@ -59,6 +60,36 @@ const PRODUCT_COLOR: Record<Product, string> = {
   bainite: '#15875e', // light 4.28, dark 4.31
   martensite: '#d34443', // light 4.26, dark 4.33
 };
+
+/**
+ * Names the eutectoid-lowering elements this particular steel actually
+ * contains, strongest effect first.
+ *
+ * One static sentence covered both grades and led with molybdenum — which
+ * 5140 does not contain at all, along with the nickel it went on to mention.
+ * The ordering is qualitative on purpose: b0b4181 established that there is
+ * no published linear-additive formula for eutectoid carbon in a
+ * multicomponent steel, so no magnitude is quoted, only the ranking.
+ * Molybdenum is the steepest of the four; manganese and chromium are
+ * appreciable; nickel moves it by ≤0.02 wt% and is called out as negligible
+ * rather than silently included.
+ */
+function eutectoidShifters(steel: Steel): string {
+  const strong: string[] = [];
+  if (steel.composition.Mo > 0) strong.push('molybdenum most steeply');
+  const mid = [
+    steel.composition.Mn > 0 ? 'manganese' : null,
+    steel.composition.Cr > 0 ? 'chromium' : null,
+  ].filter(Boolean) as string[];
+  if (mid.length > 0) {
+    strong.push(`${mid.join(' and ')} appreciably`);
+  }
+  if (steel.composition.Ni > 0) strong.push('nickel barely at all');
+  if (strong.length === 0) return 'no element present does so appreciably';
+  return strong.length === 1
+    ? strong[0]
+    : `${strong.slice(0, -1).join(', ')} and ${strong[strong.length - 1]}`;
+}
 
 const AUSTENITISE = 850;
 
@@ -356,9 +387,8 @@ export function HeatTreatment() {
           <p className="ht-caveat">
             <strong>The ferrite fraction is an upper bound.</strong> It is the lever rule on the{' '}
             <em>binary</em> Fe–Fe₃C diagram, against the eutectoid at 0.76 wt% C. Alloying lowers
-            the eutectoid carbon — molybdenum most steeply of the elements here, manganese and
-            chromium appreciably, nickel barely at all — so an alloy steel reaches the eutectoid
-            composition sooner and rejects <em>less</em> ferrite than {(ttt.equilibriumFerrite * 100).toFixed(0)}%.
+            the eutectoid carbon — in this steel {eutectoidShifters(steel)} — so it reaches the
+            eutectoid composition sooner and rejects <em>less</em> ferrite than {(ttt.equilibriumFerrite * 100).toFixed(0)}%.
             No corrected figure is quoted, because there is not one to quote: a ternary Fe–C–X
             section is univariant rather than invariant, so a multicomponent steel has no single
             eutectoid <em>point</em>, the published pseudo-binary sections are explicitly not

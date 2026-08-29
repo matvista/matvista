@@ -630,6 +630,9 @@ writing the table above — which is the point of having it:
 | `7c1161b` | the same sentence | 301,121 B again, gzip 85.17 → **85.16 kB**. |
 
 | `bd9de77` | "First-paint chunk 301,121 B raw / 85.16 kB gzip … unchanged from the parent's own build" | 301,121 B again, gzip 85.16 → **85.17 kB**. Written after the two rows above, which is the point of the rule below. |
+| `96b386c` | "First-paint chunk 301.12 kB raw / 85.17 kB gzip … unchanged" | Its parent `56037ff` is **85.18**, so it fell. Fourth of the same shape. |
+| `abce31d` | "the index chunk is byte-identical at 301,121 B" | The *length* is identical; the bytes are not — md5 `f1e4f657…` → `3570614e…`. Its gzip figure did hold at 85.17. |
+| `234672c` | MillerIndices "17.59 → 17.62 kB raw (5.53 → 5.54 gzip)", HeatTreatment "28.40 → **28.43**", DefectsDiffusion "5.40 → **5.41** gzip" | 17.59 → **17.63** kB raw and 5.53 → **5.55** gzip; **28.42**; **5.42**. Three figures written from what the change looked like it would cost rather than from the build sitting in the same shell. |
 
 All three are the `a834086` shape exactly, and the mechanism is worth stating as a rule of
 its own:
@@ -641,9 +644,19 @@ its own:
 > from a build — and never write "unchanged" for it on the strength of the raw length
 > holding.
 
-Fourteen of the seventeen commits on this branch really do hold at 301,121 B / 85.17 kB
-gzip with a 37,320 B / 7.78 kB stylesheet, checked one build per commit; the three above
-are the ones that moved.
+Twenty-two of the twenty-six commits on this branch really do hold at 301,121 B /
+85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet, checked one build per commit; the
+four in that group are the ones that moved.
+
+**Two rules that would have caught all of these, both from writing them and then
+breaking them again:**
+
+> Never write a size into a commit body before the build that produced it has printed.
+> Every one of these came from composing the sentence while the change was fresh and
+> pasting the build output afterwards without re-reading the sentence against it.
+
+> "Byte-identical" is a claim about an md5, not about a length. If you have only compared
+> lengths, say "the same length".
 
 And two in the branch's own summary report, which is not a commit and cannot be corrected
 in place:

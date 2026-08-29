@@ -371,8 +371,29 @@ export function HeatTreatment() {
       </div>
 
       <aside className="detail">
-        <h2 className="crystal-title">{outcome.hardness.toFixed(0)} HRC</h2>
+        <h2 className="crystal-title">
+          {outcome.hardness.toFixed(0)} HRC
+          {undissolvedFerrite > 0 && <span className="coa-ideal"> of the austenitised part</span>}
+        </h2>
         <p className="detail-meta">predicted at {fmtRate(rate)} °C/s</p>
+
+        {/* M12 made the austenitising temperature a control, and this model is
+            deliberately independent of it below A₁ — the same products, the
+            same hardness, to twelve decimal places. That invariance is a
+            consequence on the high side and an error on the low side: a steel
+            austenitised below A₃ never fully became austenite, so part of it
+            cannot transform at all, and a headline that does not say so is
+            reporting a hardness the part will not have. */}
+        {undissolvedFerrite > 0 && (
+          <p className="ht-caveat">
+            <strong>Not the hardness of the part.</strong> At {austT} °C,{' '}
+            {(undissolvedFerrite * 100).toFixed(0)}% of this steel is still ferrite when the
+            quench starts, and this model transforms a fully austenitised steel — that ferrite is
+            not in the figure above. A real part quenched from here reads lower, with soft patches
+            no faster quench recovers. The austenitising panel below shows where the number comes
+            from.
+          </p>
+        )}
 
         <div className="ht-bar" role="img" aria-label="Predicted phase fractions">
           {outcome.fractions
@@ -816,6 +837,15 @@ function AustenitisingPanel({
         temperature also coarsens the austenite grain and pushes the nose right, increasing
         hardenability; that is not modelled, and the readouts above should not be read as saying it
         is.
+      </p>
+
+      <p className="ht-caveat">
+        <strong>And the low side is worse than unmodelled — it is wrong.</strong> The invariance
+        above is a fair simplification only while the steel really is fully austenite at the start.
+        Below A₃ it is not: part of the section is ferrite that never dissolved, cannot transform,
+        and stays soft whatever the quench. The hardness readout is the fully-austenitised figure
+        in that case too, so it overstates the part — which is why it is labelled and caveated
+        there rather than left to read as a prediction.
       </p>
     </div>
   );

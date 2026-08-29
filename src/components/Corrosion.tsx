@@ -4,8 +4,9 @@ import {
   EMF_SERIES, GALVANIC_SERIES, POURBAIX, electrochemistryFor, getPourbaix, regionAt,
 } from '../corrosion/data';
 import {
-  G102_K_MILS_PER_YEAR, areaRatioFactor, currentDensityToCPR, equivalentWeight,
-  galvanicCouple, hydrogenLine, nernstPotential, nernstSlope, oxygenLine,
+  G102_K_MILS_PER_YEAR, OXYGEN_E0, areaRatioFactor, concentrationCell,
+  currentDensityToCPR, equivalentWeight, galvanicCouple, hydrogenLine, nernstPotential,
+  nernstSlope, oxygenLine,
 } from '../corrosion/model';
 
 const W = 660;
@@ -20,11 +21,12 @@ const PH_MAX = 14;
 const PB_E_MIN = -1.8;
 const PB_E_MAX = 1.3;
 
-type Panel = 'couple' | 'emf' | 'pourbaix';
-const PANELS: Panel[] = ['couple', 'emf', 'pourbaix'];
+type Panel = 'couple' | 'emf' | 'cell' | 'pourbaix';
+const PANELS: Panel[] = ['couple', 'emf', 'cell', 'pourbaix'];
 const PANEL_LABEL: Record<Panel, string> = {
   couple: 'Galvanic couple',
   emf: 'EMF series & Nernst',
+  cell: 'Concentration cells',
   pourbaix: 'Pourbaix diagrams',
 };
 
@@ -47,6 +49,7 @@ export function Corrosion() {
       </div>
       {panel === 'couple' && <CouplePanel />}
       {panel === 'emf' && <EmfPanel />}
+      {panel === 'cell' && <CellPanel />}
       {panel === 'pourbaix' && <PourbaixPanel />}
     </div>
   );
@@ -397,6 +400,275 @@ function EmfPanel() {
         </div>
       </aside>
     </div>
+  );
+}
+
+/* ================================================================== cell == */
+
+type CellMode = 'ion' | 'oxygen';
+const CELL_MODES: CellMode[] = ['ion', 'oxygen'];
+
+/**
+ * A12 — one metal, no couple, still corroding.
+ *
+ * The single most common corrosion misconception is that two different metals
+ * are required. Crevice corrosion, pitting, waterline attack, under-deposit
+ * attack and a buried pipe crossing two soil types are all this cell. The EMF
+ * panel already explains the mechanism in prose; nothing let a reader build
+ * one and watch the identical metal turn anodic to itself.
+ *
+ * Fixed at 25 °C: this panel is about the activity ratio, and the temperature
+ * control already exists next door on the half-cell it shares its model with.
+ */
+function CellPanel() {
+  const [mode, setMode] = useRouteEnum<CellMode>('cmode', 'ion', CELL_MODES);
+  const [metal, setMetal] = useRouteString('cm', 'Iron');
+  const [logHigh, setLogHigh] = useRouteNumber('ah', 0, -6, 0);
+  const [logLow, setLogLow] = useRouteNumber('al', -4, -6, 0);
+
+  const metals = EMF_SERIES.filter((e) => e.metal);
+  const entry = metals.find((e) => e.metal === metal) ?? metals[0];
+  // Metal-ion cell: n electrons per atom dissolved. Differential aeration: the
+  // oxygen half-cell, O₂ + 4H⁺ + 4e⁻ → 2H₂O, so n = 4 regardless of the metal.
+  const n = mode === 'ion' ? entry.n : 4;
+  const high = 10 ** logHigh;
+  const low = 10 ** logLow;
+  const cell = concentrationCell(n, high, low)!;
+
+  const perDecade = (nernstSlope() / n) * 1000;
+  const label = mode === 'ion' ? `${entry.metal} ion activity` : 'dissolved O₂';
+  const unit = mode === 'ion' ? '' : 'of saturation';
+  const sideHigh = mode === 'ion' ? 'Open surface' : 'Aerated side';
+  const sideLow = mode === 'ion' ? 'Inside the crevice' : 'Starved side';
+  const show = (a: number) => (mode === 'ion' ? fmtMolar(a) : fmtPercent(a * 100));
+
+  return (
+    <div className="ss-layout">
+      <section className="dd-block">
+        <div className="crystal-controls">
+          <div className="toggle-group" role="group" aria-label="Cell type">
+            {CELL_MODES.map((m) => (
+              <button
+                key={m}
+                className={`toggle ${mode === m ? 'toggle-on' : ''}`}
+                aria-pressed={mode === m}
+                onClick={() => setMode(m)}
+              >
+                {m === 'ion' ? 'Metal-ion cell' : 'Differential aeration'}
+              </button>
+            ))}
+          </div>
+          <select value={metal} onChange={(e) => setMetal(e.target.value)} aria-label="Metal">
+            {metals.map((m) => (
+              <option key={m.metal} value={m.metal!}>
+                {m.metal}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="fa-sliders">
+          <Slider
+            label={`${sideHigh} — ${label}`}
+            unit={unit}
+            value={logHigh}
+            min={-6}
+            max={0}
+            step={0.1}
+            onChange={setLogHigh}
+            display={show(high)}
+          />
+          <Slider
+            label={`${sideLow} — ${label}`}
+            unit={unit}
+            value={logLow}
+            min={-6}
+            max={0}
+            step={0.1}
+            onChange={setLogLow}
+            display={show(low)}
+          />
+        </div>
+
+        <CrevicSketch mode={mode} anodeIsInside={cell.anode === 'low'} emf={cell.emf} />
+
+        <p className="ht-caveat">
+          <strong>Both electrodes are the same metal.</strong> Nothing here is a couple: there is
+          one alloy, one electrolyte, and a difference in what that electrolyte contains from one
+          place to another. Bolt {entry.metal!.toLowerCase()} to {entry.metal!.toLowerCase()} and
+          you have built this cell, and no choice of fastener material will remove it.
+        </p>
+      </section>
+
+      <aside className="detail">
+        <h2 className="crystal-title">{(cell.emf * 1000).toFixed(1)} mV</h2>
+        <p className="detail-meta">
+          {cell.anode === 'neither'
+            ? 'no driving force — the two sides are identical'
+            : `driving the ${(cell.anode === 'low' ? sideLow : sideHigh).toLowerCase()} anodic`}
+        </p>
+
+        <p className="density-eq">
+          E<sub>cell</sub> = (0.0592/n)·log(a<sub>high</sub> / a<sub>low</sub>)
+        </p>
+
+        <table className="detail-props">
+          <tbody>
+            <tr>
+              <th scope="row">Electrons n</th>
+              <td>
+                {n} {mode === 'oxygen' && <span className="coa-ideal">(O₂ half-cell)</span>}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Per decade</th>
+              <td>{perDecade.toFixed(1)} mV</td>
+            </tr>
+            <tr>
+              <th scope="row">Decades apart</th>
+              <td>{Math.abs(logHigh - logLow).toFixed(1)}</td>
+            </tr>
+            <tr>
+              <th scope="row">{sideHigh}</th>
+              <td className={cell.anode === 'high' ? 'err-off' : 'err-ok'}>
+                {(Math.max(cell.eHigh, cell.eLow) * 1000).toFixed(1)} mV
+                {cell.anode === 'high' ? ' — anode' : cell.anode === 'low' ? ' — cathode' : ''}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">{sideLow}</th>
+              <td className={cell.anode === 'low' ? 'err-off' : 'err-ok'}>
+                {(Math.min(cell.eHigh, cell.eLow) * 1000).toFixed(1)} mV
+                {cell.anode === 'low' ? ' — anode' : cell.anode === 'high' ? ' — cathode' : ''}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p className="detail-summary">
+          {cell.anode === 'neither'
+            ? 'With the two sides at the same activity there is no potential difference and no cell. Move either slider and the metal starts to attack itself.'
+            : mode === 'ion'
+              ? `The depleted side is the anode. Dilute the ${entry.metal!.toLowerCase()} ion and the Nernst term falls, so that metal sits ${(cell.emf * 1000).toFixed(1)} mV more active than the identical metal beside it — and the more active side is the one that dissolves.`
+              : `The oxygen-starved side is the anode. Reduction of oxygen is the cathodic reaction, so the well-aerated surface takes the cathode role and the starved metal — inside the crevice, under the deposit, below the waterline — carries the anodic current.`}
+        </p>
+
+        <div className="density-box">
+          <h3>Why it runs away</h3>
+          <p className="density-note">
+            Both forms are autocatalytic, which is why they perforate rather than thin a section
+            evenly. Metal dissolving inside a crevice cannot diffuse out, chloride migrates in to
+            balance the charge, the resulting metal chloride hydrolyses and the pH inside falls —
+            all of which makes the crevice a better anode than it was. A small anode against a
+            large aerated cathode is the area ratio of the couple panel, arrived at without any
+            second metal.
+          </p>
+          <p className="density-note">
+            {mode === 'ion'
+              ? 'The remedy is geometry, not metallurgy: no crevices, no lap joints holding stagnant liquid, no partial-penetration welds, drain the tank completely.'
+              : 'Standard potential of the O₂/H₂O couple is ' +
+                OXYGEN_E0 +
+                ' V, which is why oxygen reduction dominates the cathodic side of almost every practical corrosion cell in aerated water.'}
+          </p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/** 100 → "100%", 1 → "1.0%", 0.0001 → "1.0e-4%". */
+function fmtPercent(v: number): string {
+  if (v >= 10) return `${v.toFixed(0)}%`;
+  if (v >= 0.1) return `${v.toFixed(1)}%`;
+  return `${v.toExponential(1)}%`;
+}
+
+/**
+ * A crevice under a washer, or a plate crossing a waterline.
+ *
+ * Schematic on purpose: what has to read is that both electrodes are one piece
+ * of metal, and that the anode is the enclosed or starved side. The two cases
+ * are drawn differently because their geometry is the whole difference — a
+ * crevice traps solution, a waterline separates aeration.
+ */
+function CrevicSketch({
+  mode, anodeIsInside, emf,
+}: {
+  mode: CellMode;
+  anodeIsInside: boolean;
+  emf: number;
+}) {
+  const anodeClass = 'co-anode-text';
+  const cathodeClass = 'co-cathode-text';
+  const nearLabel = emf === 0 ? '—' : anodeIsInside ? 'anode — corrodes' : 'cathode';
+  const farLabel = emf === 0 ? '—' : anodeIsInside ? 'cathode' : 'anode — corrodes';
+  const nearClass = emf === 0 ? 'ht-edge-label' : anodeIsInside ? anodeClass : cathodeClass;
+  const farClass = emf === 0 ? 'ht-edge-label' : anodeIsInside ? cathodeClass : anodeClass;
+
+  if (mode === 'oxygen') {
+    return (
+      <svg
+        className="co-crevice"
+        viewBox="0 0 420 190"
+        role="img"
+        aria-label="A plate standing in water, aerated above the waterline and oxygen-starved below it"
+      >
+        <rect x={0} y={70} width={420} height={120} className="co-water" />
+        <line x1={0} y1={70} x2={420} y2={70} className="co-waterline" />
+        <text x={8} y={62} className="ht-edge-label">air</text>
+        <text x={8} y={90} className="ht-edge-label">aerated water</text>
+        <text x={8} y={175} className="ht-edge-label">stagnant, oxygen-starved</text>
+
+        {/* One plate, standing through the waterline. */}
+        <rect x={200} y={20} width={26} height={165} className="co-metal" />
+        <text x={240} y={100} className={cathodeClass}>
+          {emf === 0 ? '—' : 'cathode — O₂ reduced here'}
+        </text>
+        <text x={240} y={165} className={anodeClass}>
+          {emf === 0 ? '—' : 'anode — corrodes here'}
+        </text>
+        <text x={213} y={14} className="ht-edge-label" textAnchor="middle">
+          one plate
+        </text>
+        <text x={412} y={62} className="ht-edge-label" textAnchor="end">
+          {(emf * 1000).toFixed(1)} mV across the waterline
+        </text>
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      className="co-crevice"
+      viewBox="0 0 420 190"
+      role="img"
+      aria-label="A washer bolted to a plate, with stagnant solution in the crevice beneath it"
+    >
+      <rect x={0} y={40} width={420} height={150} className="co-water" />
+      <text x={8} y={58} className="ht-edge-label">bulk electrolyte</text>
+
+      {/* One piece of metal: the plate and the washer bolted to it. */}
+      <rect x={40} y={120} width={340} height={40} className="co-metal" />
+      <rect x={150} y={90} width={120} height={22} className="co-metal" />
+      {/* The crevice itself — the gap the solution cannot exchange through. */}
+      <rect x={150} y={112} width={120} height={8} className="co-gap" />
+      <text x={210} y={86} className="ht-edge-label" textAnchor="middle">
+        washer
+      </text>
+      <text x={210} y={178} className="ht-edge-label" textAnchor="middle">
+        one piece of metal
+      </text>
+
+      <text x={210} y={145} className={nearClass} textAnchor="middle">
+        {nearLabel}
+      </text>
+      <text x={95} y={145} className={farClass} textAnchor="middle">
+        {farLabel}
+      </text>
+      <text x={412} y={32} className="ht-edge-label" textAnchor="end">
+        {(emf * 1000).toFixed(1)} mV across a few millimetres
+      </text>
+    </svg>
   );
 }
 

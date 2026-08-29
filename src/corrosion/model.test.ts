@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CPR_K_MILS_PER_YEAR, CPR_K_MM_PER_YEAR, G102_K_MILS_PER_YEAR, G102_K_MM_PER_YEAR,
-  OXYGEN_E0, areaRatioFactor, currentDensityToCPR, equivalentWeight, galvanicCouple,
-  hydrogenLine, nernstPotential, nernstSlope, oxygenLine, penetrationRate,
+  OXYGEN_E0, T25, areaRatioFactor, concentrationCell, currentDensityToCPR, equivalentWeight,
+  galvanicCouple, hydrogenLine, nernstPotential, nernstSlope, oxygenLine, penetrationRate,
 } from './model';
 import {
   ELECTROCHEMISTRY, EMF_SERIES, GALVANIC_SERIES, POURBAIX, electrochemistryFor, getPourbaix,
@@ -373,6 +373,107 @@ describe('the electrochemistry table', () => {
     );
     expect(couple.anode).toBe('Carbon steel');
     expect(electrochemistryFor(couple.anode)).not.toBeNull();
+  });
+});
+
+/**
+ * A12 — the single most common corrosion misconception is that two different
+ * metals are required. Crevice corrosion, pitting, waterline attack,
+ * under-deposit attack and a buried pipe crossing two soil types are all
+ * concentration cells: one metal, no couple, still corroding.
+ */
+describe('concentration cells', () => {
+  it('is exactly (0.0592/n)·log(a_high/a_low) at 25 °C', () => {
+    const cell = concentrationCell(2, 1, 1e-3)!;
+    // 0.0592 is the textbook shorthand; the module computes the slope from R,
+    // F and T and gets 0.059158, so the two agree to 3 places and no further.
+    expect(cell.emf).toBeCloseTo((0.0592 / 2) * 3, 3);
+    expect(cell.emf).toBeCloseTo(0.0887, 4);
+    expect(cell.emf).toBeCloseTo((nernstSlope(T25) / 2) * Math.log10(1 / 1e-3), 12);
+  });
+
+  /**
+   * The identity that makes this the same model as the EMF panel's Nernst
+   * shift rather than a second one: the cell voltage is the difference of two
+   * half-cell potentials, whatever E° they are taken against — E° cancels.
+   */
+  it.each([-2.363, -0.763, -0.44, 0, 0.34, 1.42])(
+    'is the Nernst difference of two identical electrodes at E° = %s',
+    (E0) => {
+      for (const [hi, lo] of [[1, 1e-2], [1e-1, 1e-5], [1e-3, 1e-6]]) {
+        const n = 2;
+        const cell = concentrationCell(n, hi, lo)!;
+        expect(cell.emf).toBeCloseTo(
+          nernstPotential(E0, n, hi) - nernstPotential(E0, n, lo),
+          12,
+        );
+        expect(cell.eHigh - cell.eLow).toBeCloseTo(cell.emf, 12);
+      }
+    },
+  );
+
+  /**
+   * The mechanism, and the reason a crevice is dangerous: the *depleted* side
+   * is the anode. Dilute the metal ion and the metal there becomes more
+   * active, so it corrodes — against the identical metal a millimetre away.
+   */
+  it('always makes the depleted side the anode', () => {
+    for (let h = -6; h <= 0; h += 0.5) {
+      for (let l = -6; l < h; l += 0.5) {
+        const cell = concentrationCell(2, 10 ** h, 10 ** l)!;
+        expect(cell.anode).toBe('low');
+        expect(cell.emf).toBeGreaterThan(0);
+        expect(cell.eLow).toBeLessThan(cell.eHigh);
+      }
+    }
+  });
+
+  it('gives exactly zero, and no anode, at equal activity', () => {
+    for (const a of [1, 1e-2, 1e-6]) {
+      const cell = concentrationCell(2, a, a)!;
+      expect(cell.emf).toBe(0);
+      expect(cell.anode).toBe('neither');
+    }
+  });
+
+  it('reports the same cell whichever way round the two are given', () => {
+    const a = concentrationCell(2, 1e-1, 1e-4)!;
+    const b = concentrationCell(2, 1e-4, 1e-1)!;
+    expect(b.emf).toBeCloseTo(a.emf, 12);
+    expect(b.anode).toBe('high');
+    expect(a.anode).toBe('low');
+  });
+
+  it('falls with n — a trivalent metal shifts a third as far per decade', () => {
+    const two = concentrationCell(2, 1, 1e-3)!;
+    const three = concentrationCell(3, 1, 1e-3)!;
+    expect(two.emf / three.emf).toBeCloseTo(1.5, 12);
+  });
+
+  /**
+   * Differential aeration is the same arithmetic with n = 4, over the oxygen
+   * half-cell: two orders of magnitude in dissolved oxygen drives 29.6 mV.
+   * Small, and quite enough — it is why a waterline rusts and why steel under
+   * a wet leaf pits.
+   */
+  it('handles the differential-aeration case at n = 4', () => {
+    const cell = concentrationCell(4, 1, 1e-2)!;
+    expect(cell.emf).toBeCloseTo((0.0592 / 4) * 2, 4);
+    expect(cell.emf).toBeCloseTo(0.0296, 4);
+    expect(cell.anode).toBe('low');
+  });
+
+  it('scales with temperature exactly as the Nernst slope does', () => {
+    const hot = concentrationCell(2, 1, 1e-3, 373.15)!;
+    const cold = concentrationCell(2, 1, 1e-3, T25)!;
+    expect(hot.emf / cold.emf).toBeCloseTo(nernstSlope(373.15) / nernstSlope(T25), 12);
+  });
+
+  it('refuses a non-physical activity or electron count', () => {
+    expect(concentrationCell(2, 0, 1e-3)).toBeNull();
+    expect(concentrationCell(2, 1, 0)).toBeNull();
+    expect(concentrationCell(2, -1, 1e-3)).toBeNull();
+    expect(concentrationCell(0, 1, 1e-3)).toBeNull();
   });
 });
 

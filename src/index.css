@@ -2536,3 +2536,46 @@ input[type='range'] {
   font-size: 11px;
   font-family: system-ui, sans-serif;
 }
+
+/* A12 — the crevice / waterline sketch. The anode and cathode labels reuse the
+   measured --bad-ink / --ok-ink pair rather than fresh hexes, so they clear AA
+   on both themes; each also carries the word, so colour is supplementary. */
+.co-crevice {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0.6rem 0;
+}
+
+.co-water {
+  fill: var(--accent);
+  opacity: 0.08;
+}
+
+.co-waterline {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
+.co-metal {
+  fill: var(--muted);
+  opacity: 0.45;
+}
+
+.co-gap {
+  fill: var(--page);
+}
+
+.co-anode-text {
+  fill: var(--bad-ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+}
+
+.co-cathode-text {
+  fill: var(--ok-ink);
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+}

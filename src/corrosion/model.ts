@@ -177,3 +177,55 @@ export function oxygenLine(pH: number, T_K = T25): number {
 
 /** Standard potential of the O₂/H₂O couple in acid, V vs SHE. */
 export const OXYGEN_E0 = 1.229;
+
+/* ------------------------------------------------------ concentration cells */
+
+export interface ConcentrationCellResult {
+  /** Potential of the concentrated electrode, relative to the standard state, V. */
+  eHigh: number;
+  /** Potential of the depleted electrode, same reference, V. */
+  eLow: number;
+  /** Cell voltage, V. Never negative. */
+  emf: number;
+  /** Which of the two given activities belongs to the electrode that corrodes. */
+  anode: 'high' | 'low' | 'neither';
+}
+
+/**
+ * Two electrodes of the **same** metal at different activity.
+ *
+ * The commonest misconception in corrosion is that two different metals are
+ * needed. They are not: crevice corrosion, pitting, waterline attack,
+ * under-deposit attack and a buried pipe crossing two soil types are all this
+ * cell. The EMF panel already explains the mechanism in prose, which is a
+ * paragraph students skim.
+ *
+ *   E_cell = (RT/nF)·ln(a_high/a_low) = (0.0592/n)·log₁₀(a_high/a_low) at 25 °C
+ *
+ * E° cancels — it is the same metal on both sides — so this is exactly the
+ * difference of two `nernstPotential` readings and carries no data of its own.
+ * The **depleted** side is the anode: dilute the metal ion and that metal
+ * becomes more active, so it corrodes against its own twin.
+ *
+ * The same arithmetic with n = 4 over the oxygen half-cell is differential
+ * aeration, where "activity" is the dissolved-oxygen level instead.
+ */
+export function concentrationCell(
+  n: number,
+  activityA: number,
+  activityB: number,
+  T_K = T25,
+): ConcentrationCellResult | null {
+  if (!(n > 0) || !(activityA > 0) || !(activityB > 0)) return null;
+  const shift = (a: number) => (nernstSlope(T_K) / n) * Math.log10(a);
+  const eA = shift(activityA);
+  const eB = shift(activityB);
+  const [eHigh, eLow] = eA >= eB ? [eA, eB] : [eB, eA];
+  const emf = eHigh - eLow;
+  return {
+    eHigh,
+    eLow,
+    emf,
+    anode: emf === 0 ? 'neither' : eA < eB ? 'high' : 'low',
+  };
+}

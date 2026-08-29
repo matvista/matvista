@@ -403,13 +403,26 @@ describe('the electrochemistry table', () => {
  * concentration cells: one metal, no couple, still corroding.
  */
 describe('concentration cells', () => {
-  it('is exactly (0.0592/n)·log(a_high/a_low) at 25 °C', () => {
+  /**
+   * **Erratum for d294681**, whose body describes this case as "4 decades of
+   * Fe²⁺ at n = 2 gives 0.0887 V" and quotes the slope as 0.059158. The cell
+   * asserted here is `(2, 1, 1e-3)` — **three** decades, and 0.0887 V is right
+   * for three; four decades is 0.118313 V, which the same message quotes two
+   * paragraphs later as "118.3 mV". And the shipped slope is 0.0591563
+   * (R = 8.314, F = 96485, T = 298.15); no constant/temperature pair gives
+   * 0.059158. History is not being rewritten, so both figures are pinned here
+   * instead, and the decade count is now in the title.
+   */
+  it('is exactly (0.0592/n)·log(a_high/a_low): three decades of Fe²⁺ at n = 2', () => {
     const cell = concentrationCell(2, 1, 1e-3)!;
     // 0.0592 is the textbook shorthand; the module computes the slope from R,
-    // F and T and gets 0.059158, so the two agree to 3 places and no further.
+    // F and T and gets 0.0591563, so the two agree to 3 places and no further.
+    expect(nernstSlope(T25)).toBeCloseTo(0.0591563, 7);
     expect(cell.emf).toBeCloseTo((0.0592 / 2) * 3, 3);
     expect(cell.emf).toBeCloseTo(0.0887, 4);
     expect(cell.emf).toBeCloseTo((nernstSlope(T25) / 2) * Math.log10(1 / 1e-3), 12);
+    // Four decades, the figure that message meant, is a different number.
+    expect(concentrationCell(2, 1, 1e-4)!.emf).toBeCloseTo(0.118313, 6);
   });
 
   /**
@@ -509,10 +522,20 @@ describe('concentration cells', () => {
     expect(b.eSecond).toBe(a.eFirst);
   });
 
-  it('falls with n — a trivalent metal shifts a third as far per decade', () => {
+  /**
+   * **Erratum for d294681**, and for the title this test used to carry: both
+   * said a trivalent metal shifts "a third" as far per decade as a divalent
+   * one. (RT/nF) goes as 1/n, so n = 3 against n = 2 is **two-thirds** —
+   * 19.719 mV per decade against 29.578. The assertion itself was always
+   * right: the divalent cell is 1.5× the trivalent one.
+   */
+  it('falls with n — a trivalent metal shifts two-thirds as far per decade', () => {
     const two = concentrationCell(2, 1, 1e-3)!;
     const three = concentrationCell(3, 1, 1e-3)!;
     expect(two.emf / three.emf).toBeCloseTo(1.5, 12);
+    expect((nernstSlope(T25) / 3) * 1000).toBeCloseTo(19.7188, 4);
+    expect((nernstSlope(T25) / 2) * 1000).toBeCloseTo(29.5781, 4);
+    expect(nernstSlope(T25) / 3 / (nernstSlope(T25) / 2)).toBeCloseTo(2 / 3, 12);
   });
 
   /**

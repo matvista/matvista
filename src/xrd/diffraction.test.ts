@@ -456,6 +456,14 @@ describe('Miller labels are always formatted, never concatenated', () => {
         'string concatenation',
         /(['"])[^'"]*\1\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\+\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\+/,
       ],
+      // `<span>{h}{k}{l}</span>` — adjacent JSX children, no template literal
+      // and no operator. This is the form that was actually in the repo, in
+      // the extinction panel's visible text, and the first three patterns all
+      // miss it.
+      [
+        'adjacent JSX children',
+        /\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\s*\{\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\}/,
+      ],
       // `[p.h, p.k, p.l].join('')`
       ['array join', /\[[^\]]*\bh\s*,[^\]]*\bk\s*,[^\]]*\bl\s*\]\s*\.join\(\s*(['"])\1\s*\)/],
     ];
@@ -464,7 +472,22 @@ describe('Miller labels are always formatted, never concatenated', () => {
     // identified by that definition rather than by name.
     const exempt = (path: string) =>
       /diffraction\.test\.ts$/.test(path) || /export function familyLabel/.test(modules[path]);
+    // Each pattern is checked against a sample of the form it is named for,
+    // in the suite rather than by hand at the time it was written. A regex
+    // that silently stopped matching would otherwise report a clean repo
+    // forever, which is the failure mode this whole guard exists to prevent.
+    const SAMPLES: Record<string, string> = {
+      'adjacent interpolation': 'key={`${p.h}${p.k}${p.l}`}',
+      'string concatenation': "key={'c' + p.h + p.k + p.l}",
+      'array join': 'key={[p.h, p.k, p.l].join("")}',
+      'adjacent JSX children': '<span>{h}{k}{l}</span>',
+    };
+    expect(Object.keys(SAMPLES).sort()).toEqual(forms.map(([n]) => n).sort());
+
     for (const [name, pattern] of forms) {
+      expect(pattern.test(SAMPLES[name]), `${name}: pattern no longer matches its own sample`).toBe(
+        true,
+      );
       const offenders = paths.filter((path) => !exempt(path) && pattern.test(modules[path]));
       expect(offenders, `${name}`).toEqual([]);
     }

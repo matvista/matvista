@@ -1,24 +1,31 @@
 /**
- * WCAG 2.2.2 guard for the three 3D views.
+ * Code-shape guard for the three 3D views. **This file gates shape, not
+ * behaviour** — `auto-rotate.behaviour.test.tsx` gates behaviour, and the two
+ * cover different things.
  *
- * A cell that spins on its own is auto-updating motion: it has to be
- * stoppable, and it has to respect `prefers-reduced-motion`. That was fixed
- * once, for `MillerScene` only — `CrystalScene` went on hardcoding
- * `autoRotate` on its `<OrbitControls>`, and both `#/crystals` and `#/defects`
- * render it, so two of the three views spun forever with no control.
+ * The scope statement matters, because two earlier rounds of this file each
+ * claimed to close the mutation class and each was wrong. Regex over source is
+ * satisfied by any decoy occurrence of the token it looks for, including one
+ * inside a comment, so it cannot tell a live call site from a dead one. That
+ * is a category limit, not a bug to be patched a third time.
  *
- * These are source-level assertions rather than rendered ones: the suite runs
- * under Vitest's Node environment with no DOM (see `motion.test.ts`), and the
- * defect being guarded is structural — a scene taking the flag as a literal
- * instead of a prop, or a second copy of the media-query helper drifting from
- * the first. Both are visible in the text.
+ * What this file does still catch, and the behavioural file cannot: the
+ * behavioural tests stub `CrystalScene` and `MillerScene`, because `<Canvas>`
+ * needs WebGL that jsdom does not have. So a mutation *inside a scene* — the
+ * round-1 defeat, where the prop was dropped from the destructure and shadowed
+ * with `const autoRotate = true` — is invisible there and caught here.
+ * Measured, that mutation: 1 failure in this file, 0 in the behavioural file.
  *
- * **These assertions were rebuilt after review.** The first version was
- * defeated by three realistic mutations that every gate passed: shadowing the
- * prop with `const autoRotate = true` inside the scene (tsc, 537 tests and
- * lint all clean, checkbox dead); `disabled` on the input; and an unlabelled
- * checkbox, because `/Rotate/` matches the identifier `autoRotate` and not
- * only the label text. Each has an assertion below.
+ * The reverse holds for everything on the view side. A call site set to
+ * `autoRotate={true}` with the token parked in a JSX comment, a `useEffect`
+ * that resets the state, `preventDefault` on the input, an arrow-const
+ * duplicate of the reduced-motion helper, and a CSS rule hiding the control
+ * all pass here; four of the five fail the behavioural file, and the fifth
+ * (the duplicate helper) fails both.
+ *
+ * So the view-side assertions below are kept deliberately narrow — they record
+ * the intended shape and catch accidental drift — and the load-bearing
+ * guarantee for the control lives in the behavioural file.
  */
 import { describe, expect, it } from 'vitest';
 import crystalScene from './CrystalScene.tsx?raw';

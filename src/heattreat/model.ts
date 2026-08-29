@@ -208,6 +208,14 @@ export interface Outcome {
    * retained-austenite warning all use.
    */
   ms: number;
+  /**
+   * The Mˢ the Scheil integration actually stopped at, °C — the *bulk*
+   * value, always. It is `ms` only when no ferrite formed. The two are
+   * deliberately decoupled (see `withEnrichedMartensiteStart`), which means
+   * the summary has to name this one and the panel has to show the other,
+   * so both are carried rather than one being inferred from the other.
+   */
+  msFloor: number;
   /** Temperature for 50% martensite, from `ms`. */
   m50: number;
   /** Temperature for 90% martensite, from `ms`. */
@@ -505,6 +513,24 @@ export function predict(steel: Steel, ttt: TttModel, startTemp: number, rate: nu
  * Nothing here can move a critical cooling rate: a path that misses the nose
  * forms no ferrite, so there is no enrichment, and the floor is untouched in
  * any case. Asserted bit-identical.
+ *
+ * **Two consequences recorded rather than fixed.**
+ *
+ * The displayed Mˢ steps 152.28 °C at each steel's completion boundary —
+ * 5140 near 3.0388 °C/s, 4340 near 0.1422 — because a completed
+ * transformation leaves no austenite to have a composition, so the row falls
+ * back to the steel's own bulk figure. The two sides are different
+ * quantities, not one quantity jumping, but a reader dragging the slider sees
+ * a leap. Closing it means either propagating (bistable, see above) or
+ * showing nothing where nothing quenches, which leaves the diagram's three
+ * martensite lines undrawn.
+ *
+ * And the enriched Mˢ implies retained austenite the bar does not show.
+ * Koistinen–Marburger at 20 °C leaves **8.53%** of the sample untransformed
+ * for 5140 at 5.7214 °C/s and **11.87%** for 4340 at 0.2720, reported on the
+ * bar as martensite at the full martensitic hardness. The panel shows the
+ * retained-austenite caveat on exactly those paths, so the warning is there;
+ * the bar and the hardness do not yet act on it.
  */
 function withEnrichedMartensiteStart(
   steel: Steel,
@@ -516,12 +542,11 @@ function withEnrichedMartensiteStart(
   const carbon = untransformedAusteniteCarbon(outcome, steel.composition.C);
   if (carbon === null || carbon <= steel.composition.C) return outcome;
   const ms = martensiteStart({ ...steel.composition, C: carbon });
-  return {
-    ...outcome,
-    ms,
-    m50: martensiteFractionTemp(ms, 0.5),
-    m90: martensiteFractionTemp(ms, 0.9),
-  };
+  // Re-run with the display Mˢ supplied. The *floor* is unchanged, so the
+  // fractions and hardness are identical; what changes is that the summary can
+  // now name the floor explicitly instead of saying "Mˢ" beside a panel
+  // showing a figure 152 °C away from it.
+  return predictWithMs(steel, ttt, startTemp, rate, ttt.ms, ms);
 }
 
 function predictWithMs(
@@ -529,10 +554,16 @@ function predictWithMs(
   ttt: TttModel,
   startTemp: number,
   rate: number,
-  ms: number,
+  floor: number,
+  displayMs = floor,
 ): Outcome {
-  const martensite = { ms, m50: martensiteFractionTemp(ms, 0.5), m90: martensiteFractionTemp(ms, 0.9) };
-  const startRun = scheil(ttt.start, startTemp, rate, ms);
+  const martensite = {
+    ms: displayMs,
+    msFloor: floor,
+    m50: martensiteFractionTemp(displayMs, 0.5),
+    m90: martensiteFractionTemp(displayMs, 0.9),
+  };
+  const startRun = scheil(ttt.start, startTemp, rate, floor);
 
   if (!startRun.reached) {
     return {
@@ -548,7 +579,7 @@ function predictWithMs(
 
   const hitStart = startRun.reached;
   const product = productAt(steel, hitStart.T);
-  const finishRun = scheil(ttt.finish, startTemp, rate, ms);
+  const finishRun = scheil(ttt.finish, startTemp, rate, floor);
 
   if (finishRun.reached) {
     const parts = splitProeutectoid(steel, ttt, product, hitStart.T, 1);
@@ -590,6 +621,11 @@ function predictWithMs(
   // that was not on screen. Exactly one slider detent per steel reaches this
   // branch, and only for 1080; the figure is asserted so it cannot drift.
   const matrixDrawn = 1 - fraction >= TRACE_FRACTION;
+  // Name the floor the integration actually stopped at. Where ferrite has
+  // enriched the austenite, the Mˢ on the panel is 152 °C away from it, and
+  // "cut short at Mˢ" beside that figure is simply wrong.
+  const cutAt =
+    Math.round(floor) === Math.round(displayMs) ? 'Mˢ' : `the bulk Mˢ (${Math.round(floor)} °C)`;
   return {
     fractions: [...parts, { product: 'martensite', fraction: 1 - fraction }],
     hardness:
@@ -599,10 +635,10 @@ function predictWithMs(
     ...martensite,
     summary:
       shown.total < TRACE_FRACTION
-        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above Mˢ, so no more than a trace of ${parts[0].product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
+        ? `The path only just clips the nose: transformation begins at ${Math.round(hitStart.T)} °C, barely above ${cutAt}, so no more than a trace of ${parts[0].product} forms before the remaining austenite shears to martensite. This is the boundary the critical cooling rate names — a shade faster and the nose is missed altogether.`
         : matrixDrawn
-          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at Mˢ, leaving roughly ${shown.phrase} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
-          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before Mˢ, giving ${shown.phrase} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
+          ? `The path clips the nose: transformation starts at ${Math.round(hitStart.T)} °C but is cut short at ${cutAt}, leaving roughly ${shown.phrase} embedded in martensite. Mixed microstructures like this are why a quench that is nearly fast enough is not good enough.`
+          : `The path very nearly completes: transformation starts at ${Math.round(hitStart.T)} °C and is all but finished before ${cutAt}, giving ${shown.phrase} with no more than a trace of martensite. A shade faster and that trace becomes a real fraction.`,
   };
 }
 

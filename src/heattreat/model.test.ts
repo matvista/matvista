@@ -1327,3 +1327,43 @@ describe('ferriteBand reports each steel’s own range', () => {
     }
   });
 });
+
+/**
+ * The summary must name the Mˢ the transformation was actually cut short at.
+ *
+ * e4a6169 decoupled the two: the *displayed* Mˢ is the enriched austenite's,
+ * the *floor* the Scheil integration stops at is still the bulk value. The
+ * summary went on saying "cut short at Mˢ" beside a table and a diagram
+ * showing a figure 152 °C away from the one it meant.
+ */
+describe('the summary names the floor it was cut short at', () => {
+  it('5140 at 5 °C/s names 335 °C, not the 183 °C on the panel', () => {
+    const s = getSteel('5140');
+    const o = predict(s, buildTtt(s), AUST, 5);
+    expect(Math.round(o.ms)).toBe(183);
+    expect(Math.round(o.msFloor)).toBe(335);
+    expect(o.summary).toContain('335 °C');
+    expect(o.summary).not.toMatch(/cut short at Mˢ\./);
+  });
+
+  it('says plainly "at Mˢ" when the two agree', () => {
+    const s = getSteel('1080');
+    const ttt = buildTtt(s);
+    for (let lg = -2; lg <= 4; lg += 0.002) {
+      const o = predict(s, ttt, AUST, 10 ** lg);
+      expect(o.msFloor).toBe(o.ms);
+    }
+  });
+
+  it('never names a temperature the model did not integrate to', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        expect(o.msFloor).toBe(ttt.ms);
+        const named = o.summary.match(/bulk Mˢ \((\d+) °C\)/);
+        if (named) expect(Number(named[1])).toBe(Math.round(o.msFloor));
+      }
+    }
+  });
+});

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DIFFUSION_SYSTEMS, concentrationAt, depthForConcentration, diffusionCoefficient,
-  dtForTarget, equalDtCurve, erf, erfInverse, siteDensity, timeForTarget, vacancyFraction,
+  dtForTarget, equalDtCurve, equalDtOptions, erf, erfInverse, siteDensity, timeForTarget,
+  vacancyFraction,
 } from './model';
 
 describe('carburising (Callister ex. 5.4)', () => {
@@ -239,6 +240,99 @@ describe('the equal-Dt process curve', () => {
     expect(1 - got / want).toBeCloseTo(0.0983, 4);
     // Depth goes as √(Dt), so a 9.8% shortfall in Dt is a 5.0% shallower case.
     expect(1 - Math.sqrt(got / want)).toBeCloseTo(0.0504, 4);
+  });
+
+  /**
+   * The chips the panel offers, swept over every state the sliders can reach.
+   *
+   * They used to be built over 500–1200 °C while the temperature slider starts
+   * at **400**, and anything wanting a time outside 0.5–40 h was dropped with
+   * no fallback — so a reader at the cold end of the curve got an empty list,
+   * under prose reading "Every point on that line is the same treatment:"
+   * followed by nothing. `?sys=c-fe-fcc&difT=400&h=0.5` is one such state.
+   *
+   * Sweeping the whole grid rather than the found case: the count is the
+   * claim, and it is the count that a later change to the bounds would move.
+   */
+  describe('the equal-Dt chips a reader can reach', () => {
+    const TEMP_MIN = 400;
+    const TEMP_MAX = 1200;
+    const HOURS_MIN = 0.5;
+    const HOURS_MAX = 40;
+    /** Chip spacing — round numbers, not the slider's resolution. */
+    const STEP = 50;
+
+    /**
+     * Every (system, temperature, time) the three controls can be set to: the
+     * temperature slider steps 10 °C and the time slider 0.5 h, so this is
+     * 7 x 81 x 80 states, not a sample of them. The chip *spacing* stays 50,
+     * which is the point — a reader between two chips must still be offered
+     * something.
+     */
+    const sweep = (fromC: number) => {
+      let states = 0;
+      let empty = 0;
+      const emptyKeys: string[] = [];
+      for (const sys of DIFFUSION_SYSTEMS) {
+        for (let T = TEMP_MIN; T <= TEMP_MAX; T += 10) {
+          for (let h = HOURS_MIN; h <= HOURS_MAX + 1e-9; h += 0.5) {
+            const D = diffusionCoefficient(sys, T + 273.15);
+            const depth = depthForConcentration(target, h * 3600, D, C0, Cs);
+            if (depth == null) continue;
+            const curve = equalDtCurve(sys, target, depth, C0, Cs, TEMP_MIN, TEMP_MAX);
+            if (curve == null) continue;
+            states++;
+            const opts = equalDtOptions(sys, curve.dt, fromC, TEMP_MAX, STEP, HOURS_MIN, HOURS_MAX);
+            if (opts.length === 0) {
+              empty++;
+              emptyKeys.push(`${sys.id} ${T}°C ${h}h`);
+            }
+          }
+        }
+      }
+      return { states, empty, emptyKeys };
+    };
+
+    it('starting the chips at 500 °C leaves states with nothing to offer', () => {
+      const r = sweep(500);
+      expect(r.states).toBeGreaterThan(40000);
+      expect(r.empty).toBeGreaterThan(0);
+      // The state the review named is among them, and it is not alone.
+      expect(r.emptyKeys).toContain('c-fe-fcc 400°C 0.5h');
+      expect(r.empty).toBeGreaterThan(50);
+    });
+
+    it('starting them at the temperature slider’s own floor does not', () => {
+      const r = sweep(TEMP_MIN);
+      expect(r.states).toBeGreaterThan(40000);
+      expect(r.empty, `still empty at: ${r.emptyKeys.slice(0, 5).join(', ')}`).toBe(0);
+    });
+
+    /**
+     * And the chips are on the curve, not merely inside the sliders: each one
+     * must reproduce the same Dt, which is the whole claim the panel makes
+     * about them.
+     */
+    it('offers only settings that really are the same treatment', () => {
+      const sys = DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+      const depth = depthForConcentration(
+        target,
+        5 * 3600,
+        diffusionCoefficient(sys, 950 + 273.15),
+        C0,
+        Cs,
+      )!;
+      const curve = equalDtCurve(sys, target, depth, C0, Cs, TEMP_MIN, TEMP_MAX)!;
+      const opts = equalDtOptions(sys, curve.dt, TEMP_MIN, TEMP_MAX, STEP, HOURS_MIN, HOURS_MAX);
+      expect(opts.length).toBeGreaterThan(4);
+      for (const o of opts) {
+        const D = diffusionCoefficient(sys, o.tempC + 273.15);
+        expect(D * o.hours * 3600).toBeCloseTo(curve.dt, 9);
+        expect(concentrationAt(depth, o.hours * 3600, D, C0, Cs)).toBeCloseTo(target, 6);
+        expect(o.hours).toBeGreaterThanOrEqual(HOURS_MIN);
+        expect(o.hours).toBeLessThanOrEqual(HOURS_MAX);
+      }
+    });
   });
 
   /**

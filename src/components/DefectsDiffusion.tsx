@@ -11,6 +11,7 @@ import {
   depthForConcentration,
   diffusionCoefficient,
   equalDtCurve,
+  equalDtOptions,
   siteDensity,
   vacancyFraction,
   type DiffusionSystem,
@@ -223,17 +224,19 @@ function EqualDtPanel({
     [sys, target, depth, C0, Cs],
   );
 
-  /** Round temperatures whose required time the time slider can actually express. */
-  const options = useMemo(() => {
-    if (!curve) return [];
-    const out: { tempC: number; hours: number }[] = [];
-    for (let T = 500; T <= TEMP_MAX; T += 50) {
-      const seconds = curve.dt / diffusionCoefficient(sys, T + K);
-      const h = seconds / 3600;
-      if (h >= HOURS_MIN && h <= HOURS_MAX) out.push({ tempC: T, hours: h });
-    }
-    return out;
-  }, [curve, sys]);
+  /**
+   * Round temperatures whose required time the time slider can actually
+   * express. Swept from `TEMP_MIN`, not from 500: the temperature slider starts
+   * at 400, and starting the chips higher left a reader at the cold end of the
+   * curve with an empty list under a sentence promising equivalents.
+   */
+  const options = useMemo(
+    () =>
+      curve
+        ? equalDtOptions(sys, curve.dt, TEMP_MIN, TEMP_MAX, 50, HOURS_MIN, HOURS_MAX)
+        : [],
+    [curve, sys],
+  );
 
   if (depth == null || !curve) {
     return (
@@ -312,8 +315,22 @@ function EqualDtPanel({
       <p className="density-note">
         Holding {target.toFixed(2)} wt% at {(depth * 1000).toFixed(2)} mm — the case depth the
         sliders above currently produce — takes {hours.toFixed(1)} h at {tempC} °C. Every point on
-        that line is the same treatment:
+        that line is the same treatment
+        {options.length > 0 ? ':' : ', but none of it is reachable from here:'}
       </p>
+
+      {/* Unreachable from the three sliders as they stand — `model.test.ts`
+          sweeps all 45,360 of their states and finds none — but the sentence
+          above promises equivalents unconditionally, and the promise should
+          not be able to dangle if a bound ever moves. */}
+      {options.length === 0 && (
+        <p className="density-note">
+          The line is real and the equivalence holds along all of it — this treatment simply has no
+          equivalent the two sliders above can be set to. Every temperature between{' '}
+          {TEMP_MIN} and {TEMP_MAX} °C on it wants a time outside {HOURS_MIN}–{HOURS_MAX} h. Raise
+          the temperature or lengthen the hold and the equivalents come back.
+        </p>
+      )}
 
       <div className="mi-family-list">
         {options.map((o) => {

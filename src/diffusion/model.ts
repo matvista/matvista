@@ -245,3 +245,44 @@ export function equalDtCurve(
   }
   return { dt, points };
 }
+
+/**
+ * The (temperature, time) pairs on an equal-Dt curve that a reader's own
+ * controls can actually be set to.
+ *
+ * The panel offers these as chips. It used to build them over 500–1200 °C
+ * while its temperature slider starts at 400, and dropped anything outside the
+ * time slider's 0.5–40 h with no fallback — so a state near the cold end of
+ * the curve produced an **empty** list, under prose reading "Every point on
+ * that line is the same treatment:" followed by nothing. Offering the reader's
+ * own range closes most of it; the caller still has to handle the empty case,
+ * because a curve can lie wholly outside the time slider however wide the
+ * temperature sweep is.
+ *
+ * `stepC` is the chip spacing, not the curve's resolution — round numbers a
+ * reader recognises rather than every sample the curve carries.
+ */
+export function equalDtOptions(
+  sys: DiffusionSystem,
+  dt: number,
+  tMinC: number,
+  tMaxC: number,
+  stepC: number,
+  hoursMin: number,
+  hoursMax: number,
+): { tempC: number; hours: number }[] {
+  const out: { tempC: number; hours: number }[] = [];
+  // Relative slack on the bounds. The reader's own setting is on this curve by
+  // construction, so at the very ends of both sliders the exact answer *is* the
+  // bound — and a strict comparison drops it on float noise, leaving the panel
+  // with nothing to offer at precisely the settings it should be offering back.
+  const lo = hoursMin * (1 - 1e-9);
+  const hi = hoursMax * (1 + 1e-9);
+  for (let T = tMinC; T <= tMaxC + 1e-9; T += stepC) {
+    const D = diffusionCoefficient(sys, T + 273.15);
+    if (!(D > 0)) continue;
+    const hours = dt / D / 3600;
+    if (hours >= lo && hours <= hi) out.push({ tempC: T, hours });
+  }
+  return out;
+}

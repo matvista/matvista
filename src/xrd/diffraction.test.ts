@@ -443,10 +443,12 @@ describe('Miller labels are always formatted, never concatenated', () => {
     // The glob is load-bearing: an empty match would pass vacuously.
     expect(paths.length).toBeGreaterThan(30);
 
-    // Three ways to build the same broken label, all of which render
-    // (11,1,1) as "1111". The first version of this guard matched only the
-    // first, while claiming to catch "any file interpolating two adjacent
-    // Miller indices with nothing between them".
+    // Four ways to build the same broken label, all of which render (11,1,1)
+    // as "1111". The first version of this guard matched only the first,
+    // while claiming to catch "any file interpolating two adjacent Miller
+    // indices with nothing between them". The count is asserted below, so an
+    // entry added without updating this sentence fails rather than reads
+    // wrong.
     const forms: [string, RegExp][] = [
       // `${p.h}${p.k}…` and the destructured `${h}${k}…`
       ['adjacent interpolation', /\$\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\$\{/],
@@ -462,8 +464,10 @@ describe('Miller labels are always formatted, never concatenated', () => {
       ],
       // `<span>{h}{k}{l}</span>` — adjacent JSX children, no template literal
       // and no operator. This is the form that was actually in the repo, in
-      // the extinction panel's visible text, and the first three patterns all
-      // miss it.
+      // the extinction panel's visible text, and the other three patterns all
+      // miss it. (It sits third in this list, not last: an earlier version of
+      // this note said "the first three patterns", which was true only while
+      // it was appended at the end.)
       [
         'adjacent JSX children',
         /\{\s*(?:[A-Za-z_$][\w$]*\.)?h\s*\}\s*\{\s*(?:[A-Za-z_$][\w$]*\.)?k\s*\}/,
@@ -487,6 +491,9 @@ describe('Miller labels are always formatted, never concatenated', () => {
       'adjacent JSX children': '<span>{h}{k}{l}</span>',
     };
     expect(Object.keys(SAMPLES).sort()).toEqual(forms.map(([n]) => n).sort());
+    // The count the comment above states. Kept as an assertion because this
+    // series has now corrected a miscounted list in a comment three times.
+    expect(forms).toHaveLength(4);
 
     for (const [name, pattern] of forms) {
       expect(pattern.test(SAMPLES[name]), `${name}: pattern no longer matches its own sample`).toBe(

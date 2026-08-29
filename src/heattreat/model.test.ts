@@ -1414,3 +1414,55 @@ describe('the summary names the floor it was cut short at', () => {
     }
   });
 });
+
+/**
+ * Carbon closes only when the martensite is priced at the austenite it came
+ * from, not at the bulk.
+ *
+ * `productCarbon` returns the bulk for the diffusionless products, and at
+ * 5140's saturation point that leaves the sample's carbon short by 0.184 wt%.
+ * That is not a defect in the sum — it is why `untransformedAusteniteCarbon`
+ * excludes martensite from it — but the doc claimed martensite "inherits the
+ * bulk composition" while the panel beside it displays 0.76.
+ */
+describe('carbon closes against the enriched martensite', () => {
+  it('5140 at saturation is 0.184 wt% short on the bulk price, and exact on the real one', () => {
+    const s = getSteel('5140');
+    const ttt = buildTtt(s);
+    const o = predict(s, ttt, AUST, 5.7219);
+    const bulkPriced = o.fractions.reduce(
+      (a, f) => a + f.fraction * productCarbon(f.product, s.composition.C),
+      0,
+    );
+    expect(s.composition.C - bulkPriced).toBeCloseTo(0.184, 3);
+
+    const austenite = untransformedAusteniteCarbon(o, s.composition.C)!;
+    expect(austenite).toBeCloseTo(EUTECTOID_X, 4); // 5.7219 is rounded to 4 dp
+    const realPriced = o.fractions.reduce(
+      (a, f) =>
+        a +
+        f.fraction * (f.product === 'martensite' ? austenite : productCarbon(f.product, s.composition.C)),
+      0,
+    );
+    expect(realPriced).toBeCloseTo(s.composition.C, 12);
+  });
+
+  it('closes exactly at every rate where the austenite carbon is resolvable', () => {
+    for (const s of STEELS) {
+      const ttt = buildTtt(s);
+      for (let lg = -2; lg <= 4; lg += 0.002) {
+        const o = predict(s, ttt, AUST, 10 ** lg);
+        const austenite = untransformedAusteniteCarbon(o, s.composition.C);
+        if (austenite === null) continue;
+        const total = o.fractions.reduce(
+          (a, f) =>
+            a +
+            f.fraction *
+              (f.product === 'martensite' ? austenite : productCarbon(f.product, s.composition.C)),
+          0,
+        );
+        expect(total).toBeCloseTo(s.composition.C, 10);
+      }
+    }
+  });
+});

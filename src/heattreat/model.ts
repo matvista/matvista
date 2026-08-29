@@ -256,9 +256,21 @@ function productAt(steel: Steel, T: number): Product {
  *
  * Proeutectoid ferrite is the α end of the eutectoid tie line and pearlite is
  * the eutectoid composition itself, both read from `phase/systems.ts` rather
- * than retyped. Bainite and martensite are diffusionless in carbon terms —
- * they inherit whatever the austenite they formed from was carrying, which
- * this model takes as the bulk composition.
+ * than retyped.
+ *
+ * **Bainite and martensite are returned at the bulk composition, and that is
+ * not what they carry.** They are diffusionless in carbon terms, so they
+ * inherit whatever the austenite they formed from was holding — and where
+ * ferrite has led, that austenite is enriched, up to the eutectoid 0.76 wt%.
+ * Pricing them at the bulk leaves the sample 0.184 wt% C short at 5140's
+ * saturation point, which is exactly why `untransformedAusteniteCarbon`
+ * excludes martensite from its own sum rather than trusting this value.
+ *
+ * So this is a per-*product* figure and not a per-*path* one: use it for the
+ * diffusional products, and take the diffusionless ones from
+ * `untransformedAusteniteCarbon`. Priced that way the balance closes to 10
+ * decimals at every rate where the austenite carbon is resolvable at all,
+ * which is asserted.
  *
  * Exported so the UI can show how far ferrite rejection has enriched the
  * remaining austenite without recomputing the mass balance itself.

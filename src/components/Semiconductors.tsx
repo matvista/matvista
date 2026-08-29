@@ -98,10 +98,20 @@ function EmissionRow({ s }: { s: Semiconductor }) {
 /**
  * P10 — the wavelength ticks along the top of the band-gap chart.
  *
- * λ = hc/E, so equal steps in energy are **not** equal steps in wavelength:
- * the ticks crowd together toward the right. That crowding is the point, and
- * it is why the near-infrared occupies most of the chart while the whole
- * visible band is squeezed into its right-hand third.
+ * λ = hc/E, and the axis is linear in E, so equal steps in **wavelength** are
+ * not equal steps along it. |dE/dλ| = hc/λ², so a fixed Δλ covers more of the
+ * axis the shorter the wavelength: the ticks *spread* toward the right and
+ * crowd at the left. Measured against `EV_MAX`, a 200 nm step is 1.9% of the
+ * plot at 2000 → 1800 nm and 28.7% at 600 → 400 nm — fifteen times wider. An
+ * earlier version of this note had it the other way round.
+ *
+ * Which is why this list is not an arithmetic sequence. The steps shorten as λ
+ * falls, precisely to undo that, so the drawn ticks come out between 7.7% and
+ * 14.4% of the plot apart instead of between 1.9% and 29%.
+ *
+ * The visible band, 400–750 nm, is 1.65–3.10 eV: it starts 46% across and ends
+ * 86% across, occupying 40% of the axis through the middle and right — not the
+ * "right-hand third" this note also used to claim.
  */
 const NM_TICKS = [2000, 1200, 800, 600, 500, 450, 400, 360];
 

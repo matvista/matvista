@@ -154,30 +154,44 @@ export function dSpacing(a: number, h: number, k: number, l: number): number {
 }
 
 /**
- * Hard ceiling on the enumeration, as a defence against an absurd a/λ.
+ * Domain limit on the enumeration, as a defence against an absurd a/λ.
  *
  * `braggIndexBound` is the physically correct bound, but it is driven by
  * caller-supplied numbers: a tiny λ or a huge `a` would ask for a loop of
- * unbounded size. 64 corresponds to a/λ ≥ 32, an order of magnitude past any
- * real lab combination — the widest shipped case is silicon with Mo Kα at
- * 2a/λ ≈ 15.3. Enumerating sorted triples to 64 is ~46 000 iterations, so the
- * guard costs nothing when it is not needed and cannot be reached by any
- * shipped sample × source pair.
+ * unbounded size. 64 corresponds to 2a/λ ≥ 128, **four times** the widest
+ * shipped case — silicon with Mo Kα, at 2a/λ ≈ 15.3 — and far past any
+ * laboratory combination. Enumerating sorted triples to 64 is C(67,3) = 47 905
+ * iterations, so the guard costs nothing when it is not needed.
+ *
+ * Past it `computePattern` **throws**. Clamping here would silently drop
+ * reflections and return a plausible-looking short pattern, which is the exact
+ * defect this whole change removed; a fixed cap is not an acceptable fallback
+ * for a fixed cap.
  */
 const INDEX_CEILING = 64;
 
 /**
  * Largest reflection index that can satisfy Bragg's law.
  *
- * d = a/√(h²+k²+l²) and sinθ = λ/2d ≤ 1 give √(h²+k²+l²) ≤ 2a/λ, and
- * no single index can exceed that root, so `ceil(2a/λ)` bounds every index
- * from above. Equivalently: no spacing below d_min = λ/2 is reachable.
- * `ceil` rather than `floor` so an exact integer ratio — the case where a
- * family lands precisely on sinθ = 1 — is still enumerated.
+ * d = a/√(h²+k²+l²) and sinθ = λ/2d ≤ 1 give √(h²+k²+l²) ≤ 2a/λ, and no
+ * single index can exceed that root, so `ceil(2a/λ)` bounds every index from
+ * above. Equivalently: no spacing below d_min = λ/2 is reachable.
+ *
+ * **`ceil` rather than `floor`, and the reason is floating point, not
+ * algebra.** For an exact integer ratio the two agree, so "so that an exact
+ * ratio is still enumerated" — which is what this comment said — is not a
+ * reason and would lead a reader to simplify it away. The real case is a ratio
+ * that is mathematically an integer but evaluates just under one:
+ * 2 × 0.53921 / 0.15406 is 6.999999999999999, and `floor` drops the (700)
+ * family sitting precisely on sinθ = 1. Rounding up costs one empty index
+ * shell, which the sinθ ≤ 1 filter discards anyway.
+ *
+ * Returns 0 for a non-physical argument, which yields an empty pattern rather
+ * than a NaN-bounded loop.
  */
-function braggIndexBound(a: number, lambda: number): number {
+export function braggIndexBound(a: number, lambda: number): number {
   if (!(a > 0) || !(lambda > 0)) return 0;
-  return Math.min(Math.ceil((2 * a) / lambda), INDEX_CEILING);
+  return Math.ceil((2 * a) / lambda);
 }
 
 /**
@@ -201,6 +215,13 @@ export function computePattern(
 ): Peak[] {
   const peaks: Peak[] = [];
   const maxIndex = braggIndexBound(a, lambda);
+  if (maxIndex > INDEX_CEILING) {
+    throw new RangeError(
+      `computePattern: 2a/λ = ${((2 * a) / lambda).toFixed(1)} needs indices to ${maxIndex}, ` +
+        `past the ${INDEX_CEILING} ceiling. Truncating would drop real reflections silently, ` +
+        `so this refuses instead — raise INDEX_CEILING deliberately if the domain really extends.`,
+    );
+  }
 
   // Enumerating h ≥ k ≥ l visits each {hkl} family exactly once, so no
   // separate seen-set is needed to deduplicate.

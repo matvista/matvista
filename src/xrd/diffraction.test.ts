@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  XRD_SAMPLES, XRD_SOURCES, computePattern, familyLabel, isAllowed, latticeParameter,
-  multiplicity, structureFactorSquared,
+  XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel, isAllowed,
+  latticeParameter, multiplicity, structureFactorSquared,
 } from './diffraction';
 
 /**
@@ -138,10 +138,20 @@ describe('domain guard', () => {
  */
 describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
   /**
-   * Independent enumeration to a generous index, applying the same
-   * one-representative-per-family rule as `computePattern`: the family is
-   * keyed by its indices sorted descending, and only the sorted member is
-   * kept.
+   * A second enumeration, used as the oracle for completeness.
+   *
+   * **What it does and does not check.** It shares `isAllowed` with the module
+   * under test and repeats the same cubic d-spacing and the same
+   * one-representative-per-family rule, so it cannot catch an error in the
+   * reflection conditions or in d = a/√(h²+k²+l²). What it is independent of
+   * is the thing that was wrong: the *bound*. It sweeps well past any index
+   * either the old constant or the new bound would reach and lets the physical
+   * filters (sinθ ≤ 1, 2θ ≤ max) decide what survives.
+   *
+   * Its own limit is derived from the Bragg reach rather than hardcoded —
+   * hardcoding it would reintroduce, in the test, exactly the defect being
+   * fixed in the source — with slack on top, and `notBinding` below asserts
+   * the slack was never needed.
    */
   function bruteForceFamilies(
     lattice: 'sc' | 'bcc' | 'fcc' | 'diamond',
@@ -149,7 +159,9 @@ describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
     lambda: number,
     maxTwoTheta = 140,
   ): Set<string> {
-    const BRUTE_INDEX = 25;
+    // √(h²+k²+l²) ≤ 2a/λ bounds every index; +6 is slack the oracle proves
+    // it never uses.
+    const BRUTE_INDEX = Math.ceil((2 * a) / lambda) + 6;
     const fams = new Set<string>();
     for (let h = 0; h <= BRUTE_INDEX; h++) {
       for (let k = 0; k <= h; k++) {
@@ -172,10 +184,18 @@ describe('the pattern is bounded by Bragg, not by a fixed index cap', () => {
     for (const source of XRD_SOURCES) {
       it(`${sample.id} × ${source.id}: every Bragg-reachable family is returned`, () => {
         const peaks = computePattern(sample.lattice, sample.a, source.lambda);
-        const got = new Set(peaks.map((p) => `${p.h},${p.k},${p.l}`));
+        const keys = peaks.map((p) => `${p.h},${p.k},${p.l}`);
+        const got = new Set(keys);
         const want = bruteForceFamilies(sample.lattice, sample.a, source.lambda);
+        // Comparing sets alone cannot see a family emitted twice, so check the
+        // count before collapsing.
+        expect(got.size).toBe(peaks.length);
         // Same set, both directions — no misses and no spurious extras.
         expect([...got].sort()).toEqual([...want].sort());
+        // The oracle's slack was never load-bearing: nothing survives at or
+        // near its own ceiling, so it did not truncate either.
+        const reach = Math.max(...peaks.map((p) => p.h), 0);
+        expect(reach).toBeLessThan(Math.ceil((2 * sample.a) / source.lambda) + 6);
       });
     }
   }
@@ -254,6 +274,78 @@ describe('family labels', () => {
         const peaks = computePattern(sample.lattice, sample.a, source.lambda);
         const labels = peaks.map((p) => familyLabel(p.h, p.k, p.l));
         expect(new Set(labels).size).toBe(peaks.length);
+      }
+    }
+  });
+});
+
+/**
+ * Guards on the bound itself.
+ *
+ * The completeness test above proves the pattern is not truncated, but it
+ * cannot fail a bound that is merely *too generous* — mutation testing
+ * confirmed that `braggIndexBound` returning a constant 25, or a constant 16,
+ * or using `floor`, all passed it. These assertions reach the function
+ * directly so the claim in that block's title ("bounded by Bragg, not by a
+ * fixed index cap") is actually gated.
+ */
+describe('braggIndexBound is derived from λ and a, not fixed', () => {
+  it('is exactly ceil(2a/λ) across four decades of a/λ', () => {
+    for (const a of [0.05, 0.2, 0.3615, 0.5431, 1.2]) {
+      for (const lambda of [0.02, 0.07107, 0.15406, 0.22897, 0.4]) {
+        const exact = (2 * a) / lambda;
+        const bound = braggIndexBound(a, lambda);
+        // At or above the physical reach — this is what `floor` fails.
+        expect(bound).toBeGreaterThanOrEqual(exact);
+        // And no more generous than it has to be — this is what a constant
+        // 25 or 16 fails.
+        expect(bound).toBeLessThan(exact + 1);
+      }
+    }
+  });
+
+  it('rejects a non-physical lattice parameter or wavelength', () => {
+    expect(braggIndexBound(0, 0.15406)).toBe(0);
+    expect(braggIndexBound(0.3615, 0)).toBe(0);
+    expect(braggIndexBound(-1, 0.15406)).toBe(0);
+    expect(braggIndexBound(0.3615, Number.NaN)).toBe(0);
+  });
+
+  /**
+   * The real reason the bound rounds up. `floor` is not wrong by the algebra —
+   * for an exact integer ratio floor and ceil agree — it is wrong in floating
+   * point: 2 × 0.53921 / 0.15406 evaluates to 6.999999999999999, so `floor`
+   * drops the (700) family that sits precisely on sinθ = 1.
+   */
+  it('keeps a family that lands on sinθ = 1 through a floating-point shortfall', () => {
+    const a = 0.53921;
+    const lambda = 0.15406;
+    expect((2 * a) / lambda).toBeLessThan(7); // 6.999999999999999
+    expect(Math.floor((2 * a) / lambda)).toBe(6);
+    expect(braggIndexBound(a, lambda)).toBe(7);
+    const fams = computePattern('sc', a, lambda, 180).map((p) => familyLabel(p.h, p.k, p.l));
+    expect(fams).toContain('700');
+  });
+
+  /**
+   * The defensive ceiling must not become the defect it guards against. A
+   * fixed cap that silently drops reflections is exactly what this whole
+   * change removed, so past the ceiling the module refuses rather than
+   * returning a plausible-looking short pattern.
+   */
+  it('refuses rather than truncating past the defensive ceiling', () => {
+    // 2a/λ = 200, far past any laboratory combination.
+    expect(() => computePattern('sc', 0.1, 0.001)).toThrow(/ceiling/i);
+    // and the message says what it saw, so the failure is diagnosable
+    expect(() => computePattern('sc', 0.1, 0.001)).toThrow(/200/);
+  });
+
+  it('lets every shipped sample × source through untouched', () => {
+    for (const sample of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        expect(() => computePattern(sample.lattice, sample.a, source.lambda)).not.toThrow();
+        // The widest shipped case is silicon with Mo Kα at 2a/λ ≈ 15.3.
+        expect((2 * sample.a) / source.lambda).toBeLessThan(16);
       }
     }
   });

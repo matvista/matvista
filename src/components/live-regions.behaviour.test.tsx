@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { SEMICONDUCTORS } from '../electronic/materials';
 
 const { default: App } = await import('../App');
 
@@ -96,5 +97,66 @@ describe('the phase diagram announces the result, not the whole pane', () => {
     const b = announced()[0];
     expect(b).not.toBe(a);
     expect(b).toContain('42.00 wt% Sn');
+  });
+});
+
+/**
+ * The band-gap panel's photon slider had neither: its results pane carried no
+ * live region while both sibling panels in the same module do, and the slider
+ * itself announced only the number a reader had just set. The question that
+ * control exists to answer — what absorbs and what stays transparent — reached
+ * a screen-reader user nowhere at all.
+ */
+describe('the photon slider says what it is for', () => {
+  const ready = () => screen.getByLabelText('Temperature, K');
+  const photon = () =>
+    document.querySelector('input[aria-label^="Illuminating photon"]') as HTMLInputElement;
+
+  it('carries the answer in its value text, not just its value', async () => {
+    await renderRoute('#/semiconductors', ready);
+    const text = photon().getAttribute('aria-valuetext');
+    expect(text).toBe('2.00 eV, 620 nm — absorbed by 4 of the 7, transparent to 3');
+    // aria-valuetext replaces the announced number, so it has to carry it.
+    expect(text).toContain('2.00 eV');
+  });
+
+  it('counts against the shipped data, at both ends of the slider', async () => {
+    for (const [ph, absorbing] of [
+      [0.3, 1],
+      [1.0, 2],
+      [2.0, 4],
+      [3.5, 7],
+    ] as [number, number][]) {
+      const expected = SEMICONDUCTORS.filter((s) => ph >= s.Eg).length;
+      expect(expected).toBe(absorbing);
+      await renderRoute(`#/semiconductors?ph=${ph}`, ready);
+      expect(photon().getAttribute('aria-valuetext')).toContain(
+        `absorbed by ${absorbing} of the ${SEMICONDUCTORS.length}, transparent to ` +
+          `${SEMICONDUCTORS.length - absorbing}`,
+      );
+      cleanup();
+    }
+  });
+
+  it('announces the same sentence, and only that sentence', async () => {
+    await renderRoute('#/semiconductors', ready);
+    const live = announced().filter((t) => t.includes('absorbed by'));
+    expect(live).toHaveLength(1);
+    expect(live[0]).toBe(photon().getAttribute('aria-valuetext'));
+    // Not the seven-row verdict table, which would be re-read on every step.
+    expect(live[0]).not.toContain('transparent\n');
+    expect(live[0].length).toBeLessThan(80);
+    // …while the table is still on the page.
+    expect(screen.getAllByText('absorbs').length).toBeGreaterThan(0);
+  });
+
+  it('changes with the slider', async () => {
+    await renderRoute('#/semiconductors?ph=2', ready);
+    const a = announced().find((t) => t.includes('absorbed by'))!;
+    cleanup();
+    await renderRoute('#/semiconductors?ph=1', ready);
+    const b = announced().find((t) => t.includes('absorbed by'))!;
+    expect(b).not.toBe(a);
+    expect(b).toContain('1.00 eV, 1240 nm');
   });
 });

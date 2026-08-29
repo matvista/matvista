@@ -135,6 +135,15 @@ function GapPanel() {
   const barH = (plotH - 10) / SEMICONDUCTORS.length;
   const sx = (eV: number) => PAD.l + (eV / EV_MAX) * plotW;
   const photonNm = photonWavelength(photonEv)!;
+  // The answer the photon slider exists to give, in one line. Deliberately a
+  // count rather than a list of formulae: it goes into `aria-valuetext`, which
+  // is read on every step of the slider, and seven names per step is not an
+  // announcement.
+  const absorbing = SEMICONDUCTORS.filter((s) => photonEv >= s.Eg).length;
+  const photonAnswer =
+    `${photonEv.toFixed(2)} eV, ${photonNm.toFixed(0)} nm — absorbed by ` +
+    `${absorbing} of the ${SEMICONDUCTORS.length}, transparent to ` +
+    `${SEMICONDUCTORS.length - absorbing}`;
 
   return (
     <div className="ss-layout">
@@ -150,6 +159,7 @@ function GapPanel() {
             step={0.01}
             onChange={setPhotonEv}
             fixed={2}
+            valueText={photonAnswer}
           />
         </div>
 
@@ -263,6 +273,14 @@ function GapPanel() {
         <div className="density-box">
           <h3>Shine {photonEv.toFixed(2)} eV on it</h3>
           <p className="density-eq">λ = 1239.8 / E ⟹ {photonNm.toFixed(0)} nm</p>
+          {/* The one line that changes when the slider moves — not the table
+              below it, which is seven rows and would be re-read in full on
+              every 0.01 eV step. The same sentence is the slider's own
+              `aria-valuetext`, so it reaches a reader operating the control and
+              a reader who arrived by link alike. */}
+          <p className="detail-meta" aria-live="polite" aria-atomic="true">
+            {photonAnswer}
+          </p>
           <table className="detail-props">
             <tbody>
               {SEMICONDUCTORS.map((s) => (
@@ -647,17 +665,27 @@ function JunctionPanel() {
 
 /* ================================================================ shared == */
 
+/**
+ * `valueText` is for a control whose *answer* is not its number.
+ *
+ * A range input announces its value, and for temperature that is the whole
+ * story. For the illuminating photon it is not: the reader moves it to find
+ * out what absorbs and what stays transparent, and a slider that says
+ * "2.00 eV" has told them the thing they already set. `aria-valuetext`
+ * replaces the announced number entirely, so it has to carry the value too.
+ */
 function Slider({
-  label, unit, value, min, max, step, onChange, fixed = 0,
+  label, unit, value, min, max, step, onChange, fixed = 0, valueText,
 }: {
   label: string; unit: string; value: number; min: number; max: number;
-  step: number; onChange: (v: number) => void; fixed?: number;
+  step: number; onChange: (v: number) => void; fixed?: number; valueText?: string;
 }) {
   return (
     <label className="fa-slider">
       <span>{label} <strong>{value.toFixed(fixed)}</strong> {unit}</span>
       <input type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={valueText}
         aria-label={`${label}${unit ? `, ${unit}` : ''}`} />
     </label>
   );

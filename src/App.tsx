@@ -77,24 +77,29 @@ export default function App() {
         <ThemeToggle />
       </header>
 
-      {tab === 'home' && <Landing />}
+      {/* One <main> around whatever the route resolved to. Without it the page
+          has a banner and then a run of unlabelled sections, and "skip to
+          content" has nothing to skip to. */}
+      <main>
+        {tab === 'home' && <Landing />}
 
-      {tab !== 'home' && (
-        <Suspense fallback={<p className="mod-loading">Loading module…</p>}>
-          {tab === 'trends' && <PeriodicTrends />}
-          {tab === 'crystals' && <CrystalStructures />}
-          {tab === 'miller' && <MillerIndices />}
-          {tab === 'defects' && <DefectsDiffusion />}
-          {tab === 'mechanical' && <StressStrain />}
-          {tab === 'failure' && <FailureAnalysis />}
-          {tab === 'semiconductors' && <Semiconductors />}
-          {tab === 'phase' && <PhaseDiagrams />}
-          {tab === 'heattreat' && <HeatTreatment />}
-          {tab === 'selection' && <AshbyChart />}
-          {tab === 'corrosion' && <Corrosion />}
-          {tab === 'xrd' && <XrdSimulator />}
-        </Suspense>
-      )}
+        {tab !== 'home' && (
+          <Suspense fallback={<p className="mod-loading">Loading module…</p>}>
+            {tab === 'trends' && <PeriodicTrends />}
+            {tab === 'crystals' && <CrystalStructures />}
+            {tab === 'miller' && <MillerIndices />}
+            {tab === 'defects' && <DefectsDiffusion />}
+            {tab === 'mechanical' && <StressStrain />}
+            {tab === 'failure' && <FailureAnalysis />}
+            {tab === 'semiconductors' && <Semiconductors />}
+            {tab === 'phase' && <PhaseDiagrams />}
+            {tab === 'heattreat' && <HeatTreatment />}
+            {tab === 'selection' && <AshbyChart />}
+            {tab === 'corrosion' && <Corrosion />}
+            {tab === 'xrd' && <XrdSimulator />}
+          </Suspense>
+        )}
+      </main>
     </div>
   );
 }

@@ -288,8 +288,13 @@ pair reads like one equation with the units constant swapped. It is not: K = 87.
 takes the area in cm² and **K = 534 takes it in square inches**. Handing K = 534
 an area in cm² gives an answer 6.096 times too large — and 6.096 is 534/87.6, not
 the 39.37 mils/mm a reader reaching for a length conversion would reach for. The
-two are related, which is what makes the trap convincing: 6.096 × 6.4516 cm²/in²
-= 39.370.
+two are related, which is what makes the trap convincing — but only through the
+*exact* constants, not the published ones. The exact pair is 534.934 and 87.66,
+whose ratio 6.1024 times 6.4516 cm²/in² is 39.3701, the mils in a millimetre.
+The rounded pair that actually appears in the book gives 6.096 × 6.4516 =
+**39.328**, which is close enough to 39.37 to look like a confirmation and is
+not one. `corrosion/model.test.ts` asserts both products separately for exactly
+that reason.
 
 Both this plan and a comment already in `corrosion/model.ts` had it wrong; the
 comment said only that K = 534 "gives mils per year" and named no area unit.

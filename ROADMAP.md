@@ -29,8 +29,10 @@ static hosting. Product-level work is tracked in
 ## 1. Miller indices & slip systems — shipped
 
 Built in `crystal/miller.ts`, `components/MillerScene.tsx` and
-`components/MillerIndices.tsx`; costs 5.0 kB gzipped, plus a 2.3 kB chunk of index
-arithmetic shared with the XRD module. Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
+`components/MillerIndices.tsx`; costs 5.5 kB gzipped, plus a 4.2 kB `diffraction` chunk
+shared with the XRD module. (It was a 2.3 kB `miller` chunk until `be91ef6` put the
+allowed-reflection readout on this page; `xrd/diffraction.ts` then had two importers,
+rollup lifted it, and `crystal/miller.ts` went into this module instead.) Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
 with intercepts drawn and the reciprocal arithmetic shown step by step. Adds the
 12 FCC / 48 BCC slip systems, Schmid factor for a chosen loading axis, and
 resolved shear stress.
@@ -205,20 +207,24 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 215 kB | 68.2 kB | always |
-| stylesheet | 24.5 kB | 5.2 kB | always |
-| `geometry` — three.js + drei + fiber | 904 kB | 241.5 kB | only on a 3D module |
+| `index` — React, shell, landing page | 301.1 kB | 85.2 kB | always |
+| stylesheet | 37.3 kB | 7.8 kB | always |
+| `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| eleven per-module chunks | — | 49.8 kB total | one per module opened |
-| shared helpers (`miller`, `metals`, `materials`, `color`, `CrystalScene`) | — | 7.1 kB total | with whichever module needs them |
+| twelve per-module chunks | — | 71.1 kB total | one per module opened |
+| shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
+
+The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
+`2218d7b` and is `OrbitControls-*.js` now, without any file being renamed.
 
 The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — 73.4 kB gzipped, measured at **72 kB over the wire**. three.js is
-reachable from only three modules and is no longer part of first paint.
+stylesheet — the stylesheet is render-blocking, so both count — **92.95 kB gzipped**,
+measured at **93.6 kB over the wire** with the document and its headers. three.js is
+reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.8–8.6 kB gzipped** (eleven of them total
-49.8 kB), so the one remaining module adds roughly 5 kB — negligible beside the
-3D library, and none of it in first paint since each arrives in its own chunk.
+A module of the existing kind costs **1.95–11.51 kB gzipped** (twelve of them total
+71.1 kB) — negligible beside the 3D library, and none of it in first paint since each
+arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the
 three.js chunk at 904 kB raw, so there is a wide margin.

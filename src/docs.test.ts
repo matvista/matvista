@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 // Read as text through Vite's `?raw`, not `node:fs`: the app tsconfig sets
 // `types: ["vite/client"]`, so Node's built-ins are not in this program.
 import landingSource from './components/Landing.tsx?raw';
+import roadmapSource from '../ROADMAP.md?raw';
 import fatiguePlate from './assets/figures/FatigueFigure.tsx?raw';
 import { NAV_GROUPS, findItem, findItemOrNull } from './nav';
 import { STRUCTURES } from './crystal/structures';
@@ -62,6 +63,26 @@ describe('documented counts', () => {
     expect(DOPABLE).toHaveLength(4);
     expect(DOPABLE.map((s) => s.id).sort()).toEqual(['gaas', 'ge', 'insb', 'si']);
   });
+  /**
+   * The bundle table's per-module chunk count is one per lazy route, and it had
+   * drifted to "eleven" with twelve modules shipped — the same drift the table
+   * itself records having had at eleven modules. A count nothing checks is the
+   * class this file exists to close, so this one is checked.
+   *
+   * The sizes beside it cannot be asserted here: they come from a real build,
+   * which vitest has no access to. This guards the count alone, and says so.
+   */
+  it('the ROADMAP bundle table counts one per-module chunk per module', () => {
+    const WORDS = [
+      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+      'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+    ];
+    const n = NAV_GROUPS.flatMap((g) => g.items).length;
+    expect(WORDS[n]).toBeDefined();
+    expect(roadmapSource).toContain(`| ${WORDS[n]} per-module chunks |`);
+    expect(roadmapSource).toContain(`(${WORDS[n]} of them total`);
+  });
+
   it('fatigue behaviour is defined for every mechanical metal', () => {
     expect(FATIGUE_BEHAVIOUR).toHaveLength(MECH_MATERIALS.length);
     for (const f of FATIGUE_BEHAVIOUR) {

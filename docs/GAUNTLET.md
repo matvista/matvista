@@ -80,10 +80,13 @@ Last shipped lens: **product gap** (iteration 17). Next lens: **performance**.
 Materials Project integration remains, and it cannot hold under static hosting. Future
 iterations come from the product/debt backlog below, not from `ROADMAP.md`.
 
-**Performance was skipped at iteration 11 on purpose.** First paint is 67.9 kB gzip,
-modules are 3.5–8.6 kB each and three.js is already deferred; the only candidate left is
-AshbyChart's dead memos, which recompute 54 points in microseconds. That is tidying, not
-performance, and the lens rules say to say so rather than invent work to fill it.
+**Performance was skipped at iteration 11 on purpose.** First paint was 67.9 kB gzip
+then, modules were 3.5–8.6 kB each and three.js was already deferred; the only candidate
+left was AshbyChart's dead memos, which recompute 54 points in microseconds. That is
+tidying, not performance, and the lens rules say to say so rather than invent work to
+fill it. (Re-measured since: first paint is **92.95 kB gzip** — index 85.17 plus a
+render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–11.51 kB. The
+reasoning stands; the figures were four modules out of date.)
 
 **Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write
 assertions as `*.test.ts` beside the module and run `npm test`. Physics still gets verified
@@ -134,7 +137,7 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| Lazy-load three.js | 4 | 2 | 2.0 | three.js is ~73% of the bundle (910 kB raw / 244 kB gzip of ~354 kB). `CrystalStructures.tsx` **and** `DefectsDiffusion.tsx` both import `CrystalScene` eagerly — lazy-loading only one changes nothing. Both together cut first paint to ~97 kB gzip for the seven non-3D modules. **Unmeasured since ship 1; re-measure before quoting.** |
+| ~~Lazy-load three.js~~ — **shipped at iteration 3** | 4 | 2 | 2.0 | The estimate here (910 kB raw / 244 kB gzip, first paint down to ~97 kB) was never re-measured after it shipped, and the row read as outstanding work. Re-measured: the 3D chunk is **904.45 kB raw / 241.51 kB gzip**, it is reached only from `crystals`, `miller` and `defects`, and first paint is **92.95 kB gzip** with none of it inside. `CrystalStructures.tsx` and `DefectsDiffusion.tsx` both go through the lazy `CrystalScene`, which was the point — lazy-loading only one would have changed nothing. |
 | `AshbyChart.tsx` exhaustive-deps ×4 | 2 | 1 | 2.0 | The only lint warnings in the repo (baseline 4). **Investigated in iteration 9: it cannot go stale.** `yProp` is in the deps, and `visible` is rebuilt every render so the memos recompute every render regardless — they are dead memos, not a correctness risk. Downgraded from a correctness item to tidying: memoise `visible`, lift the accessor out of the closure, and the baseline drops to 0. |
 | Shared `<Canvas>` shell | 2 | 2 | 1.0 | `MillerScene.tsx` duplicates `CrystalScene.tsx`'s camera/dpr/lights/OrbitControls bounds and re-derives the cylinder-orientation helper. |
 
@@ -218,9 +221,18 @@ the **production** build served by `npm run preview` (launch config `matvista-pr
 the dev server does not chunk the same way, so never quote sizes from it.
 
 - First paint: **355.68 → 84.18 kB gzip**, one chunk, 82 kB over the wire.
-- three.js lands in a chunk named `geometry-*.js` (904 kB / 241 kB gzip) because
-  `crystal/geometry.ts` anchors that chunk's graph. **The name does not say "three" — do
-  not assume it is dead weight and do not rename the file expecting the chunk to follow.**
+- three.js lands in one chunk with the rest of the 3D stack (904 kB / 241 kB gzip). Its
+  *name* is whichever of the modules in that graph rollup happens to pick, so it does not
+  say "three" — do not assume it is dead weight.
+  **Updated: the name moved on its own, and the warning that used to stand here had the
+  causality backwards.** It read "do not rename the file expecting the chunk to follow",
+  on the premise that the name tracked `crystal/geometry.ts`. It does not. No file has
+  been renamed and the chunk is now `OrbitControls-*.js`: the rename lands at `2218d7b`,
+  where deriving APF and CN moved another cross-chunk binding out of `crystal/geometry.ts`.
+  Measured — `geometry-DlAICOkR.js` at `6818158`, 904,271 B raw, 14 exports;
+  `OrbitControls-0BwuMUTe.js` at `2218d7b`, 904,457 B raw, 15 exports. **Not a pure
+  rename either**: +186 B raw, +30 B by `gzip -9` (241.45 → 241.51 kB by the build's own
+  gzip figure). Never match this chunk by name in a script or a doc — find it by size.
 - Browsing all five non-3D modules costs **108 kB** cumulative. Opening `crystals` adds
   three.js and jumps to 349 kB; `miller` and `defects` then add only 5 and 4 kB, so the
   cost is paid once.
@@ -485,7 +497,12 @@ failed:
 - ROADMAP's bundle table had drifted with two modules added: index 213 → 215 kB raw
   (67.5 → 68.2 gzip), stylesheet 22.7 → 24.5 kB, "nine per-module chunks totalling 35.5 kB"
   → eleven totalling 49.8 kB, and a per-module range of 3.5–5.6 kB → **1.8–8.6 kB**. First
-  paint is now 73.4 kB gzip, 72 kB over the wire. A new shared-helpers row was added.
+  paint was 73.4 kB gzip then, 72 kB over the wire. A new shared-helpers row was added.
+  (Those figures were correct at iteration 14 and are not now: two modules and twelve
+  Tier-1 commits later, first paint is **92.95 kB gzip** — index 85.17 + stylesheet 7.78 —
+  and **93.6 kB over the wire**, document and headers included, from
+  `performance.getEntriesByType('resource')` against `npm run preview`. ROADMAP's table
+  carries the current set; this line records what iteration 14 measured.)
 - ROADMAP claimed "this file only covers what is next" while containing four shipped
   write-ups. Reframed as the build record, which is what it had become.
 - **Verifying the README's four example links found a real bug.** After visiting Miller and

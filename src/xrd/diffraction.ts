@@ -272,6 +272,24 @@ export function familyLabel(h: number, k: number, l: number): string {
 }
 
 /**
+ * Relative intensity as the table shows it.
+ *
+ * The pattern is normalised so the strongest line is 100, and the angular
+ * damping term falls by orders of magnitude across a wide pattern — silicon
+ * under Mo Kα has 50 reflections whose normalised intensity rounds to zero.
+ * They are real: `isAllowed` passed them and Bragg reaches them. Printing "0"
+ * would file them alongside the systematic absences this module explains at
+ * length, when the whole point is that an absence and an unmeasurably weak
+ * reflection are different things. Anything present but under half a unit
+ * reads "<1"; a true zero, which normalisation cannot produce for a peak that
+ * was emitted at all, still reads "0".
+ */
+export function formatIntensity(intensity: number): string {
+  if (intensity <= 0) return '0';
+  return intensity < 0.5 ? '<1' : intensity.toFixed(0);
+}
+
+/**
  * Lattice parameter from atomic radius, for the elemental cubic structures
  * (Callister ch. 3): FCC a = 2R√2, BCC a = 4R/√3, SC a = 2R,
  * diamond cubic a = 8R/√3.

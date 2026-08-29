@@ -6,6 +6,7 @@ import {
   computePattern,
   dSpacing,
   familyLabel,
+  formatIntensity,
   isAllowed,
   multiplicity,
   type XrdLattice,
@@ -176,7 +177,7 @@ export function XrdSimulator() {
                   <td>{p.twoTheta.toFixed(2)}°</td>
                   <td>{p.d.toFixed(4)}</td>
                   <td>{p.multiplicity}</td>
-                  <td>{p.intensity.toFixed(0)}</td>
+                  <td>{formatIntensity(p.intensity)}</td>
                 </tr>
               );
             })}

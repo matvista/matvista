@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel, isAllowed,
-  latticeParameter, multiplicity, structureFactorSquared,
+  XRD_SAMPLES, XRD_SOURCES, braggIndexBound, computePattern, familyLabel, formatIntensity,
+  isAllowed, latticeParameter, multiplicity, structureFactorSquared,
 } from './diffraction';
 
 /**
@@ -348,5 +348,42 @@ describe('braggIndexBound is derived from λ and a, not fixed', () => {
         expect((2 * sample.a) / source.lambda).toBeLessThan(16);
       }
     }
+  });
+});
+
+/**
+ * Reporting a vanishingly weak reflection.
+ *
+ * Lifting the index cap recovered 50 real reflections whose intensity, once
+ * normalised against the (111) line, rounds to zero — the angular damping
+ * term falls by orders of magnitude across the pattern. Printing "0" in the
+ * intensity column puts them in the same visual class as the systematic
+ * absences the module goes out of its way to explain, which is the opposite
+ * of what they are: present, and too weak to see.
+ */
+describe('intensity formatting', () => {
+  it('rounds normally above the floor', () => {
+    expect(formatIntensity(100)).toBe('100');
+    expect(formatIntensity(49.6)).toBe('50');
+    expect(formatIntensity(1.2)).toBe('1');
+    expect(formatIntensity(0.5)).toBe('1');
+  });
+
+  it('never prints a present reflection as absent', () => {
+    expect(formatIntensity(0.4)).toBe('<1');
+    expect(formatIntensity(1e-9)).toBe('<1');
+    expect(formatIntensity(0)).toBe('0');
+  });
+
+  it('marks silicon’s weak Mo Kα lines as weak, not missing', () => {
+    const si = XRD_SAMPLES.find((s) => s.id === 'si')!;
+    const mo = XRD_SOURCES.find((s) => s.id === 'mo')!;
+    const peaks = computePattern(si.lattice, si.a, mo.lambda);
+    const shown = peaks.map((p) => formatIntensity(p.intensity));
+    // Every one is a real reflection, so none may read as a bare zero.
+    expect(shown).not.toContain('0');
+    expect(shown.filter((x) => x === '<1').length).toBeGreaterThan(20);
+    // and the strongest line is still 100.
+    expect(shown).toContain('100');
   });
 });

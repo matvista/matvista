@@ -1,11 +1,21 @@
 import { useMemo } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
-import { DOPABLE, SEMICONDUCTORS } from '../electronic/materials';
+import { DOPABLE, SEMICONDUCTORS, getSemiconductor } from '../electronic/materials';
 import {
   FREEZE_OUT_K, K_B, VISIBLE_MAX_NM, VISIBLE_MIN_NM, builtInPotential, carriers,
   conductivity, depletionSplit, depletionWidth, fermiOffset, intrinsicCarriers,
   intrinsicOnsetTemp, isDegenerate, isFreezeOut, photonEnergy, photonWavelength,
   thermalVoltage, wavelengthToRgb,
+  diodeCurrentRatio,
+  millivoltsPerDecade,
+  rectificationRatio,
+  saturationCurrentRatio,
+  hallCoefficient,
+  hallVoltage,
+  carriersFromHall,
+  hallSingleCarrierValid,
+  hallCarrierType,
+  minorityShare,
 } from '../electronic/model';
 import type { Semiconductor } from '../electronic/materials';
 
@@ -30,12 +40,14 @@ const INV_MAX = 20; // 1000 K down to 50 K, so freeze-out is on the plot
 const LOG_MIN = -6;
 const LOG_MAX = 6;
 
-type Panel = 'gaps' | 'doping' | 'junction';
-const PANELS: Panel[] = ['gaps', 'doping', 'junction'];
+type Panel = 'gaps' | 'doping' | 'junction' | 'diode' | 'hall';
+const PANELS: Panel[] = ['gaps', 'doping', 'junction', 'diode', 'hall'];
 const PANEL_LABEL: Record<Panel, string> = {
   gaps: 'Band gaps',
   doping: 'Doping & conductivity',
   junction: 'p–n junction',
+  diode: 'The diode',
+  hall: 'Hall effect',
 };
 
 export function Semiconductors() {
@@ -53,6 +65,8 @@ export function Semiconductors() {
       {panel === 'gaps' && <GapPanel />}
       {panel === 'doping' && <DopingPanel />}
       {panel === 'junction' && <JunctionPanel />}
+      {panel === 'diode' && <DiodePanel />}
+      {panel === 'hall' && <HallPanel />}
     </div>
   );
 }
@@ -720,4 +734,224 @@ function sup(n: number): string {
     '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻',
   };
   return String(n).split('').map((c) => map[c] ?? c).join('');
+}
+
+/* ================================================================= diode == */
+
+/**
+ * P9 — Shockley's law, normalised.
+ *
+ * The current axis is I/I_S throughout, and that is a scope decision rather
+ * than a simplification: an absolute I_S needs minority-carrier lifetimes and
+ * diffusion lengths this module cannot source, and every lesson here survives
+ * normalisation. See `diodeCurrentRatio`.
+ */
+function DiodePanel() {
+  const [matId, setMatId] = useRouteString('m', 'si');
+  const [bias, setBias] = useRouteNumber('V', 0.4, -1, 0.8);
+  const [tempK, setTempK] = useRouteNumber('T', 300, 100, 800);
+
+  const mat = getSemiconductor(matId);
+  const other = SEMICONDUCTORS.find((s) => s.id !== mat.id && s.carriers != null)!;
+  const W = 560;
+  const H = 280;
+  const PAD = { l: 62, r: 16, t: 16, b: 44 };
+
+  const vMin = -1;
+  const vMax = 0.8;
+  const decades = 12;
+  const sx = (V: number) => PAD.l + ((V - vMin) / (vMax - vMin)) * (W - PAD.l - PAD.r);
+  // log|I/I_S|, floored so the reverse branch has somewhere to sit.
+  const sy = (logI: number) =>
+    PAD.t + ((decades - logI) / (decades + 3)) * (H - PAD.t - PAD.b);
+  const logOf = (V: number) => {
+    const r = Math.abs(diodeCurrentRatio(V, tempK));
+    return r <= 1e-3 ? -3 : Math.log10(r);
+  };
+
+  const curve = Array.from({ length: 160 }, (_, i) => {
+    const V = vMin + ((vMax - vMin) * i) / 159;
+    return `${sx(V)},${sy(logOf(V))}`;
+  }).join(' ');
+
+  const mvDec = millivoltsPerDecade(tempK);
+  const ratio = mat.carriers && other.carriers
+    ? saturationCurrentRatio(mat.carriers.ni300, other.carriers.ni300)
+    : null;
+
+  return (
+    <section className="dd-block">
+      <div className="fa-controls">
+        <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
+          {SEMICONDUCTORS.filter((s) => s.carriers != null).map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <Slider label="Bias" unit="V" value={bias} min={-1} max={0.8} step={0.01} fixed={2}
+          onChange={setBias} />
+        <Slider label="Temperature" unit="K" value={tempK} min={100} max={800} step={5}
+          onChange={setTempK} />
+      </div>
+
+      <svg className="dd-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+        aria-label="Diode current normalised to the saturation current, log scale, against bias">
+        {Array.from({ length: 5 }, (_, i) => i * 3).map((d) => (
+          <g key={d}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={sy(d)} y2={sy(d)} className="dd-grid" />
+            <text x={PAD.l - 8} y={sy(d) + 4} className="dd-tick" textAnchor="end">
+              10{sup(d)}
+            </text>
+          </g>
+        ))}
+        <line x1={sx(0)} x2={sx(0)} y1={PAD.t} y2={H - PAD.b} className="dd-grid" />
+        <polyline points={curve} fill="none" stroke="#4a3aa7" strokeWidth={2} />
+        <circle cx={sx(bias)} cy={sy(logOf(bias))} r={5} fill="#eb6834" stroke="#fff" strokeWidth={1.5} />
+        <text x={W / 2} y={H - 8} className="dd-tick" textAnchor="middle">bias (V)</text>
+      </svg>
+
+      <table className="detail-props dd-results">
+        <tbody>
+          <tr>
+            <th scope="row">I / I<sub>S</sub> at {bias.toFixed(2)} V</th>
+            <td>{fmtExp(diodeCurrentRatio(bias, tempK))}</td>
+          </tr>
+          <tr>
+            <th scope="row">Slope</th>
+            <td>{mvDec.toFixed(1)} mV per decade</td>
+          </tr>
+          <tr>
+            <th scope="row">Rectification at ±{Math.abs(bias).toFixed(2)} V</th>
+            <td>{fmtExp(rectificationRatio(Math.abs(bias), tempK))}</td>
+          </tr>
+          {ratio != null && (
+            <tr>
+              <th scope="row">I<sub>S</sub> against {other.name}</th>
+              <td>{fmtExp(ratio)}×</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <p className="trend-note">
+        The current axis is <strong>normalised to I<sub>S</sub></strong>, deliberately. An
+        absolute saturation current needs minority-carrier lifetimes and diffusion lengths this
+        module does not carry, and inventing them would put a confident number on screen with
+        nothing behind it. Nothing here depends on it.
+      </p>
+      <p className="trend-note">
+        The slope holds no material property at all — it is 2.303·kT/q, the same for every diode
+        ever made at this temperature, so a forward I–V is really a thermometer. And the
+        familiar &ldquo;0.7 V for silicon, 0.3 V for germanium&rdquo; is not a fact about
+        silicon: I<sub>S</sub> goes as n<sub>i</sub>², and that ratio alone accounts for the
+        gap.
+      </p>
+    </section>
+  );
+}
+
+/* ================================================================== hall == */
+
+/**
+ * P11 — the measurement that runs the module backwards.
+ *
+ * Everywhere else doping is the input and carrier concentration the output.
+ * Here a voltage is measured and the concentration — and its *sign* — comes
+ * back out, which is how carrier type is actually determined.
+ */
+function HallPanel() {
+  const [matId, setMatId] = useRouteString('m', 'si');
+  const [logDope, setLogDope] = useRouteNumber('dope', 16, 13, 20);
+  const [type, setType] = useRouteEnum<'n' | 'p'>('type', 'n', ['n', 'p']);
+  const [tempK, setTempK] = useRouteNumber('T', 300, 100, 800);
+  const [current, setCurrent] = useRouteNumber('I', 10, 0.1, 100);
+  const [field, setField] = useRouteNumber('B', 0.5, 0.05, 2);
+  const [thickUm, setThickUm] = useRouteNumber('d', 500, 10, 2000);
+
+  const mat = getSemiconductor(matId);
+  const ni = intrinsicCarriers(mat.carriers!.ni300, mat.Eg, tempK);
+  const dope = 10 ** logDope * 1e6; // cm⁻³ in the URL, m⁻³ in the model
+  const c = carriers(ni, type === 'n' ? dope : 0, type === 'p' ? dope : 0);
+  const muH = mat.mu_h ?? 0;
+
+  const R = hallCoefficient(c, mat.mu_e, muH);
+  const I = current / 1000; // mA
+  const d = thickUm * 1e-6;
+  const V = hallVoltage(R, I, field, d);
+  const valid = hallSingleCarrierValid(c, mat.mu_e, muH);
+  const recovered = carriersFromHall(V, I, field, d);
+
+  return (
+    <section className="dd-block">
+      <div className="fa-controls">
+        <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
+          {SEMICONDUCTORS.filter((s) => s.carriers != null && s.mu_h != null).map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+        <div className="fa-tabs" role="tablist" aria-label="Doping type">
+          {(['n', 'p'] as const).map((t) => (
+            <button key={t} role="tab" aria-selected={type === t}
+              className={`toggle ${type === t ? 'toggle-on' : ''}`} onClick={() => setType(t)}>
+              {t}-type
+            </button>
+          ))}
+        </div>
+        <Slider label="Doping 10^" unit="cm⁻³" value={logDope} min={13} max={20} step={0.1}
+          fixed={1} onChange={setLogDope} />
+        <Slider label="Current" unit="mA" value={current} min={0.1} max={100} step={0.1}
+          fixed={1} onChange={setCurrent} />
+        <Slider label="Field" unit="T" value={field} min={0.05} max={2} step={0.05} fixed={2}
+          onChange={setField} />
+        <Slider label="Thickness" unit="µm" value={thickUm} min={10} max={2000} step={10}
+          onChange={setThickUm} />
+        <Slider label="Temperature" unit="K" value={tempK} min={100} max={800} step={5}
+          onChange={setTempK} />
+      </div>
+
+      <table className="detail-props dd-results">
+        <tbody>
+          <tr>
+            <th scope="row">Hall coefficient R<sub>H</sub></th>
+            <td>{fmtExp(R)} m³/C</td>
+          </tr>
+          <tr>
+            <th scope="row">Hall voltage V<sub>H</sub></th>
+            <td>{(V * 1000).toFixed(3)} mV</td>
+          </tr>
+          <tr>
+            <th scope="row">Carrier type from the sign</th>
+            <td>{hallCarrierType(R) ?? '—'}-type</td>
+          </tr>
+          <tr>
+            <th scope="row">Concentration recovered</th>
+            <td>
+              {valid && recovered != null
+                ? `${fmtExp(recovered / 1e6)} cm⁻³`
+                : 'not a single-carrier sample'}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {valid ? (
+        <p className="trend-note">
+          The sign of V<sub>H</sub> is doing something conductivity never can. Two samples doped
+          to the <em>same</em> σ, one n-type and one p-type, are indistinguishable by a
+          resistance measurement; put them in a field and they deflect opposite ways. That is
+          how carrier type is determined in practice, and the concentration comes back out of
+          the same measurement.
+        </p>
+      ) : (
+        <p className="err-note">
+          <strong>Refused.</strong> The minority carrier is now carrying{' '}
+          {(minorityShare(c, mat.mu_e, muH) * 100).toFixed(0)}% of the current, so the
+          single-carrier reading n = 1/(R<sub>H</sub>q) does not mean anything here: the two
+          populations deflect the same way and their Hall voltages partly cancel, and the
+          number that comes back is not any real population&rsquo;s. Note that R
+          <sub>H</sub> stays negative as this sample approaches intrinsic even when n = p —
+          the sign follows mobility, not count.
+        </p>
+      )}
+    </section>
+  );
 }

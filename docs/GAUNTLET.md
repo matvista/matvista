@@ -129,6 +129,7 @@ do not invent busywork to fill it.
 | 15 | Correctness | Audited `crystal/structures` and `crystal/geometry`, the last unaudited physics. **No defects found** — 45 guards added, including a direct check of the "CN = 12" label |
 | 16 | Roadmap module | **Semiconductors** — band gaps, doping and conductivity, the p–n junction. The last roadmap module; ROADMAP is now complete |
 | 17 | Product gap | Light/dark/auto theme toggle, and a landing stat that read as a metric rather than a feature |
+| 18 | Roadmap prerequisite | Figure index derived from `NAV_GROUPS` — ragged columns draw correctly, the duplicate cell coordinate is gone, and the output is byte-identical at 4×3 |
 
 ## Backlog
 
@@ -168,7 +169,7 @@ with two exceptions marked below, which are committed to a *decision*, not to a 
 
 | Module | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| **0. The module index at seventeen** | 4 | 3 | 1.3 | Prerequisite, not a module. `figures.test.ts` asserts 4 groups and 12 items and one panel per module; `ModuleIndexPlate.tsx` is 18,824 B against a 22,000 B budget, which is 2.02 panels of headroom at the 1,569 B average; the generator hard-codes a 4×3 grid while these five make the columns uneven (4/4/6/3); and `docs.test.ts`'s `WORDS` array stops at `fifteen`. **Do this before module 13**, not five times over. |
+| ~~**0. The module index at seventeen**~~ — **shipped at iteration 18**, except the budget | 4 | 3 | 1.3 | Prerequisite, not a module. `figures.test.ts` asserts 4 groups and 12 items and one panel per module; `ModuleIndexPlate.tsx` is 18,824 B against a 22,000 B budget, which is 2.02 panels of headroom at the 1,569 B average; the generator hard-codes a 4×3 grid while these five make the columns uneven (4/4/6/3); and `docs.test.ts`'s `WORDS` array stops at `fifteen`. The grid half shipped: shape derived from `NAV_GROUPS`, `gridRules` handles uneven columns and run-splitting, `NUMBER_WORDS` shared with `docs.test.ts` and extended to twenty, output byte-identical. **The 22,000 B budget deliberately did not move** — it needs a measured seventeenth panel, not an estimate, so it goes with module 13. |
 | **6. Composites** | 5 | 2 | 2.5 | Highest V/E of the five and the reason it goes first: a specified composite is a *new point on the Ashby chart*, ranked among the fixed 54 by `indexValue` — the Miller↔XRD agreement test again. Closed form, no 3D. |
 | **7. Polymers** | 5 | 3 | 1.7 | The largest missing audience. Expect the `DOPABLE` departure to repeat: only some polymers have both ρ_a and ρ_c published, so the crystallinity panel offers only those and says why. |
 | **8. Thermal properties** | 3 | 2 | 1.5 | Cheapest of the five — one published table carries c_p, α, k and E together. Closes two loops: σ = EαΔT into `failure/model.ts`'s critical crack size, and Wiedemann–Franz into the electrical conductivity `electronic/` and `corrosion/` already carry. |

@@ -5,6 +5,7 @@ import landingSource from './components/Landing.tsx?raw';
 import roadmapSource from '../ROADMAP.md?raw';
 import fatiguePlate from './assets/figures/FatigueFigure.tsx?raw';
 import { NAV_GROUPS, findItem, findItemOrNull } from './nav';
+import { NUMBER_WORDS } from '../scripts/gen-module-figures.ts';
 import { STRUCTURES } from './crystal/structures';
 import { SLIP_MODES, slipSystems } from './crystal/miller';
 import { MECH_MATERIALS } from './mechanical/materials';
@@ -76,14 +77,14 @@ describe('documented counts', () => {
    * which vitest has no access to. This guards the count alone, and says so.
    */
   it('the ROADMAP bundle table counts one per-module chunk per module', () => {
-    const WORDS = [
-      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
-      'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
-    ];
+    // The word list is the generator's, not a second copy of it. This test
+    // used to carry its own, ending at `fifteen` — which would have failed at
+    // the sixteenth module for want of a word rather than for want of a fix,
+    // in a test whose whole subject is counts drifting out of prose.
     const n = NAV_GROUPS.flatMap((g) => g.items).length;
-    expect(WORDS[n]).toBeDefined();
-    expect(roadmapSource).toContain(`| ${WORDS[n]} per-module chunks |`);
-    expect(roadmapSource).toContain(`(${WORDS[n]} of them total`);
+    expect(NUMBER_WORDS[n]).toBeDefined();
+    expect(roadmapSource).toContain(`| ${NUMBER_WORDS[n]} per-module chunks |`);
+    expect(roadmapSource).toContain(`(${NUMBER_WORDS[n]} of them total`);
   });
 
   /**

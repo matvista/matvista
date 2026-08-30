@@ -17,7 +17,7 @@ lists what exists from a reader's point of view; this file is the build record.
 | ~~3~~ | ~~**Fatigue, creep & fracture**~~ — shipped | high | medium | ✅ |
 | ~~4~~ | ~~**Semiconductors & band structure**~~ — shipped | high | medium | ✅ |
 | ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
-| 0 | **The module index at seventeen** — prerequisite, not a module | — | medium | ✅ |
+| ~~0~~ | ~~**The module index at seventeen**~~ — grid shipped; budget waits for a real panel | — | medium | ✅ |
 | 6 | **Composites** — rule of mixtures, and a point on the Ashby chart | high | low | ✅ |
 | 7 | **Polymers** — molecular weight, crystallinity, modulus against T | high | medium | ✅ |
 | 8 | **Thermal properties** — expansion, conductivity, thermal stress | medium | low | ✅ |
@@ -32,10 +32,11 @@ unconditional. What stays out is the Materials Project integration, which does
 not hold under static hosting. Product-level work is tracked in
 [docs/GAUNTLET.md](docs/GAUNTLET.md).
 
-Entry 0 is a prerequisite rather than a module. The landing page's figure index
-is a 4×3 grid with hard-coded counts and a byte budget that has room for two
-more panels; five more modules break it, and it is cheaper to fix once than five
-times. Nothing after it should be built first.
+Entry 0 was a prerequisite rather than a module, and its grid half has shipped:
+the plate's shape is derived from `NAV_GROUPS` now, so uneven columns draw
+correctly. Its byte budget is deliberately *not* raised — that number has to be
+measured against a real seventeenth panel, not estimated — so it moves with
+module 13.
 
 Between the two groups one further pass shipped that is not a module — three
 correctness fixes and twelve features across the modules that already existed —
@@ -481,12 +482,12 @@ committed. 9 is to be scoped against a cheaper shape before it is built. 10 is
 conditional on a data gate stated in its own entry, and reduces rather than
 ships past it.
 
-## 0. Prerequisite: the module index does not hold at seventeen
+## 0. Prerequisite: the module index at seventeen — grid shipped, budget pending
 
-Not a module. The landing page's figure index is a **4 columns × 3 rows** grid,
-one column per course group, and both the grid and its budget are asserted. Five
-more modules break four things, and they should be fixed before module 13 rather
-than five times over:
+Not a module. The landing page's figure index was a **4 columns × 3 rows** grid,
+one column per course group, with both the grid and its budget asserted. Five
+more modules broke four things, and fixing them once was cheaper than fixing
+them five times:
 
 - **The counts are hard-coded on purpose.** `figures.test.ts` asserts
   `NAV_GROUPS` holds 4 groups and 12 items, and that the plate titles one panel
@@ -511,17 +512,63 @@ than five times over:
   that guard fails — which is the guard working. The table below has to move with
   the count.
 
-One thing that does *not* break: `nav.ts` groups modules precisely so "the
+One thing that did *not* break: `nav.ts` groups modules precisely so "the
 header stays four items wide however many modules exist". A group of six is a
 longer menu, and the header itself holds.
 
-- **Effort:** medium. It is a generator change plus a re-argued budget, not a
-  redesign.
-- **Decide when doing it:** whether the plate stays one asset at 17 panels or
-  splits per column. Splitting is four lazy chunks where there is one, on a page
-  whose whole performance story is that four plates are deferred behind a reveal
-  gate — so the default is one plate with a raised, re-argued budget, and the
-  split only if the ragged grid cannot be made to read.
+### What shipped
+
+The plate's **shape is now derived from `NAV_GROUPS`** rather than written down
+beside it. The columns are the groups, a panel's row is its place within its
+group, and the box is as deep as the deepest column: `IDX_W` and `IDX_H` are
+computed, `IDX_PANELS` no longer carries a `col`/`row` per entry, and
+`panelBox`/`panelHead` take a module id and look the cell up. That removed a
+duplicate nobody was checking — the cell was written twice, once in `IDX_PANELS`
+and once in the `panelBox(2, 1)` call inside each panel renderer, and the test
+reads back the rendered *x*, so a wrong **row** would have rendered a panel into
+the wrong cell and passed.
+
+`gridRules` replaces the `r < 3` loop. A seam is only as deep as the deeper of
+the two columns it separates, and a rule under row *r* is emitted once per
+contiguous run of columns that have a row below it — so a short column between
+two deep ones breaks the rule into two segments instead of drawing it through
+an empty cell.
+
+**The generator's output is byte-identical**: 18,824 bytes before and after,
+which is what a pure re-derivation should be and what `figures.test.ts`'s
+byte-for-byte comparison already checks. `npm run build` is unchanged to the
+byte as well — index 282.83 kB / 83.55 kB gzipped, `ModuleIndexPlate` 3.90 kB
+gzipped — because the generator does not ship; only the plate it writes does.
+
+The ragged path is therefore code that `NAV_GROUPS` cannot exercise while every
+column holds three, so it is tested directly against 4/4/6/3 rather than left
+for module 13 to run first: the seam depths, the row rule that stops at the
+third column, and a `[3, 1, 3]` case for the run-splitting. Five assertions,
+and the 4×3 grid is asserted to reproduce the old hand-written path string
+exactly.
+
+`docs.test.ts` no longer carries its own word list. It imports `NUMBER_WORDS`
+from the generator, which spells the plate's own prose — so "Twelve panels" and
+the ROADMAP's "twelve per-module chunks" are now the same list, extended to
+twenty. A test about counts drifting out of prose failing at sixteen for want of
+a *word* would have been the joke telling itself.
+
+### What did not, and why
+
+**The byte budget still says 22,000.** It cannot be re-argued against a plate
+that does not exist: five more panels at the 1,569-byte average is an estimate,
+and the number that belongs in an assertion is a measured one. It moves when the
+first new panel does. The two hard counts in `figures.test.ts` — 4 groups, 12
+items — also stay, and are now commented as what they are: deliberate-change
+gates, not derivations. Everything around them reads the plate against
+`NAV_GROUPS` and would keep passing while the app quietly grew a thirteenth
+module.
+
+**Still to decide, at module 13:** whether the plate stays one asset at 17
+panels or splits per column. Splitting is four lazy chunks where there is one,
+on a page whose whole performance story is that four plates are deferred behind
+a reveal gate — so the default is one plate with a raised, measured budget, and
+the split only if the ragged grid cannot be made to read at that depth.
 
 ## 6. Composites — planned
 

@@ -54,6 +54,18 @@ interface NodeUrlApi {
   pathToFileURL(path: string): URL;
 }
 
+/**
+ * The one static import of app code in this file, and it is deliberate.
+ *
+ * Everything else is imported dynamically inside `buildFigures`, because the
+ * app's own imports are extensionless and need the resolver hook `main`
+ * registers. `nav.ts` imports nothing, and this specifier carries its
+ * extension, so it resolves under plain Node without the hook — which is what
+ * lets the plate's *shape* be a module-scope constant derived from the app's
+ * navigation rather than a second copy of it.
+ */
+import { NAV_GROUPS } from '../src/nav.ts';
+
 /* ------------------------------------------------------------------ theme */
 
 /**
@@ -123,6 +135,32 @@ function textNode(content: string, a: Attrs): string {
 
 function comment(s: string): string {
   return `${INDENT}{/* ${s} */}`;
+}
+
+/**
+ * Counts written into the plate's own prose are spelled, not printed, because
+ * they are read as English — "Twelve panels", not "12 panels". Spelling them
+ * from the count is what stops the prose and the plate disagreeing: this file
+ * said "twelve" beside a hand-written twelve-entry list, and `docs.test.ts`
+ * records the ROADMAP making exactly that mistake at eleven.
+ *
+ * It throws rather than falling back to digits. A silent "17 panels" in a
+ * sentence written for a word is the drift, one step quieter.
+ */
+export const NUMBER_WORDS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen', 'twenty',
+];
+
+function numberWord(n: number): string {
+  const word = NUMBER_WORDS[n];
+  if (word === undefined) throw new Error(`no word for ${n}: extend NUMBER_WORDS`);
+  return word;
+}
+
+function capitalised(s: string): string {
+  return s[0].toUpperCase() + s.slice(1);
 }
 
 /** A `<text>` for a tick or axis label: same size and colour everywhere. */
@@ -1039,14 +1077,25 @@ function renderXrdFigure(mod: XrdModule): string {
  * nose is `tttCurve` for 1080, the Ashby cloud is all 54 materials, the
  * diffraction sticks are `computePattern` on α-iron.
  *
- * Laid out as four columns of three, because that is the shape of the app: one
- * column per course group, in `NAV_GROUPS` order, with the group's name over
- * it. The plate is the navigation diagram as well as the gallery.
+ * Laid out as one column per course group, in `NAV_GROUPS` order, with the
+ * group's name over it. The plate is the navigation diagram as well as the
+ * gallery, so its shape is *derived* from `NAV_GROUPS` rather than written
+ * down beside it: the columns are the groups, a panel's row is its place in
+ * its group, and the box is as deep as the deepest column.
+ *
+ * It was four columns of three, hard-coded, until the roadmap reopened. The
+ * five planned modules land 4/4/6/3, so the columns stop being equal and a
+ * grid drawn as `r < 3` stops being right. Nothing below assumes they are
+ * equal; at 4×3 it still emits exactly what the hand-written version did,
+ * which is what `figures.test.ts`'s byte-for-byte comparison checks.
  *
  * Held to a byte budget asserted in `figures.test.ts`. It is the largest single
  * asset the landing page can reach, and it is lazily imported for that reason —
  * a plate below the fold has no business in the first paint — but a lazy chunk
- * that grows without anything noticing is still a regression.
+ * that grows without anything noticing is still a regression. The budget is
+ * for twelve panels and cannot be re-argued for seventeen against a plate that
+ * does not exist yet; it moves when the first new panel does, with a measured
+ * number rather than an estimated one.
  *
  * Panels carry no tick labels. At 300 units wide inside a 1224-unit box an
  * axis label would render at about four effective pixels, which is the mistake
@@ -1055,15 +1104,40 @@ function renderXrdFigure(mod: XrdModule): string {
  * numbers live in the module the panel links to.
  */
 
-const IDX_W = 1224;
-const IDX_H = 724;
 const IDX_MARGIN = 12;
 const IDX_HEADER = 46;
 const CELL_W = 300;
 const CELL_H = 222;
 
+/** Column headings, one per course group, left to right. */
+const IDX_GROUPS = NAV_GROUPS.map((g) => g.label);
+
+/** Panels in each column. Not necessarily equal — see the note above. */
+export const IDX_ROWS = NAV_GROUPS.map((g) => g.items.length);
+const IDX_DEEPEST = Math.max(...IDX_ROWS);
+
+export const IDX_W = IDX_MARGIN * 2 + IDX_GROUPS.length * CELL_W;
+export const IDX_H = IDX_HEADER + IDX_DEEPEST * CELL_H + IDX_MARGIN;
+
+/**
+ * Where a module's panel sits: its group is the column, its place within that
+ * group is the row. Deriving both from `NAV_GROUPS` is the point — the cell
+ * used to be written twice, once in `IDX_PANELS` and once in the `panelBox`
+ * call inside each panel renderer, and nothing checked that the two agreed.
+ * The column is checked by reading the rendered x back in `figures.test.ts`;
+ * the row never was.
+ */
+function idxCell(id: string): { col: number; row: number } {
+  for (let col = 0; col < NAV_GROUPS.length; col++) {
+    const row = NAV_GROUPS[col].items.findIndex((item) => item.id === id);
+    if (row !== -1) return { col, row };
+  }
+  throw new Error(`no nav entry for panel '${id}': every panel is a module`);
+}
+
 /** Plot area inset inside a cell, under the title and its caption. */
-function panelBox(col: number, row: number): Box {
+function panelBox(id: string): Box {
+  const { col, row } = idxCell(id);
   const x0 = IDX_MARGIN + col * CELL_W;
   const y0 = IDX_HEADER + row * CELL_H;
   return { left: x0 + 18, right: x0 + 284, top: y0 + 46, bottom: y0 + 202 };
@@ -1096,7 +1170,8 @@ function idxCurve(d: string, colour: string, width = 1.6, opacity?: number): str
 }
 
 /** A cell's heading: the module's name, and one line saying what is plotted. */
-function panelHead(col: number, row: number, title: string, caption: string): string[] {
+function panelHead(id: string, title: string, caption: string): string[] {
+  const { col, row } = idxCell(id);
   const x = IDX_MARGIN + col * CELL_W + 18;
   const y = IDX_HEADER + row * CELL_H;
   return [
@@ -1127,7 +1202,7 @@ interface ElementRow {
  * zero.
  */
 function renderTablePanel(elements: ElementRow[]): string[] {
-  const box = panelBox(0, 0);
+  const box = panelBox('trends');
   const cw = (box.right - box.left) / 18;
   const ch = (box.bottom - box.top) / 10;
   const w = Math.max(1, Math.round(cw) - 1);
@@ -1226,7 +1301,7 @@ interface CrystalModule {
 
 /** The FCC cell the crystal module opens on, drawn from `buildAtoms`. */
 function renderCrystalPanel(mod: CrystalModule): string[] {
-  const box = panelBox(0, 1);
+  const box = panelBox('crystals');
   const structure = mod.STRUCTURES.find((s) => s.id === 'fcc')!;
   const { at, edges } = cellFrame(box, 118);
 
@@ -1270,7 +1345,7 @@ interface MillerModule {
 
 /** The (111) plane cutting the same cube, from `planePolygon`. */
 function renderMillerPanel(mod: MillerModule): string[] {
-  const box = panelBox(0, 2);
+  const box = panelBox('miller');
   const { at, edges } = cellFrame(box, 118);
   const poly = mod.planePolygon([1, 1, 1]);
   if (!poly) throw new Error('(111) does not cut the cell — planePolygon changed');
@@ -1304,7 +1379,7 @@ const CARBURISE = { T_K: 1200, C0: 0.2, Cs: 1.0, depth_m: 2.2e-3 };
 const CARBURISE_HOURS = [1, 4, 9];
 
 function renderDiffusionPanel(mod: DiffusionModule): string[] {
-  const box = panelBox(1, 0);
+  const box = panelBox('defects');
   const sys = mod.DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
   const D = mod.diffusionCoefficient(sys, CARBURISE.T_K);
   const sx = linearScale(0, CARBURISE.depth_m, box.left, box.right);
@@ -1351,7 +1426,7 @@ interface PbSnModule {
  * it is a plate that says nothing new.
  */
 function renderPbSnPanel(mod: PbSnModule): string[] {
-  const box = panelBox(1, 1);
+  const box = panelBox('phase');
   const sys = mod.PB_SN;
   const sx = linearScale(0, sys.xMax, box.left, box.right);
   const sy = linearScale(sys.tMin, sys.tMax, box.bottom, box.top);
@@ -1381,7 +1456,7 @@ interface HeatModule {
 }
 
 function renderTttPanel(mod: HeatModule): string[] {
-  const box = panelBox(1, 2);
+  const box = panelBox('heattreat');
   const steel = mod.STEELS.find((s) => s.id === '1080')!;
   const ttt = mod.buildTtt(steel);
   const sx = logScale(0.1, 1e5, box.left, box.right);
@@ -1442,7 +1517,7 @@ function renderStressPanel(mod: MechModule): string[] {
     return { colour: s.colour, curve: mod.buildCurve(material, 120) };
   });
 
-  const box = panelBox(2, 0);
+  const box = panelBox('mechanical');
   const maxStrain = Math.max(...curves.map((c) => c.curve.fractureStrain));
   const maxStress = Math.max(...curves.flatMap((c) => c.curve.points.map((p) => p.stress)));
   const sx = linearScale(0, maxStrain, box.left, box.right);
@@ -1473,7 +1548,7 @@ const FRACTURE_SERIES = ['7075', 'ti-6al-4v', '4340-425'];
  * `criticalCrackSize` is no longer the one being made.
  */
 function renderFracturePanel(mod: FailureModule): string[] {
-  const box = panelBox(2, 1);
+  const box = panelBox('failure');
   const sx = linearScale(100, 1400, box.left, box.right);
   const sy = logScale(0.1, 400, box.bottom, box.top);
   const colours = [SERIES_B, SERIES_C, SERIES_A];
@@ -1512,7 +1587,7 @@ const VISIBLE_EV: [number, number] = [1.771, 3.0995];
 const BANDGAP_MAX_EV = 2.6;
 
 function renderBandGapPanel(mod: SemiModule): string[] {
-  const box = panelBox(2, 2);
+  const box = panelBox('semiconductors');
   const gaps = [...mod.SEMICONDUCTORS].sort((a, b) => a.Eg - b.Eg);
   const widest = Math.max(...gaps.map((g) => g.Eg));
   if (widest > BANDGAP_MAX_EV) throw new Error(`a band gap of ${widest} eV runs off the panel`);
@@ -1574,7 +1649,7 @@ interface XrdPanelModule {
  * the comparison the module is for — BCC opens on 110, FCC on 111.
  */
 function renderXrdPanel(mod: XrdPanelModule): string[] {
-  const box = panelBox(3, 0);
+  const box = panelBox('xrd');
   const sample = mod.XRD_SAMPLES.find((s) => s.id === 'fe')!;
   const source = mod.XRD_SOURCES.find((s) => s.id === 'cu')!;
   const peaks = mod.computePattern(sample.lattice, sample.a, source.lambda, 140);
@@ -1633,7 +1708,7 @@ const IDX_TOKEN: Record<string, string> = {
  * error in the rasteriser.
  */
 function renderSelectionPanel(mod: SelectionPanelModule): string[] {
-  const box = panelBox(3, 1);
+  const box = panelBox('selection');
   const sx = logScale(0.3, 30, box.left, box.right);
   const sy = logScale(1e-3, 1e3, box.bottom, box.top);
 
@@ -1704,7 +1779,7 @@ const POURBAIX_PH: [number, number] = [0, 14];
 const POURBAIX_E: [number, number] = [-2.9, 1.7];
 
 function renderPourbaixPanel(mod: CorrosionPanelModule): string[] {
-  const box = panelBox(3, 2);
+  const box = panelBox('corrosion');
   const metal = mod.POURBAIX.find((m) => m.id === 'al');
   if (!metal) throw new Error('POURBAIX has no aluminium');
   const sx = linearScale(POURBAIX_PH[0], POURBAIX_PH[1], box.left, box.right);
@@ -1779,32 +1854,85 @@ interface IndexPlateModules {
   corrosion: CorrosionPanelModule;
 }
 
-/** Column headings, in `NAV_GROUPS` order — one course group per column. */
-const IDX_GROUPS = ['Structure', 'Microstructure', 'Properties', 'Analysis'];
-
 /**
  * Panel headings, in the same order the module index below the plate lists
  * them. `figures.test.ts` checks this against `NAV_GROUPS` rather than trusting
  * it: a module added to the app without a panel here would otherwise leave the
  * plate quietly claiming to be all twelve.
+ *
+ * The title is written out rather than read from `NAV_GROUPS` on purpose. The
+ * placement test matches each title against the column its group's heading
+ * sits in; deriving the title from the same source as the placement would make
+ * that check agree with itself. The cell is derived, the name is not.
  */
-const IDX_PANELS: { col: number; row: number; id: string; title: string; caption: string }[] = [
-  { col: 0, row: 0, id: 'trends', title: 'Periodic trends', caption: '118 elements, by melting point where measured' },
-  { col: 0, row: 1, id: 'crystals', title: 'Crystal structures', caption: 'the face-centred cubic cell' },
-  { col: 0, row: 2, id: 'miller', title: 'Miller indices', caption: '(111) cutting the cell' },
-  { col: 1, row: 0, id: 'defects', title: 'Defects & diffusion', caption: 'carburising at 1, 4 and 9 hours' },
-  { col: 1, row: 1, id: 'phase', title: 'Phase diagrams', caption: 'the Pb–Sn eutectic' },
-  { col: 1, row: 2, id: 'heattreat', title: 'Heat treatment', caption: '1080 steel, TTT nose and Mₛ' },
-  { col: 2, row: 0, id: 'mechanical', title: 'Mechanical properties', caption: 'three metals, to fracture' },
-  { col: 2, row: 1, id: 'failure', title: 'Failure analysis', caption: 'critical crack size vs stress' },
-  { col: 2, row: 2, id: 'semiconductors', title: 'Semiconductors', caption: 'band gaps; visible light begins at the rule' },
-  { col: 3, row: 0, id: 'xrd', title: 'XRD simulator', caption: 'α-iron on a copper anode' },
-  { col: 3, row: 1, id: 'selection', title: 'Material selection', caption: '54 materials, E against ρ' },
-  { col: 3, row: 2, id: 'corrosion', title: 'Corrosion', caption: 'aluminium: immune, passive, dissolving' },
+const IDX_PANELS: { id: string; title: string; caption: string }[] = [
+  { id: 'trends', title: 'Periodic trends', caption: '118 elements, by melting point where measured' },
+  { id: 'crystals', title: 'Crystal structures', caption: 'the face-centred cubic cell' },
+  { id: 'miller', title: 'Miller indices', caption: '(111) cutting the cell' },
+  { id: 'defects', title: 'Defects & diffusion', caption: 'carburising at 1, 4 and 9 hours' },
+  { id: 'phase', title: 'Phase diagrams', caption: 'the Pb–Sn eutectic' },
+  { id: 'heattreat', title: 'Heat treatment', caption: '1080 steel, TTT nose and Mₛ' },
+  { id: 'mechanical', title: 'Mechanical properties', caption: 'three metals, to fracture' },
+  { id: 'failure', title: 'Failure analysis', caption: 'critical crack size vs stress' },
+  { id: 'semiconductors', title: 'Semiconductors', caption: 'band gaps; visible light begins at the rule' },
+  { id: 'xrd', title: 'XRD simulator', caption: 'α-iron on a copper anode' },
+  { id: 'selection', title: 'Material selection', caption: '54 materials, E against ρ' },
+  { id: 'corrosion', title: 'Corrosion', caption: 'aluminium: immune, passive, dissolving' },
 ];
 
+/** Left and right edges of a column, in plate units. */
+function columnEdges(col: number): [number, number] {
+  return [IDX_MARGIN + col * CELL_W, IDX_MARGIN + (col + 1) * CELL_W];
+}
+
+/**
+ * The rules the panels sit in: one under the headings, one down each seam
+ * between columns, and one across under each row.
+ *
+ * With equal columns this is the obvious full-width grid. With uneven ones
+ * neither the verticals nor the horizontals run the whole way: a seam is only
+ * as deep as the deeper of the two columns it separates, and a rule under row
+ * *r* exists only over the columns that actually have a row below it — drawn
+ * as one segment per contiguous run of them, so two separated columns do not
+ * get a rule through the empty cell between them.
+ */
+export function gridRules(rows: number[] = IDX_ROWS): string[] {
+  const right = IDX_MARGIN + rows.length * CELL_W;
+  const lines: string[] = [`M${IDX_MARGIN},${IDX_HEADER}H${right}`];
+
+  for (let c = 1; c < rows.length; c++) {
+    const depth = IDX_HEADER + Math.max(rows[c - 1], rows[c]) * CELL_H;
+    lines.push(`M${IDX_MARGIN + c * CELL_W},${IDX_HEADER}V${depth}`);
+  }
+
+  for (let r = 1; r < Math.max(...rows); r++) {
+    const y = IDX_HEADER + r * CELL_H;
+    let run: number | null = null;
+    for (let c = 0; c <= rows.length; c++) {
+      const spans = c < rows.length && rows[c] > r;
+      if (spans && run === null) run = c;
+      if (!spans && run !== null) {
+        lines.push(`M${columnEdges(run)[0]},${y}H${columnEdges(c - 1)[1]}`);
+        run = null;
+      }
+    }
+  }
+
+  return lines;
+}
+
+/** "three modules in each" while the columns are equal; the counts once they are not. */
+function columnShape(): string {
+  const columns = `${numberWord(IDX_ROWS.length)} columns, one per course group`;
+  if (IDX_ROWS.every((n) => n === IDX_ROWS[0])) {
+    return `${columns}; ${numberWord(IDX_ROWS[0])} modules in each`;
+  }
+  const counts = IDX_ROWS.join(', ').replace(/, (\d+)$/, ' and $1');
+  return `${columns}; ${counts} modules in them`;
+}
+
 function renderIndexPlate(mods: IndexPlateModules): string {
-  const body: string[] = [comment('four columns, one per course group; three modules in each')];
+  const body: string[] = [comment(columnShape())];
 
   // Column headings.
   IDX_GROUPS.forEach((label, c) => {
@@ -1819,20 +1947,10 @@ function renderIndexPlate(mods: IndexPlateModules): string {
     );
   });
 
-  // The grid the panels sit in: one rule under the headings, three down and two
-  // across. A rule separates; a box around each panel would be twelve cards.
-  const gridTop = IDX_HEADER;
-  const gridBottom = IDX_HEADER + 3 * CELL_H;
-  const lines: string[] = [`M${IDX_MARGIN},${gridTop}H${IDX_W - IDX_MARGIN}`];
-  for (let c = 1; c < 4; c++) {
-    lines.push(`M${IDX_MARGIN + c * CELL_W},${gridTop}V${gridBottom}`);
-  }
-  for (let r = 1; r < 3; r++) {
-    lines.push(`M${IDX_MARGIN},${gridTop + r * CELL_H}H${IDX_W - IDX_MARGIN}`);
-  }
-  body.push(node('path', { d: lines.join(''), fill: 'none', stroke: GRID, strokeWidth: 1 }));
+  // A rule separates; a box around each panel would be twelve cards.
+  body.push(node('path', { d: gridRules().join(''), fill: 'none', stroke: GRID, strokeWidth: 1 }));
 
-  for (const p of IDX_PANELS) body.push(...panelHead(p.col, p.row, p.title, p.caption));
+  for (const p of IDX_PANELS) body.push(...panelHead(p.id, p.title, p.caption));
 
   body.push(
     ...renderTablePanel(mods.elements),
@@ -1852,12 +1970,12 @@ function renderIndexPlate(mods: IndexPlateModules): string {
   return figureFile(
     'ModuleIndexPlate',
     [
-      'Twelve panels, one per module, each plotted from that module’s own model',
+      `${capitalised(numberWord(IDX_PANELS.length))} panels, one per module, each plotted from that module’s own model`,
       'code — the periodic table from `data/elements.json`, the TTT nose from',
       '`heattreat/model.ts`, the Ashby cloud from `selection/materials.ts`, the',
-      'diffraction sticks from `xrd/diffraction.ts`, and so on for all twelve.',
+      `diffraction sticks from \`xrd/diffraction.ts\`, and so on for all ${numberWord(IDX_PANELS.length)}.`,
       '',
-      'Four columns, one per course group, in `NAV_GROUPS` order.',
+      `${capitalised(numberWord(IDX_GROUPS.length))} columns, one per course group, in \`NAV_GROUPS\` order.`,
       '',
       'Larger than the four single plates, and lazily imported by the landing',
       'page for that reason: it heads the modules chapter, far below the fold,',

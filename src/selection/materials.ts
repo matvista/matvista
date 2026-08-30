@@ -304,3 +304,97 @@ export function indexValue(m: SelectionMaterial, idx: PerformanceIndex): number 
   const p = idx.property === 'modulus' ? m.modulus : m.strength;
   return Math.pow(p, idx.exponent) / m.density;
 }
+
+/* ============================================ A6 — screening and ranking == */
+
+/**
+ * Hard limits on attributes — the *screening* half of the Ashby method.
+ *
+ * The module taught the guide line, which is ranking, and ranking is one third
+ * of the method. The other two are screening against constraints that are not
+ * negotiable ("must not weigh more than this", "must be stiffer than that")
+ * and documenting the result. Students conflate the two and try to express a
+ * hard constraint as an index, which cannot work: an index says *better*, a
+ * limit says *allowed*.
+ */
+export interface AttributeLimits {
+  densityMax?: number;
+  modulusMin?: number;
+  strengthMin?: number;
+}
+
+/** Whether one material passes every stated limit. */
+export function passesLimits(m: SelectionMaterial, limits: AttributeLimits): boolean {
+  if (limits.densityMax != null && m.density > limits.densityMax) return false;
+  if (limits.modulusMin != null && m.modulus < limits.modulusMin) return false;
+  if (limits.strengthMin != null && m.strength < limits.strengthMin) return false;
+  return true;
+}
+
+export function screen(
+  materials: SelectionMaterial[],
+  limits: AttributeLimits,
+): SelectionMaterial[] {
+  return materials.filter((m) => passesLimits(m, limits));
+}
+
+export interface ScreenStage {
+  label: string;
+  /** Materials still in play after this stage has been applied. */
+  survivors: SelectionMaterial[];
+}
+
+/**
+ * The funnel, stage by stage — which is the method made visible.
+ *
+ * Each stage applies one more limit to the survivors of the last, so the
+ * counts can only fall. Reporting "54 → 19 → 6" is what an exam question means
+ * by "select a material for X"; a single final number hides the reasoning.
+ */
+export function screenStages(
+  materials: SelectionMaterial[],
+  limits: AttributeLimits,
+): ScreenStage[] {
+  const stages: ScreenStage[] = [{ label: 'All materials', survivors: materials }];
+  const steps: [keyof AttributeLimits, string][] = [
+    ['densityMax', 'ρ ≤'],
+    ['modulusMin', 'E ≥'],
+    ['strengthMin', 'σ ≥'],
+  ];
+  const applied: AttributeLimits = {};
+  for (const [key, prefix] of steps) {
+    const v = limits[key];
+    if (v == null) continue;
+    applied[key] = v;
+    stages.push({
+      label: `${prefix} ${v}`,
+      survivors: screen(materials, applied),
+    });
+  }
+  return stages;
+}
+
+/**
+ * The materials no other material beats on both indices at once.
+ *
+ * A Pareto front rather than a weighted sum: weighting two objectives against
+ * each other requires a number nobody has, and inventing one would hide the
+ * trade-off this is meant to show. A material is on the front when nothing
+ * else is at least as good on both counts and strictly better on one.
+ */
+export function paretoFront(
+  materials: SelectionMaterial[],
+  a: PerformanceIndex,
+  b: PerformanceIndex,
+): SelectionMaterial[] {
+  return materials.filter((m) => {
+    const ma = indexValue(m, a);
+    const mb = indexValue(m, b);
+    return !materials.some((o) => {
+      if (o === m) return false;
+      const oa = indexValue(o, a);
+      const ob = indexValue(o, b);
+      return oa >= ma && ob >= mb && (oa > ma || ob > mb);
+    });
+  });
+}

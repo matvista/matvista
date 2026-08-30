@@ -93,8 +93,8 @@ iterations come from the product/debt backlog below, not from `ROADMAP.md`.
 then, modules were 3.5–8.6 kB each and three.js was already deferred; the only candidate
 left was AshbyChart's dead memos, which recompute 54 points in microseconds. That is
 tidying, not performance, and the lens rules say to say so rather than invent work to
-fill it. (Re-measured since: first paint is **92.95 kB gzip** — index 85.17 plus a
-render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–12.04 kB. The
+fill it. (Re-measured at `672964c`: first paint is **92.96 kB gzip** — index 85.18 plus a
+render-blocking 7.78 kB stylesheet — and the twelve module chunks run 1.95–12.06 kB. The
 reasoning stands; the figures were four modules out of date.)
 
 **Verification workflow (supersedes the throwaway `src/__check.ts` recipe):** write
@@ -146,7 +146,7 @@ subject to the lens rotation.
 
 | Item | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
-| ~~Lazy-load three.js~~ — **shipped at iteration 3** | 4 | 2 | 2.0 | The estimate here (910 kB raw / 244 kB gzip, first paint down to ~97 kB) was never re-measured after it shipped, and the row read as outstanding work. Re-measured: the 3D chunk is **904.45 kB raw / 241.51 kB gzip**, it is reached only from `crystals`, `miller` and `defects`, and first paint is **92.95 kB gzip** with none of it inside. `CrystalStructures.tsx` and `DefectsDiffusion.tsx` both go through the lazy `CrystalScene`, which was the point — lazy-loading only one would have changed nothing. |
+| ~~Lazy-load three.js~~ — **shipped at iteration 3** | 4 | 2 | 2.0 | The estimate here (910 kB raw / 244 kB gzip, first paint down to ~97 kB) was never re-measured after it shipped, and the row read as outstanding work. Re-measured: the 3D chunk is **904.45 kB raw / 241.51 kB gzip**, it is reached only from `crystals`, `miller` and `defects`, and first paint is **92.96 kB gzip** with none of it inside. `CrystalStructures.tsx` and `DefectsDiffusion.tsx` both go through the lazy `CrystalScene`, which was the point — lazy-loading only one would have changed nothing. |
 | `AshbyChart.tsx` exhaustive-deps ×4 | 2 | 1 | 2.0 | The only lint warnings in the repo (baseline 4). **Investigated in iteration 9: it cannot go stale.** `yProp` is in the deps, and `visible` is rebuilt every render so the memos recompute every render regardless — they are dead memos, not a correctness risk. Downgraded from a correctness item to tidying: memoise `visible`, lift the accessor out of the closure, and the baseline drops to 0. |
 | Shared `<Canvas>` shell | 2 | 2 | 1.0 | `MillerScene.tsx` duplicates `CrystalScene.tsx`'s camera/dpr/lights/OrbitControls bounds and re-derives the cylinder-orientation helper. |
 
@@ -508,7 +508,7 @@ failed:
   → eleven totalling 49.8 kB, and a per-module range of 3.5–5.6 kB → **1.8–8.6 kB**. First
   paint was 73.4 kB gzip then, 72 kB over the wire. A new shared-helpers row was added.
   (Those figures were correct at iteration 14 and are not now: two modules and twelve
-  Tier-1 commits later, first paint is **92.95 kB gzip** — index 85.17 + stylesheet 7.78 —
+  Tier-1 commits later, first paint is **92.96 kB gzip** — index 85.18 + stylesheet 7.78 —
   and **93.6 kB over the wire**, document and headers included, from
   `performance.getEntriesByType('resource')` against `npm run preview`. ROADMAP's table
   carries the current set; this line records what iteration 14 measured.)
@@ -660,10 +660,22 @@ build per commit:
 - **Twenty** hold at 301,121 B / 85.17 kB gzip with a 37,320 B / 7.78 kB stylesheet.
 
 `5b702f8`'s subject also says "every size claim on this branch". It audited twenty-six
-commits; the branch has ninety-two, of which fifty quote a size figure at all. The window
-is about half the size-quoting commits and under a third of the branch — accurate for what
-it checked, overbroad for what it says. Recorded rather than amended, for the reason that
-row gives itself.
+commits; the branch finished at **ninety-seven**, of which **fifty-five** carry a message
+mentioning `gzip` or `kB`:
+
+```
+git log --format=%H 7d16701..b8b58b2 |
+  while read h; do git log -1 --format=%B $h | grep -qiE 'gzip|kB' && echo $h; done | wc -l
+```
+
+The rule is written out because the figure it replaces does not reproduce: "fifty, of
+ninety-two" was counted at `d66be6d`, where that command returns fifty-one. The total
+matched and the subset did not, so the subset was a hand count. This is the same defect
+the table above it records, one paragraph further down.
+
+The window is about half the size-quoting commits and under a third of the branch —
+accurate for what it checked, overbroad for what it says. Recorded rather than amended,
+for the reason that row gives itself.
 
 **Found after that window closed.** Kept separate so the twenty/six count above stays a
 statement about `3f79182..234672c` and does not have to be recounted every time a later
@@ -693,7 +705,7 @@ And two in the branch's own summary report, which is not a commit and cannot be 
 in place:
 
 - "**no new first-paint cost**" is false. Under the rule above, first paint at `6818158`
-  is 85.16 + 7.22 = **92.38 kB gzip** and at HEAD 85.17 + 7.78 = **92.95** — the
+  is 85.16 + 7.22 = **92.38 kB gzip** and at `672964c` 85.18 + 7.78 = **92.96** — the
   stylesheet grew 34.39 → 37.32 kB raw. The twelve Tier-1 commit bodies each report their
   own stylesheet delta and are honest; only the summary over them was wrong, which is why
   they are left alone.

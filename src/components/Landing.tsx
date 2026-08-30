@@ -1,18 +1,16 @@
+import { Suspense, lazy } from 'react';
 import { NAV_GROUPS } from '../nav';
-import { MODULE_MARKS } from './moduleMarks';
 import { useReveal } from '../motion';
+import { LeverRule } from './LeverRule';
 import { LatticePlate } from '../assets/figures/LatticePlate';
 import { PhaseFigure } from '../assets/figures/PhaseFigure';
-import { FatigueFigure } from '../assets/figures/FatigueFigure';
-import { AshbyFigure } from '../assets/figures/AshbyFigure';
-import { XrdFigure } from '../assets/figures/XrdFigure';
 import '../landing.css';
 
 /**
  * The front door.
  *
  * Set as a textbook plate rather than a product page, and the figures on it are
- * real: Figures 2 to 5 are emitted by the scripts in `scripts/`, which import
+ * real: Figures 2 to 6 are emitted by the scripts in `scripts/`, which import
  * the same model code the modules run. That is the whole argument the page is
  * making — "computed from the published relations, not drawn to look right" —
  * so illustrating it with invented artwork would have undercut the one claim
@@ -21,10 +19,23 @@ import '../landing.css';
  * `landing/lattice.ts`, which belongs to this page rather than to a module,
  * and the copy is careful not to claim otherwise.
  *
+ * One thing on the page is *not* a plate, and the distinction is the point.
+ * `LeverRule` is an instrument: it recomputes on a control, from the same
+ * function the phase module calls. A page whose opening sentence promises
+ * "something you drive rather than read" spent six thousand pixels giving the
+ * reader nothing to drive; that is what it is for, and it is marked "Live"
+ * where the plates are marked "Fig.".
+ *
  * Deliberately the only eagerly-loaded view, so it must stay cheap. The plates
  * are inline SVG, which costs bundle bytes but no request and — the reason it
  * is worth it — inherits the page's custom properties, so one asset themes for
- * light, dark and system rather than needing a copy per theme.
+ * light, dark and system rather than needing a copy per theme. The exception is
+ * `ModuleIndexPlate`: twelve panels is 18 kB of markup, it sits two screens
+ * below the fold, and `docs/GAUNTLET.md` is explicit that anything a reader
+ * does not need before their first interaction should be a dynamic import. It
+ * is `lazy()`, and — see `IndexPlate` — the import is not started until the
+ * reader is approaching it, inside a box that already reserves its aspect ratio
+ * so nothing moves when it lands.
  *
  * The hero used to run an animated canvas. It is a still plate now: at the
  * quality a rotating lattice needed to look good it was re-projecting and
@@ -36,13 +47,50 @@ import '../landing.css';
  * and "open in new tab", and is announced as a link.
  */
 
+/*
+ * The four plates that are not on the first two screens.
+ *
+ * Between them the three showcase figures are 34 kB of committed SVG markup and
+ * the figure index is another 19 kB, all of it three screens or more below the
+ * fold, all of it in the one chunk every visitor parses before anything paints.
+ * `docs/GAUNTLET.md` is explicit about this: anything a reader does not need
+ * before their first interaction should be a dynamic `import()`.
+ *
+ * What stays eager is Fig. 1, which is the hero, and Fig. 2, which is the proof
+ * standing beside the page's central claim and is reached in a second's
+ * scrolling. A plate that flickered there would undercut the argument it is
+ * making.
+ */
+const ModuleIndexPlate = lazy(() =>
+  import('../assets/figures/ModuleIndexPlate').then((m) => ({ default: m.ModuleIndexPlate })),
+);
+const FatigueFigure = lazy(() =>
+  import('../assets/figures/FatigueFigure').then((m) => ({ default: m.FatigueFigure })),
+);
+const AshbyFigure = lazy(() =>
+  import('../assets/figures/AshbyFigure').then((m) => ({ default: m.AshbyFigure })),
+);
+const XrdFigure = lazy(() =>
+  import('../assets/figures/XrdFigure').then((m) => ({ default: m.XrdFigure })),
+);
+
+/**
+ * A row of the module index.
+ *
+ * No `art`. Each row used to open with the module's signature mark — one of the
+ * twelve hand-drawn abstractions in `moduleMarks.tsx` — and that was reasonable
+ * while the mark was the only picture of a module anywhere on the page. Fig. 3
+ * now sits directly above this list showing the same twelve modules as their
+ * real output, and twelve faint approximations under twelve real figures is a
+ * comparison the approximations lose. The marks stay in the header, where they
+ * are the only picture available and are drawn at chrome scale.
+ */
 interface ModuleCard {
   id: string;
   title: string;
   href: string;
   /** What a reader can actually answer with it — concrete, not adjectives. */
   detail: string;
-  art: React.ReactNode;
 }
 
 const CARDS: ModuleCard[] = [
@@ -51,84 +99,72 @@ const CARDS: ModuleCard[] = [
     title: 'Periodic trends',
     href: '#/trends?el=W&prop=melt',
     detail: 'Colour the whole table by electronegativity, ionisation energy, melting point or density, and read the trend across a period or down a group. Elements with no measured value for a property are shown as having none.',
-    art: MODULE_MARKS.trends,
   },
   {
     id: 'crystals',
     title: 'Crystal structures',
     href: '#/crystals',
     detail: 'Eight structures from simple cubic to perovskite, in ball-and-stick or space-filling, with a density calculator that lands within a fraction of a percent for the cubic metals — and shows you where the ideal-c/a assumption breaks down for HCP.',
-    art: MODULE_MARKS.crystals,
   },
   {
     id: 'miller',
     title: 'Miller indices',
     href: '#/miller?plane=111',
     detail: 'Type any (hkl) and watch the plane cut the cell, with intercepts, d-spacing, family members and a Schmid-factor ranking across all 12 FCC or 48 BCC slip systems.',
-    art: MODULE_MARKS.miller,
   },
   {
     id: 'defects',
     title: 'Defects & diffusion',
     href: '#/defects',
     detail: 'Put a point defect into a lattice, compute the equilibrium vacancy fraction, and solve Fick’s second law for a carburising profile.',
-    art: MODULE_MARKS.defects,
   },
   {
     id: 'phase',
     title: 'Phase diagrams',
     href: '#/phase?T=650&sys=fe-c&x=0.4',
     detail: 'Click anywhere on Cu–Ni, Pb–Sn or Fe–Fe₃C and get the phases present, the tie line, lever-rule mass fractions and the microstructure that results.',
-    art: MODULE_MARKS.phase,
   },
   {
     id: 'heattreat',
     title: 'Heat treatment',
     href: '#/heattreat',
     detail: 'Drag a cooling rate across an isothermal diagram and see the products it produces, read by Scheil additivity, with a Jominy end-quench comparison across three grades.',
-    art: MODULE_MARKS.heattreat,
   },
   {
     id: 'mechanical',
     title: 'Mechanical properties',
     href: '#/mechanical',
     detail: 'Engineering curves for seven metals with the 0.2% offset construction, resilience and toughness areas, a true-stress overlay, and grain-size strengthening.',
-    art: MODULE_MARKS.mechanical,
   },
   {
     id: 'failure',
     title: 'Failure analysis',
     href: '#/failure',
     detail: 'Find the critical crack size for a real alloy, read an S–N curve that only flattens for the alloys that actually have a fatigue limit, grow a crack by Paris’ law, and trade temperature against time with Larson–Miller.',
-    art: MODULE_MARKS.failure,
   },
   {
     id: 'semiconductors',
     title: 'Semiconductors',
     href: '#/semiconductors',
     detail: 'Compare band gaps against the visible spectrum, dope a crystal and watch conductivity cross from extrinsic to intrinsic as it heats, then bend the bands across a junction and read off the built-in potential.',
-    art: MODULE_MARKS.semiconductors,
   },
   {
     id: 'corrosion',
     title: 'Corrosion',
     href: '#/corrosion',
     detail: 'Pair any two alloys and see which one corrodes, how hard the couple is driven, and why a small anode beside a large cathode is the dangerous arrangement — then read the pH–potential map that says whether a metal is immune, passive or dissolving.',
-    art: MODULE_MARKS.corrosion,
   },
   {
     id: 'xrd',
     title: 'XRD simulator',
     href: '#/xrd',
     detail: 'Generate a diffraction pattern for four lattice types across four X-ray sources, with every peak indexed and the extinction rules shown working.',
-    art: MODULE_MARKS.xrd,
   },
   {
     id: 'selection',
     title: 'Material selection',
     href: '#/selection',
     detail: 'A log–log chart of 54 materials with movable guide lines for E/ρ, E^½/ρ, E^⅓/ρ, σ/ρ and σ^⅔/ρ, ranking candidates live as you move the line.',
-    art: MODULE_MARKS.selection,
   },
 ];
 
@@ -162,24 +198,49 @@ const FACTS: { n: string; label: string }[] = [
 ];
 
 /**
- * The worked example, at 0.4 wt% C just below the eutectoid.
+ * Copper's (111) and (100), computed rather than quoted.
  *
- * These are not illustrative numbers. Every one is asserted in
- * `docs.test.ts` against `steelMicrostructure(0.4)` and `lever()` from
- * `phase/systems`, which is the same code the phase module calls — so if the
- * model changes, the front page fails the suite instead of quietly lying about
- * what the app computes. They are written out rather than computed here to
- * keep `phase/systems` out of the eagerly-loaded chunk.
+ * These are the numbers behind the page's claim that two modules agree, and
+ * they are asserted in `docs.test.ts` against `dSpacing` from
+ * `crystal/miller.ts` and `braggTwoTheta` / `isAllowed` from
+ * `xrd/diffraction.ts`, reading the lattice parameter and the wavelength out of
+ * `XRD_SAMPLES` and `XRD_SOURCES` rather than restating them here.
+ *
+ * 43.32°, not the 43.3° of the literature: the two are the same reflection, and
+ * the difference is the point of quoting a computed number rather than a
+ * remembered one. Copper's *a* is derived from an atomic radius of 0.1278 nm,
+ * which is why it is 0.36147 nm rather than a round 0.3615.
+ *
+ * (100) is the counter-example and it has to be stated exactly. It is not
+ * missing because Bragg's law has no solution for it — it has a perfectly good
+ * d-spacing, and a perfectly good angle at 24.61° — but because the structure
+ * factor of an FCC lattice vanishes for mixed indices. Absent, not unreachable.
  */
-const WORKED = {
-  href: '#/phase?T=650&sys=fe-c&x=0.4',
-  rows: [
-    { term: 'Proeutectoid α (ferrite)', value: '48.8 %', key: true },
-    { term: 'Pearlite', value: '51.2 %', key: true },
-    { term: 'Total α (ferrite)', value: '94.3 %', key: false },
-    { term: 'Total Fe₃C (cementite)', value: '5.7 %', key: false },
-  ],
+const AGREEMENT = {
+  a: '0.3615',
+  lambda: '0.15406',
+  allowed: { plane: '(111)', d: '0.2087', twoTheta: '43.32' },
+  extinct: { plane: '(100)', d: '0.3615', twoTheta: '24.61' },
 };
+
+/**
+ * The worked examples the README hands out as links, on the page that makes
+ * the claim about them.
+ *
+ * Every id in every query below is checked in `docs.test.ts` against the data
+ * it names — `sys=fe-c` against `PHASE_SYSTEMS`, `steel=4340` against
+ * `STEELS`, `geom=vessel` against `CRACK_GEOMETRIES`, and so on. Route names
+ * are stable; parameters are what rot, and a dead link on the page that
+ * promises links would be the worst possible one to ship.
+ */
+const SHAREABLE: { href: string; shows: string }[] = [
+  { href: '#/heattreat?rate=1200&steel=4340', shows: '4340 quenched at 1200 °C per second' },
+  { href: '#/miller?plane=110&s=bcc&sigma=90', shows: '(110) in a BCC cell, 90 MPa applied' },
+  { href: '#/phase?T=200&sys=pb-sn&x=40', shows: 'Pb–40 wt% Sn at 200 °C, on the tie line' },
+  { href: '#/trends?el=W&prop=melt', shows: 'the table coloured by melting point, tungsten selected' },
+  { href: '#/failure?geom=vessel&p=12', shows: 'leak before break in a thin-walled vessel at 12 MPa' },
+  { href: '#/xrd?sample=fe&source=cr', shows: 'iron on a chromium anode, where the λ ≤ 2d limit bites' },
+];
 
 /**
  * The three figures shown at full width further down, each paired with what it
@@ -190,7 +251,7 @@ const WORKED = {
 const SHOWCASE: { n: number; title: string; body: string; href: string; cta: string; figure: React.ReactNode }[] =
   [
     {
-      n: 3,
+      n: 4,
       title: 'Not every alloy has a fatigue limit',
       body:
         'Steel and titanium flatten out: below a certain amplitude — 190 MPa for this 1020 — they survive indefinitely. Nickel has no such limit, and its curve keeps falling until it crosses under the steel it started above. For an alloy like that, "infinite life" is a decision about a number of cycles rather than a property you can lean on.',
@@ -199,7 +260,7 @@ const SHOWCASE: { n: number; title: string; body: string; href: string; cta: str
       figure: <FatigueFigure />,
     },
     {
-      n: 4,
+      n: 5,
       title: 'Choosing a material is choosing a slope',
       body:
         'Stiffness against density for 54 materials, log on both axes. A performance index is a straight line on this chart, and moving it sweeps out the candidates that beat a given value — which is why the answer for a light stiff beam is not the same as for a light stiff tie.',
@@ -208,7 +269,7 @@ const SHOWCASE: { n: number; title: string; body: string; href: string; cta: str
       figure: <AshbyFigure />,
     },
     {
-      n: 5,
+      n: 6,
       title: 'The missing peaks are the information',
       body:
         'Copper, indexed. Every reflection on this plate is all-odd or all-even, and that is the whole identification: in an FCC crystal the structure factor extinguishes the mixed indices, so (100) and (110) are not weak here, they are absent. Switch the sample in the module and a different set goes missing.',
@@ -270,63 +331,75 @@ export function Landing() {
         ))}
       </section>
 
-      <Reveal className="ld-section ld-worked">
-        <div className="ld-worked-copy">
-          <p className="ld-kicker">A worked example</p>
-          <h2 className="ld-h2">Computed, not drawn to look right.</h2>
-          <p className="ld-sub">
-            Take a plain carbon steel at 0.4 wt% C and cool it just below the eutectoid at
-            727 °C. The diagram beside this is the app's own Fe–Fe₃C construction; the
-            fractions below are what the lever rule gives on that tie line, from the same
-            function the module calls.
-          </p>
-
-          <div className="ld-readout">
-            <p className="ld-readout-h">Fe–0.4 wt% C, just below 727 °C</p>
-            <dl>
-              {WORKED.rows.map((r) => (
-                <div key={r.term} style={{ display: 'contents' }}>
-                  <dt>{r.term}</dt>
-                  <dd className={r.key ? 'is-key' : undefined}>{r.value}</dd>
-                </div>
-              ))}
-            </dl>
+      <Reveal className="ld-chapter ld-worked-chapter">
+        <div className="ld-worked">
+          <div className="ld-worked-copy">
+            <p className="ld-kicker">A worked example</p>
+            <h2 className="ld-h2">Computed, not drawn to look right.</h2>
+            <p className="ld-sub">
+              Take a plain carbon steel and cool it slowly to just below the eutectoid at
+              727 °C. The diagram beside this is the app's own Fe–Fe₃C construction; the bars
+              underneath are what the lever rule gives on that tie line, from the same
+              function the module calls — and they move.
+            </p>
+            <p className="ld-body">
+              Slide past 0.76 wt% C and the constituent that separates out before the
+              reaction changes from ferrite to cementite — same diagram, same lever rule,
+              opposite answer. Then watch where the two colours meet. The boundary falls at
+              the same place in both bars, at every composition, because pearlite is itself
+              88.9 % ferrite and that ferrite counts toward the total. Microconstituent
+              fractions and phase fractions are different questions; the bars answer both,
+              and show why the answers are not the same number.
+            </p>
           </div>
 
-          <p className="ld-note">
-            Microconstituent and phase fractions differ, and both are given — pearlite is a
-            two-phase lamellar mixture, so its ferrite counts toward the total.
-          </p>
-
-          <p style={{ margin: '1.4rem 0 0' }}>
-            <a className="ld-link" href={WORKED.href}>
-              Open this exact point in the module
-              <span className="ld-arrow" aria-hidden="true">
-                →
-              </span>
-            </a>
-          </p>
+          <figure className="ld-plate">
+            <PlateArt label="Figure 2. The iron–iron carbide phase diagram, with the eutectoid marked and a tie line at 0.4 wt% carbon and 650 °C.">
+              <PhaseFigure />
+            </PlateArt>
+            <figcaption>
+              <span className="ld-fig-n">Fig. 2</span>
+              The iron–iron carbide diagram, with the eutectoid marked and the tie line drawn
+              at 0.4 wt% carbon and 650 °C. Fixed, because it is a printed plate; the
+              instrument below is not.
+            </figcaption>
+          </figure>
         </div>
 
-        <figure className="ld-plate">
-          <PlateArt label="Figure 2. The iron–iron carbide phase diagram, with the eutectoid marked and a tie line at 0.4 wt% carbon and 650 °C.">
-            <PhaseFigure />
-          </PlateArt>
-          <figcaption>
-            <span className="ld-fig-n">Fig. 2</span>
-            The iron–iron carbide diagram, with the eutectoid marked and the tie line drawn
-            at the composition and temperature above.
-          </figcaption>
-        </figure>
+        <LeverRule />
       </Reveal>
 
-      <Reveal className="ld-section" id="modules">
+      <Reveal className="ld-chapter" id="modules">
         <p className="ld-kicker">The modules</p>
-        <h2 className="ld-h2">Grouped the way a course is.</h2>
+        <h2 className="ld-h2">Twelve modules. Twelve figures. All of them computed.</h2>
         <p className="ld-sub">
-          Four families, three modules each. Every one stands alone as something you can
-          teach with, study from, or reach for as a reference.
+          Every panel below is that module's own output — the periodic table shaded by
+          melting point, with the eleven elements that have no measured one left unshaded;
+          the nose of a real TTT curve; all 54 materials of the Ashby chart; α-iron's
+          diffraction lines. One column per course group, which is also how the header is
+          arranged.
         </p>
+
+        <figure className="ld-plate ld-plate-wide">
+          <PlateArt label="Figure 3. Twelve panels, one for each module, each plotted from that module's own model code, arranged in four columns by course group.">
+            <NearbyPlate ratio="1224 / 724">
+              <ModuleIndexPlate />
+            </NearbyPlate>
+          </PlateArt>
+          <figcaption>
+            <span className="ld-fig-n">Fig. 3</span>
+            The twelve modules, drawn by the twelve modules. Nothing here is an
+            illustration of the app; it is the app's output at thumbnail size.
+          </figcaption>
+        </figure>
+
+        <div className="ld-index-head">
+          <h3 className="ld-h3">Grouped the way a course is.</h3>
+          <p>
+            Four families, three modules each. Every one stands alone as something you can
+            teach with, study from, or reach for as a reference.
+          </p>
+        </div>
 
         {NAV_GROUPS.map((group, i) => (
           <div key={group.id} className="ld-group">
@@ -353,9 +426,6 @@ export function Landing() {
                         duplicate, it is deleting the description for anyone
                         who cannot see it. */}
                     <a className="ld-row" href={card.href}>
-                      <span className="ld-row-mark" aria-hidden="true">
-                        {card.art}
-                      </span>
                       <span>
                         <span className="ld-row-title">{card.title}</span>
                         <span className="ld-row-blurb">{card.detail}</span>
@@ -372,7 +442,78 @@ export function Landing() {
         ))}
       </Reveal>
 
-      <Reveal className="ld-section">
+      <Reveal className="ld-chapter ld-narrow">
+        <p className="ld-kicker">Where two modules meet</p>
+        <h2 className="ld-h2">The same reflection, from both ends.</h2>
+        <p className="ld-sub">
+          The Miller module turns a plane into a d-spacing. The XRD module turns a d-spacing
+          into the angle a peak appears at. They are different pages built from different
+          files, so the only honest way to claim they agree is to make the claim checkable.
+          A test takes every reflection the XRD page offers as a link, opens the Miller page
+          it leads to, and fails if the two disagree about whether that reflection is
+          allowed or about the angle it appears at — across five samples and four anodes.
+          It found them disagreeing once, which is why it exists.
+        </p>
+
+        <ol className="ld-chain">
+          <li>
+            <span className="ld-chain-n">1</span>
+            <div>
+              <h3>
+                {AGREEMENT.allowed.plane} in copper, <em>a</em> = {AGREEMENT.a} nm
+              </h3>
+              <p>
+                Miller reduces the indices, takes the reciprocal, and gets{' '}
+                <strong>d = {AGREEMENT.allowed.d} nm</strong>.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="ld-chain-n">2</span>
+            <div>
+              <h3>Bragg, on a copper anode at λ = {AGREEMENT.lambda} nm</h3>
+              <p>
+                XRD puts that spacing at{' '}
+                <strong>2θ = {AGREEMENT.allowed.twoTheta}°</strong> — the first line of the
+                pattern in Fig. 6, and the number the Miller page prints too. The literature
+                says 43.3°; this says what the model computes, which is the difference
+                between quoting and calculating.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="ld-chain-n">3</span>
+            <div>
+              <h3>
+                And {AGREEMENT.extinct.plane}, which is not there at all
+              </h3>
+              <p>
+                It has a d-spacing — {AGREEMENT.extinct.d} nm — and Bragg's law solves for it
+                perfectly well, at {AGREEMENT.extinct.twoTheta}°. It is absent because the
+                structure factor of an FCC lattice vanishes for mixed indices, not because
+                there was nowhere to put it. Both modules say so, and say it the same way.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <div className="ld-cta">
+          <a className="ld-link" href="#/miller?plane=111">
+            See (111) cut the cell
+            <span className="ld-arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+          <a className="ld-link" href="#/xrd?sample=cu&source=cu">
+            See the peak it makes
+            <span className="ld-arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+        </div>
+      </Reveal>
+
+      <Reveal className="ld-chapter">
         <p className="ld-kicker">What it draws</p>
         <h2 className="ld-h2">Three more of the app's own figures.</h2>
         <p className="ld-sub">
@@ -387,7 +528,9 @@ export function Landing() {
         {SHOWCASE.map((s) => (
           <figure key={s.n} className="ld-showcase">
             <div className="ld-plate">
-              <PlateArt label={`Figure ${s.n}. ${s.title}.`}>{s.figure}</PlateArt>
+              <PlateArt label={`Figure ${s.n}. ${s.title}.`}>
+                <NearbyPlate ratio="640 / 420">{s.figure}</NearbyPlate>
+              </PlateArt>
             </div>
             <figcaption className="ld-showcase-copy">
               <p className="ld-fig-n">Fig. {s.n}</p>
@@ -404,7 +547,28 @@ export function Landing() {
         ))}
       </Reveal>
 
-      <Reveal className="ld-section">
+      <Reveal className="ld-chapter ld-narrow">
+        <p className="ld-kicker">Hand it to a class</p>
+        <h2 className="ld-h2">The address bar is the worksheet.</h2>
+        <p className="ld-sub">
+          Anything that changes the answer — the steel, the plane, the cooling rate, the
+          composition, the anode — lives in the URL. Set a case up, copy the address, paste
+          it into a handout, and everyone opens the same diagram. These six are real; each
+          one is a link.
+        </p>
+        <ul className="ld-links">
+          {SHAREABLE.map((s) => (
+            <li key={s.href}>
+              <a href={s.href}>
+                <code>{s.href}</code>
+                <span>{s.shows}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </Reveal>
+
+      <Reveal className="ld-chapter">
         <p className="ld-kicker">How the numbers are made</p>
         <h2 className="ld-h2">Four commitments the modules keep.</h2>
         <p className="ld-sub">
@@ -451,7 +615,7 @@ export function Landing() {
         </div>
       </Reveal>
 
-      <Reveal className="ld-section">
+      <Reveal className="ld-chapter">
         <p className="ld-kicker">Who it is for</p>
         <h2 className="ld-h2">Three ways people use it.</h2>
         <div className="ld-cols">
@@ -480,26 +644,59 @@ export function Landing() {
       </Reveal>
 
       <section className="ld-close">
-        <h2 className="ld-h2">Pick something and start pulling on it.</h2>
-        <p>
-          Nothing to sign up for and nothing to install. Every module opens straight from a
-          link, and every view you reach has one of its own.
-        </p>
-        <div className="ld-cta">
-          <a className="ld-btn" href="#/crystals">
-            Open a unit cell
-            <span className="ld-arrow" aria-hidden="true">
-              →
-            </span>
-          </a>
-          <a className="ld-link" href="#/heattreat">
-            Quench some steel
-            <span className="ld-arrow" aria-hidden="true">
-              →
-            </span>
-          </a>
+        <div className="ld-close-copy">
+          <h2 className="ld-h2 ld-h2-close">Pick something and start pulling on it.</h2>
+          <p>
+            Nothing to sign up for and nothing to install. Every module opens straight from a
+            link, and every view you reach has one of its own.
+          </p>
+          <div className="ld-cta">
+            <a className="ld-btn" href="#/crystals">
+              Open a unit cell
+              <span className="ld-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+            <a className="ld-link" href="#/heattreat">
+              Quench some steel
+              <span className="ld-arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+          </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * A plate whose markup is fetched when the reader gets near it.
+ *
+ * `lazy()` alone is not deferral. React starts the import the moment the
+ * component *renders*, and every section of this page is in the first render
+ * tree, so the chunks were going out on page load. They did not block first
+ * paint, which is the part that matters most — but "off the critical path" and
+ * "not fetched at all unless someone scrolls" are different things, and only
+ * one of them was true.
+ *
+ * So each plate mounts on its own `useReveal`, with a positive bottom margin so
+ * the fetch starts a little before the box is on screen. The guarantee that
+ * makes this safe is the one `useReveal` already gives: `shown` starts *true*
+ * under reduced motion or in a browser without `IntersectionObserver`, so the
+ * failure mode is fetching markup nobody needed, never an empty frame.
+ *
+ * The box holds the plate's own aspect ratio either way, so nothing on the page
+ * moves when a chunk lands.
+ */
+function NearbyPlate({ ratio, children }: { ratio: string; children: React.ReactNode }) {
+  const { ref, shown } = useReveal<HTMLDivElement>({
+    threshold: 0,
+    rootMargin: '0px 0px 300px 0px',
+  });
+  return (
+    <div ref={ref} className="ld-plate-slot" style={{ aspectRatio: ratio }}>
+      {shown && <Suspense fallback={null}>{children}</Suspense>}
     </div>
   );
 }

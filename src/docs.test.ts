@@ -9,7 +9,9 @@ import { STRUCTURES } from './crystal/structures';
 import { SLIP_MODES, slipSystems } from './crystal/miller';
 import { MECH_MATERIALS } from './mechanical/materials';
 import { INDICES, SELECTION_MATERIALS } from './selection/materials';
-import { XRD_SAMPLES, XRD_SOURCES, braggReach } from './xrd/diffraction';
+import { XRD_SAMPLES, XRD_SOURCES, braggReach, braggTwoTheta, isAllowed } from './xrd/diffraction';
+import { dSpacing } from './crystal/miller';
+import { PROPERTIES } from './types';
 import { CEMENTITE_X, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, PHASE_SYSTEMS, lever, steelMicrostructure } from './phase/systems';
 import { JOMINY_DISTANCES, JOMINY_RATES, STEELS } from './heattreat/steels';
 import { DIFFUSION_SYSTEMS } from './diffusion/model';
@@ -163,35 +165,26 @@ describe('landing page stats strip', () => {
 });
 
 /**
- * The landing page shows a worked example — Fe–0.4 wt% C just below the
- * eutectoid — and prints the four fractions it produces. Those numerals are
- * written into `Landing.tsx` rather than computed there, to keep `phase/systems`
- * out of the eagerly-loaded chunk. This is the price of that: the front page's
- * arithmetic is asserted against the function the phase module actually calls,
- * so a change to the model breaks the suite instead of quietly leaving a wrong
- * number on the most-read page in the product.
+ * The landing page's worked example — Fe–0.4 wt% C just below the eutectoid.
+ *
+ * It used to be four numerals written into `Landing.tsx`, and this block
+ * asserted the strings against the model. It is now computed on the page, from
+ * `phase/eutectoid.ts`, so those string assertions would be the model checked
+ * against itself and would guard nothing: what a reader sees is checked by
+ * rendering it, in `lever-rule.behaviour.test.tsx`.
+ *
+ * What is left here is the part that is still a claim about the *prose* — the
+ * copy says 0.76 wt% C and 727 °C, and calls the example hypoeutectoid — plus
+ * the agreement between the two paths through the lever rule.
  */
 describe('landing page worked example — Fe–0.4 wt% C', () => {
   const C0 = 0.4;
   const result = steelMicrostructure(C0);
 
-  /** Percentages as the page prints them: one decimal place. */
-  const pct = (fraction: number): string => `${(fraction * 100).toFixed(1)} %`;
-
   it('is a hypoeutectoid steel, so the proeutectoid phase is ferrite', () => {
     expect(result).not.toBeNull();
     expect(result!.kind).toBe('hypoeutectoid');
     expect(result!.proeutectoid).toBe('α (ferrite)');
-  });
-
-  it('prints 48.8 % proeutectoid ferrite and 51.2 % pearlite', () => {
-    expect(pct(result!.proeutectoidFraction)).toBe('48.8 %');
-    expect(pct(result!.pearlite)).toBe('51.2 %');
-  });
-
-  it('prints 94.3 % total ferrite and 5.7 % total cementite', () => {
-    expect(pct(result!.totalFerrite)).toBe('94.3 %');
-    expect(pct(result!.totalCementite)).toBe('5.7 %');
   });
 
   it('agrees with the lever rule taken directly across the α + Fe₃C field', () => {
@@ -217,7 +210,7 @@ describe('landing page worked example — Fe–0.4 wt% C', () => {
  * without a card would render nothing for it — on the one view that is loaded
  * eagerly.
  *
- * The second is a claim. Figure 3's caption names the alloys the plate draws,
+ * The second is a claim. Figure 4's caption names the alloys the plate draws,
  * and an earlier draft named aluminium while the generator plotted nickel — a
  * factual error on the page whose whole argument is that its figures are real.
  * The figure test checks that *some* alloy has a fatigue limit and *some* does
@@ -230,7 +223,112 @@ describe('landing page and the data behind it', () => {
     }
   });
 
-  it("names, in Fig. 3's caption, the alloys the plate actually draws", () => {
+  /**
+   * "The same reflection, from both ends."
+   *
+   * The page prints five numbers for copper's (111) and (100), and the whole
+   * point of printing them is that they are computed rather than remembered.
+   * So they are checked against the two modules' own functions, with the
+   * lattice parameter and the wavelength read out of the data rather than
+   * restated — copper's *a* comes from an atomic radius of 0.1278 nm through
+   * `latticeParameter`, and hard-coding 0.3615 here would stop guarding that.
+   *
+   * The trap this closes is a real one, caught in review: the page first said
+   * 43.30°, which is the *literature* value the README quotes. The model
+   * computes 43.32, and `xrd/diffraction.ts` says so in its own header. A front
+   * page that rounds its computed answer towards the textbook has given up the
+   * only claim it was making.
+   */
+  it('prints copper’s (111) and (100) as the two modules actually compute them', () => {
+    const copper = XRD_SAMPLES.find((s) => s.id === 'cu')!;
+    const anode = XRD_SOURCES.find((s) => s.id === 'cu')!;
+    expect(copper.lattice).toBe('fcc');
+
+    const source = landingSource;
+    expect(source).toContain(`a: '${copper.a.toFixed(4)}'`);
+    expect(source).toContain(`lambda: '${anode.lambda}'`);
+
+    // (111) — allowed, and the first line of the pattern.
+    const d111 = dSpacing([1, 1, 1], copper.a);
+    const twoTheta111 = braggTwoTheta(d111, anode.lambda);
+    expect(isAllowed(copper.lattice, 1, 1, 1)).toBe(true);
+    expect(twoTheta111).not.toBeNull();
+    expect(source).toContain(`d: '${d111.toFixed(4)}'`);
+    expect(source).toContain(`twoTheta: '${twoTheta111!.toFixed(2)}'`);
+
+    // (100) — extinct, but not for want of an angle. Both numbers are on the
+    // page precisely because "absent" and "unreachable" are different things.
+    const d100 = dSpacing([1, 0, 0], copper.a);
+    const twoTheta100 = braggTwoTheta(d100, anode.lambda);
+    expect(isAllowed(copper.lattice, 1, 0, 0)).toBe(false);
+    expect(twoTheta100).not.toBeNull();
+    expect(source).toContain(`d: '${d100.toFixed(4)}'`);
+    expect(source).toContain(`twoTheta: '${twoTheta100!.toFixed(2)}'`);
+
+    // Miller's d-spacing and XRD's are the agreement the section claims.
+    expect(d111).toBeCloseTo(copper.a / Math.sqrt(3), 12);
+  });
+
+  /**
+   * "Hand it to a class" puts six deep links on the page.
+   *
+   * Checking that the route segment resolves would be the easy version and the
+   * useless one: route names are stable, and the failure this repo has actually
+   * had was a cross-module *parameter* leak found by working through the
+   * README's own examples. So every id in every query below is looked up in the
+   * data that defines it, and a link that stopped meaning anything fails here.
+   */
+  it('every shareable link resolves to a real route with real parameters', () => {
+    const tabs = new Set(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id as string)));
+    /*
+     * Both spellings. `href: '#/…'` catches the two data tables — the module
+     * cards and the shareable links — and `href="#/…"` catches the ones written
+     * straight into the markup, which is where the "two modules agree" section
+     * and every call to action lives. Matching only the first form left seven
+     * links on the page unchecked, including the two that section added.
+     */
+    const links = [
+      ...[...landingSource.matchAll(/href: '(#\/[^']+)'/g)].map((m) => m[1]),
+      ...[...landingSource.matchAll(/href="(#\/[^"]+)"/g)].map((m) => m[1]),
+    ];
+    expect(links.length).toBeGreaterThanOrEqual(20);
+    // Both forms are present, so neither half of the regex can rot unnoticed.
+    expect(links.filter((l) => l.includes('?')).length).toBeGreaterThanOrEqual(8);
+    expect(links).toContain('#/miller?plane=111');
+    expect(links).toContain('#/xrd?sample=cu&source=cu');
+
+    /** Which data each parameter key is drawn from, per module. */
+    const VALID: Record<string, Record<string, Set<string>>> = {
+      heattreat: { steel: new Set(STEELS.map((s) => s.id)) },
+      miller: { s: new Set(STRUCTURES.map((s) => s.id)) },
+      phase: { sys: new Set(PHASE_SYSTEMS.map((s) => s.id)) },
+      trends: {
+        prop: new Set(PROPERTIES.map((p) => p.key)),
+        el: new Set((elementsRaw as { symbol: string }[]).map((e) => e.symbol)),
+      },
+      failure: { geom: new Set(CRACK_GEOMETRIES.map((g) => g.id)) },
+      xrd: {
+        sample: new Set(XRD_SAMPLES.map((x) => x.id)),
+        source: new Set(XRD_SOURCES.map((x) => x.id)),
+      },
+    };
+
+    let checkedParams = 0;
+    for (const link of links) {
+      const [path, query = ''] = link.slice(2).split('?');
+      expect(tabs, `${link} is not a module`).toContain(path);
+      for (const [key, value] of new URLSearchParams(query)) {
+        const allowed = VALID[path]?.[key];
+        if (!allowed) continue; // numeric parameters: range, not membership
+        expect(allowed, `${link}: ${key}=${value}`).toContain(value);
+        checkedParams++;
+      }
+    }
+    // The loop is only evidence if it checked something.
+    expect(checkedParams).toBeGreaterThanOrEqual(10);
+  });
+
+  it("names, in Fig. 4's caption, the alloys the plate actually draws", () => {
     const source = landingSource;
     const plate = fatiguePlate;
 
@@ -241,7 +339,7 @@ describe('landing page and the data behind it', () => {
 
     // Fig. 3's caption alone — not the whole file, where "steel" appears in
     // half a dozen unrelated sentences and would make this pass for free.
-    const entry = source.slice(source.indexOf('n: 3,'), source.indexOf('n: 4,'));
+    const entry = source.slice(source.indexOf('n: 4,'), source.indexOf('n: 5,'));
     const body = entry.slice(entry.indexOf("body:"), entry.indexOf('href:'));
     expect(body.length).toBeGreaterThan(80);
 

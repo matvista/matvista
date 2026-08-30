@@ -4,6 +4,9 @@ import phaseCommitted from './PhaseFigure.tsx?raw';
 import fatigueCommitted from './FatigueFigure.tsx?raw';
 import ashbyCommitted from './AshbyFigure.tsx?raw';
 import xrdCommitted from './XrdFigure.tsx?raw';
+import indexCommitted from './ModuleIndexPlate.tsx?raw';
+import { NAV_GROUPS } from '../../nav';
+import elementsRaw from '../../data/elements.json';
 import { EUTECTOID_T, EUTECTOID_X, FE_C } from '../../phase/systems';
 import { MECH_MATERIALS } from '../../mechanical/materials';
 import { FATIGUE_BEHAVIOUR, getFatigueBehaviour } from '../../failure/materials';
@@ -36,13 +39,14 @@ const committed: Record<string, string> = {
   'src/assets/figures/FatigueFigure.tsx': fatigueCommitted,
   'src/assets/figures/AshbyFigure.tsx': ashbyCommitted,
   'src/assets/figures/XrdFigure.tsx': xrdCommitted,
+  'src/assets/figures/ModuleIndexPlate.tsx': indexCommitted,
 };
 
 const generated = await buildFigures();
 const sourceFor = (path: string): string => generated.find((g) => g.path === path)!.source;
 
 describe('committed figures are in step with the models', () => {
-  it('generates exactly the four committed files', () => {
+  it('generates exactly the five committed files', () => {
     expect(generated.map((g) => g.path)).toEqual(Object.keys(committed));
   });
 
@@ -143,6 +147,122 @@ describe('each figure carries the model output it claims to', () => {
     expect(SELECTION_MATERIALS).toHaveLength(54);
   });
 
+  /**
+   * The figure index is the one plate that makes a claim about the *app* rather
+   * than about a model: twelve panels, one per module. A module added to
+   * `NAV_GROUPS` without a panel would leave it quietly showing eleven under a
+   * heading that says twelve, which is exactly the class of drift `docs.test.ts`
+   * exists to close — so the membership is checked, not assumed.
+   */
+  describe('the figure index covers every module, from every module', () => {
+    const plate = () => sourceFor('src/assets/figures/ModuleIndexPlate.tsx');
+
+    /**
+     * Membership *and* placement. Asserting only that every label appears
+     * somewhere in the plate would pass with all twelve panels filed under one
+     * heading, which is the arrangement the section's own copy makes a claim
+     * about — "one column per course group, which is also how the header is
+     * arranged". The x of each title is read back and matched to the column its
+     * group's heading sits in.
+     */
+    it('titles one panel per module, in the column its course group heads', () => {
+      const titleX = (label: string): number => {
+        const escaped = label.replace(/&/g, '&amp;').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const m = plate().match(new RegExp(`<text x="(\\d+(?:\\.\\d+)?)"[^>]*>${escaped}</text>`));
+        expect(m, `no title for ${label}`).not.toBeNull();
+        return Number(m![1]);
+      };
+
+      NAV_GROUPS.forEach((group, column) => {
+        const headX = titleX(group.label.toUpperCase());
+        for (const item of group.items) {
+          // Headings and panel titles are both drawn at the cell's left inset,
+          // so a panel in the right column shares its heading's x exactly.
+          expect(titleX(item.label), `${item.label} is not under ${group.label}`).toBe(headX);
+        }
+        // ...and the four columns really are four different columns, left to
+        // right in `NAV_GROUPS` order.
+        if (column > 0) {
+          expect(headX).toBeGreaterThan(titleX(NAV_GROUPS[column - 1].label.toUpperCase()));
+        }
+      });
+
+      expect(NAV_GROUPS).toHaveLength(4);
+      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
+    });
+
+    it('plots all 54 Ashby materials', () => {
+      // The selection panel draws one 4-unit square per material, as path
+      // subpaths grouped by class; count the move commands rather than the
+      // elements.
+      const squares = plate().match(/h4v4h-4z/g)!.length;
+      expect(squares).toBe(SELECTION_MATERIALS.length);
+    });
+
+    /**
+     * One stick per allowed line, counted inside the XRD panel's own path.
+     *
+     * Counting `M…L…` across the whole plate was the mistake this replaces: it
+     * matched 49 segments, 24 of them the two cube frames, against 6 peaks — so
+     * `>= peaks.length` passed with `renderXrdPanel` deleted entirely. The
+     * panel emits exactly one `<path>` of sticks, right after a comment naming
+     * it, which is a handle the assertion can hold on to.
+     */
+    it('draws exactly one stick per line computePattern gives α-iron on Cu Kα', () => {
+      const iron = XRD_SAMPLES.find((s) => s.id === 'fe')!;
+      const anode = XRD_SOURCES.find((s) => s.id === 'cu')!;
+      expect(iron.lattice).toBe('bcc');
+      const peaks = computePattern(iron.lattice, iron.a, anode.lambda, 140);
+      expect(peaks.length).toBeGreaterThan(3);
+
+      const marker = '{/* α-iron on Cu Kα, from computePattern() — every allowed BCC line */}';
+      const from = plate().indexOf(marker);
+      expect(from, 'the XRD panel is no longer in the plate').toBeGreaterThan(-1);
+      // Its last element is the stick path; take the panel up to the next
+      // comment, which opens the panel after it.
+      const rest = plate().slice(from + marker.length);
+      const panel = rest.slice(0, rest.indexOf('{/*'));
+      const sticks = panel.match(/M\d+,\d+L\d+,\d+/g) ?? [];
+      expect(sticks).toHaveLength(peaks.length);
+    });
+
+    it('draws all 118 elements, and leaves the ones with no melting point out of the ramp', () => {
+      const cells = plate().match(/M-?\d+,-?\d+h\d+v\d+h-\d+z/g)!.length;
+      const elements = elementsRaw as { melt: number | null }[];
+      expect(elements).toHaveLength(118);
+      // 118 table cells plus the 54 Ashby markers, which share the rect shape.
+      expect(cells).toBe(elements.length + SELECTION_MATERIALS.length);
+
+      /*
+       * Eleven elements have no tabulated melting point — carbon and phosphorus
+       * among them, not only the unmeasured superheavies — and they are drawn in
+       * the grid colour rather than at the bottom of the ramp, the same way
+       * `PeriodicTrends` draws a missing value as missing. The caption says
+       * "where measured" because of these; the count is checked so the caption
+       * cannot quietly become wrong.
+       */
+      const unmeasured = elements.filter((e) => e.melt == null).length;
+      expect(unmeasured).toBe(11);
+      const gridPath = plate().match(
+        /<path d="((?:M-?\d+,-?\d+h\d+v\d+h-\d+z)+)" fill="var\(--fig-grid[^"]*"/,
+      );
+      expect(gridPath, 'no unshaded band in the table panel').not.toBeNull();
+      expect(gridPath![1].match(/z/g)!.length).toBe(unmeasured);
+    });
+
+    /**
+     * A budget, not a guess. This plate is the largest asset the landing page
+     * can reach; it is lazily imported so it costs nothing at first paint, but
+     * a lazy chunk that doubles without anyone noticing is still a regression,
+     * and the periodic-table panel alone was 9.6 kB before it was rewritten
+     * from 118 elements into six paths.
+     */
+    it('stays inside its byte budget', () => {
+      const bytes = new TextEncoder().encode(plate()).length;
+      expect(bytes).toBeLessThan(22_000);
+    });
+  });
+
   it('the XRD plate indexes the FCC lines computePattern actually produces', () => {
     const sample = XRD_SAMPLES.find((s) => s.id === 'cu')!;
     const source = XRD_SOURCES.find((s) => s.id === 'cu')!;
@@ -175,6 +295,13 @@ describe('theming and embedding contract', () => {
     'src/assets/figures/FatigueFigure.tsx': 'ff-',
     'src/assets/figures/AshbyFigure.tsx': 'af-',
     'src/assets/figures/XrdFigure.tsx': 'xf-',
+    'src/assets/figures/ModuleIndexPlate.tsx': 'mi-',
+  };
+
+  /* The four single plates share one box; the figure index is drawn wider and
+     taller, because it is twelve panels rather than one. */
+  const VIEWBOX: Record<string, string> = {
+    'src/assets/figures/ModuleIndexPlate.tsx': 'viewBox="0 0 1224 724"',
   };
 
   for (const [path, prefix] of Object.entries(PREFIXES)) {
@@ -182,7 +309,7 @@ describe('theming and embedding contract', () => {
       const source = () => committed[path];
 
       it('states a viewBox and hides itself from assistive technology', () => {
-        expect(source()).toContain('viewBox="0 0 640 420"');
+        expect(source()).toContain(VIEWBOX[path] ?? 'viewBox="0 0 640 420"');
         expect(source()).toContain('aria-hidden="true"');
       });
 

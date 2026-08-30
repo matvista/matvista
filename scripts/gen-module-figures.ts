@@ -331,7 +331,13 @@ class LabelSpace {
 
 /* ------------------------------------------------------------ file layout */
 
-function figureFile(component: string, docLines: string[], body: string[]): string {
+function figureFile(
+  component: string,
+  docLines: string[],
+  body: string[],
+  /** The figure index is drawn on a wider box than the four single plates. */
+  view: [number, number] = [VIEW_W, VIEW_H],
+): string {
   return [
     '/**',
     ` * ${component} — generated, do not edit by hand.`,
@@ -343,7 +349,7 @@ function figureFile(component: string, docLines: string[], body: string[]): stri
     ' */',
     `export function ${component}() {`,
     '  return (',
-    `    <svg viewBox="0 0 ${VIEW_W} ${VIEW_H}" aria-hidden="true" ` +
+    `    <svg viewBox="0 0 ${view[0]} ${view[1]}" aria-hidden="true" ` +
       "style={{ display: 'block', width: '100%', height: 'auto' }}>",
     ...body,
     '    </svg>',
@@ -1018,6 +1024,850 @@ function renderXrdFigure(mod: XrdModule): string {
   );
 }
 
+/* ===================================================== 5. figure index === */
+
+/**
+ * The figure index: twelve panels, one per module, each drawn from that
+ * module's own model code.
+ *
+ * This is the plate the landing page opens its modules chapter with, and it is
+ * the answer to a question the page could not previously answer with a picture:
+ * *what does this thing actually draw?* The twelve signature marks it replaces
+ * were hand-drawn abstractions — a squiggle that suggested a stress–strain
+ * curve rather than one. Every panel below is the real output: the periodic
+ * table is 118 elements coloured by their tabulated melting points, the TTT
+ * nose is `tttCurve` for 1080, the Ashby cloud is all 54 materials, the
+ * diffraction sticks are `computePattern` on α-iron.
+ *
+ * Laid out as four columns of three, because that is the shape of the app: one
+ * column per course group, in `NAV_GROUPS` order, with the group's name over
+ * it. The plate is the navigation diagram as well as the gallery.
+ *
+ * Held to a byte budget asserted in `figures.test.ts`. It is the largest single
+ * asset the landing page can reach, and it is lazily imported for that reason —
+ * a plate below the fold has no business in the first paint — but a lazy chunk
+ * that grows without anything noticing is still a regression.
+ *
+ * Panels carry no tick labels. At 300 units wide inside a 1224-unit box an
+ * axis label would render at about four effective pixels, which is the mistake
+ * `landing.css` records making with the three-across showcase gallery. What
+ * each panel gets instead is a title and one line saying what is plotted; the
+ * numbers live in the module the panel links to.
+ */
+
+const IDX_W = 1224;
+const IDX_H = 724;
+const IDX_MARGIN = 12;
+const IDX_HEADER = 46;
+const CELL_W = 300;
+const CELL_H = 222;
+
+/** Plot area inset inside a cell, under the title and its caption. */
+function panelBox(col: number, row: number): Box {
+  const x0 = IDX_MARGIN + col * CELL_W;
+  const y0 = IDX_HEADER + row * CELL_H;
+  return { left: x0 + 18, right: x0 + 284, top: y0 + 46, bottom: y0 + 202 };
+}
+
+/** Integer-precision polyline. Panels are 266 units wide; a decimal is noise. */
+function idxPath(points: [number, number][], sx: Scale, sy: Scale): string {
+  return points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${f(sx(x), 0)},${f(sy(y), 0)}`).join('');
+}
+
+/** Every nth point of a sampled curve, always keeping the last. */
+function thin<T>(xs: T[], keep: number): T[] {
+  if (xs.length <= keep) return xs;
+  const step = (xs.length - 1) / (keep - 1);
+  const out: T[] = [];
+  for (let i = 0; i < keep; i++) out.push(xs[Math.round(i * step)]);
+  return out;
+}
+
+function idxCurve(d: string, colour: string, width = 1.6, opacity?: number): string {
+  return node('path', {
+    d,
+    fill: 'none',
+    stroke: colour,
+    strokeWidth: width,
+    strokeLinejoin: 'round',
+    strokeLinecap: 'round',
+    opacity,
+  });
+}
+
+/** A cell's heading: the module's name, and one line saying what is plotted. */
+function panelHead(col: number, row: number, title: string, caption: string): string[] {
+  const x = IDX_MARGIN + col * CELL_W + 18;
+  const y = IDX_HEADER + row * CELL_H;
+  return [
+    textNode(title, { x, y: y + 21, fontSize: 13, fontWeight: 600, fill: INK }),
+    textNode(caption, { x, y: y + 36, fontSize: 10.5, fill: LABEL }),
+  ];
+}
+
+/* ------------------------------------------------- panel 1: the table --- */
+
+interface ElementRow {
+  xpos: number;
+  ypos: number;
+  melt: number | null;
+}
+
+/**
+ * 118 elements in the real table layout, shaded by melting point.
+ *
+ * Six opacity bands rather than a continuous ramp, and one `<path>` per band
+ * rather than 118 `<rect>` elements: as separate rects this panel alone was
+ * 9.6 kB, which is more than the other eleven together. The banding is a
+ * rendering decision, not a claim — the module itself interpolates a continuous
+ * scale, and this panel's caption says "shaded by", not "the module's scale".
+ *
+ * Elements with no tabulated melting point are drawn in the grid colour, the
+ * same way `PeriodicTrends` draws a missing value as missing rather than as
+ * zero.
+ */
+function renderTablePanel(elements: ElementRow[]): string[] {
+  const box = panelBox(0, 0);
+  const cw = (box.right - box.left) / 18;
+  const ch = (box.bottom - box.top) / 10;
+  const w = Math.max(1, Math.round(cw) - 1);
+  const h = Math.max(1, Math.round(ch) - 1);
+
+  const melts = elements.map((e) => e.melt).filter((m): m is number => m != null);
+  const lo = Math.min(...melts);
+  const hi = Math.max(...melts);
+  const BANDS = 6;
+
+  const bands: string[][] = Array.from({ length: BANDS }, () => []);
+  const missing: string[] = [];
+
+  for (const e of elements) {
+    const x = Math.round(box.left + (e.xpos - 1) * cw);
+    const y = Math.round(box.top + (e.ypos - 1) * ch);
+    const rect = `M${x},${y}h${w}v${h}h-${w}z`;
+    if (e.melt == null) {
+      missing.push(rect);
+      continue;
+    }
+    // Square-rooted, because melting points cluster hard at the low end and a
+    // linear ramp left four fifths of the table in the palest band.
+    const t = Math.sqrt((e.melt - lo) / (hi - lo));
+    bands[Math.min(BANDS - 1, Math.floor(t * BANDS))].push(rect);
+  }
+
+  const out: string[] = [comment('118 elements at their real table positions, by melting point where measured')];
+  if (missing.length) {
+    out.push(node('path', { d: missing.join(''), fill: GRID }));
+  }
+  bands.forEach((rects, i) => {
+    if (!rects.length) return;
+    out.push(
+      node('path', {
+        d: rects.join(''),
+        fill: SERIES_A,
+        opacity: f(0.22 + (i / (BANDS - 1)) * 0.78, 2),
+      }),
+    );
+  });
+  return out;
+}
+
+/* ------------------------------------- panels 2 and 3: the cubic cell --- */
+
+/**
+ * One orthographic projection, shared by the crystal and Miller panels so the
+ * two cells are seen from the same angle — they are the same cube, and drawing
+ * them from different viewpoints would say otherwise.
+ */
+const IDX_YAW = (34 * Math.PI) / 180;
+const IDX_PITCH = (24 * Math.PI) / 180;
+
+function idxProject(p: [number, number, number]): { u: number; v: number; depth: number } {
+  const [x, y, z] = p;
+  const cy = Math.cos(IDX_YAW);
+  const sy = Math.sin(IDX_YAW);
+  const rx = x * cy + z * sy;
+  const rz = -x * sy + z * cy;
+  const cp = Math.cos(IDX_PITCH);
+  const sp = Math.sin(IDX_PITCH);
+  return { u: rx, v: -(y * cp - rz * sp), depth: y * sp + rz * cp };
+}
+
+/** Projected cell corners and the twelve edges between them, in panel units. */
+function cellFrame(box: Box, scale: number): { at: (p: [number, number, number]) => [number, number]; edges: string } {
+  const cx = (box.left + box.right) / 2;
+  const cy = (box.top + box.bottom) / 2;
+  const at = (p: [number, number, number]): [number, number] => {
+    const q = idxProject(p);
+    return [cx + q.u * scale, cy + q.v * scale];
+  };
+  const c: [number, number, number][] = [
+    [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+    [-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+  ];
+  const pairs: [number, number][] = [
+    [0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4],
+    [0, 4], [1, 5], [2, 6], [3, 7],
+  ];
+  const edges = pairs
+    .map(([a, b]) => {
+      const p = at(c[a]);
+      const q = at(c[b]);
+      return `M${f(p[0], 0)},${f(p[1], 0)}L${f(q[0], 0)},${f(q[1], 0)}`;
+    })
+    .join('');
+  return { at, edges };
+}
+
+interface CrystalModule {
+  STRUCTURES: { id: string; basis: { pos: [number, number, number]; species: string }[] }[];
+  buildAtoms(s: unknown): { pos: [number, number, number]; species: string; image: boolean }[];
+}
+
+/** The FCC cell the crystal module opens on, drawn from `buildAtoms`. */
+function renderCrystalPanel(mod: CrystalModule): string[] {
+  const box = panelBox(0, 1);
+  const structure = mod.STRUCTURES.find((s) => s.id === 'fcc')!;
+  const { at, edges } = cellFrame(box, 118);
+
+  const atoms = mod
+    .buildAtoms(structure)
+    .map((a) => ({ ...a, ...idxProject(a.pos) }))
+    // Painter's algorithm: far atoms first, so near ones overlap them.
+    .sort((p, q) => p.depth - q.depth);
+
+  const out: string[] = [comment('the FCC cell, from buildAtoms() — corner and face-centre sites')];
+  out.push(node('path', { d: edges, fill: 'none', stroke: GRID, strokeWidth: 1.2 }));
+  for (const a of atoms) {
+    const [x, y] = at(a.pos);
+    /*
+     * One colour, two sizes.
+     *
+     * Corner sites are the eight at ±0.5 in every axis and the rest are the six
+     * face centres, and drawing them identically would hide what makes the cell
+     * FCC — but the earlier draft separated them by *colour*, on a plate whose
+     * caption says every panel is the app's own output. FCC copper is
+     * monatomic and the crystal module draws it that way. Radius carries the
+     * distinction now, and the depth shading does the rest.
+     */
+    const corner = a.pos.every((v) => Math.abs(Math.abs(v) - 0.5) < 1e-9);
+    out.push(
+      node('circle', {
+        cx: f(x, 0),
+        cy: f(y, 0),
+        r: corner ? 12 : 7.5,
+        fill: SERIES_A,
+        opacity: f(0.55 + 0.4 * ((a.depth + 0.9) / 1.8), 2),
+      }),
+    );
+  }
+  return out;
+}
+
+interface MillerModule {
+  planePolygon(hkl: [number, number, number]): { vertices: [number, number, number][] } | null;
+}
+
+/** The (111) plane cutting the same cube, from `planePolygon`. */
+function renderMillerPanel(mod: MillerModule): string[] {
+  const box = panelBox(0, 2);
+  const { at, edges } = cellFrame(box, 118);
+  const poly = mod.planePolygon([1, 1, 1]);
+  if (!poly) throw new Error('(111) does not cut the cell — planePolygon changed');
+
+  const d =
+    poly.vertices
+      .map((v, i) => {
+        const [x, y] = at(v);
+        return `${i === 0 ? 'M' : 'L'}${f(x, 0)},${f(y, 0)}`;
+      })
+      .join('') + 'Z';
+
+  return [
+    comment('(111) cutting the cell, from planePolygon([1,1,1])'),
+    node('path', { d: edges, fill: 'none', stroke: GRID, strokeWidth: 1.2 }),
+    node('path', { d, fill: ACCENT, opacity: 0.16 }),
+    node('path', { d, fill: 'none', stroke: ACCENT, strokeWidth: 1.8, strokeLinejoin: 'round' }),
+  ];
+}
+
+/* ---------------------------------------------- panel 4: diffusion --- */
+
+interface DiffusionModule {
+  DIFFUSION_SYSTEMS: { id: string; D0: number; Qd: number }[];
+  diffusionCoefficient(sys: unknown, T_K: number): number;
+  concentrationAt(x: number, t: number, D: number, C0: number, Cs: number): number;
+}
+
+/** Carburising at 927 °C: the same Fick's-second-law profile at 1, 4 and 9 hours. */
+const CARBURISE = { T_K: 1200, C0: 0.2, Cs: 1.0, depth_m: 2.2e-3 };
+const CARBURISE_HOURS = [1, 4, 9];
+
+function renderDiffusionPanel(mod: DiffusionModule): string[] {
+  const box = panelBox(1, 0);
+  const sys = mod.DIFFUSION_SYSTEMS.find((s) => s.id === 'c-fe-fcc')!;
+  const D = mod.diffusionCoefficient(sys, CARBURISE.T_K);
+  const sx = linearScale(0, CARBURISE.depth_m, box.left, box.right);
+  const sy = linearScale(CARBURISE.C0, CARBURISE.Cs, box.bottom, box.top);
+
+  const out: string[] = [comment('Fick’s second law at 927 °C, from concentrationAt() — 1, 4 and 9 hours')];
+  const colours = [SERIES_C, SERIES_A, SERIES_B];
+  CARBURISE_HOURS.forEach((hours, i) => {
+    const pts: [number, number][] = [];
+    for (let j = 0; j <= 34; j++) {
+      const x = (CARBURISE.depth_m * j) / 34;
+      pts.push([x, mod.concentrationAt(x, hours * 3600, D, CARBURISE.C0, CARBURISE.Cs)]);
+    }
+    out.push(idxCurve(idxPath(pts, sx, sy), colours[i]));
+  });
+  // The surface concentration the profiles all start from.
+  out.push(
+    node('line', {
+      x1: f(box.left, 0),
+      y1: f(box.top, 0),
+      x2: f(box.right, 0),
+      y2: f(box.top, 0),
+      stroke: GRID,
+      strokeWidth: 1,
+    }),
+  );
+  return out;
+}
+
+/* -------------------------------------------------- panel 5: Pb–Sn --- */
+
+interface PbSnModule {
+  PB_SN: {
+    boundaries: { points: [number, number][]; kind: string }[];
+    xMax: number;
+    tMin: number;
+    tMax: number;
+  };
+}
+
+/**
+ * Pb–Sn rather than Fe–Fe₃C, because Fig. 2 lower down the page is already the
+ * iron–carbon diagram at full size, and a plate that repeats the figure beside
+ * it is a plate that says nothing new.
+ */
+function renderPbSnPanel(mod: PbSnModule): string[] {
+  const box = panelBox(1, 1);
+  const sys = mod.PB_SN;
+  const sx = linearScale(0, sys.xMax, box.left, box.right);
+  const sy = linearScale(sys.tMin, sys.tMax, box.bottom, box.top);
+
+  const out: string[] = [comment('the Pb–Sn eutectic, straight from PB_SN.boundaries')];
+  for (const b of sys.boundaries) {
+    const pts = thin(b.points, b.kind === 'isotherm' ? 2 : 18);
+    // `SERIES_A`, not `INK`. Fig. 2 draws its boundaries in ink and is right to
+    // — it is a plate on its own. Here the panel sits in a set of twelve drawn
+    // in the series palette, and in ink it was the one black figure in light
+    // and the one white one in dark.
+    out.push(idxCurve(idxPath(pts, sx, sy), b.kind === 'isotherm' ? ACCENT : SERIES_A, 1.4));
+  }
+  return out;
+}
+
+/* --------------------------------------------- panel 6: heat treatment --- */
+
+interface HeatModule {
+  STEELS: { id: string }[];
+  buildTtt(steel: unknown): {
+    start: { t: number; T: number }[];
+    finish: { t: number; T: number }[];
+    ms: number;
+    a1: number;
+  };
+}
+
+function renderTttPanel(mod: HeatModule): string[] {
+  const box = panelBox(1, 2);
+  const steel = mod.STEELS.find((s) => s.id === '1080')!;
+  const ttt = mod.buildTtt(steel);
+  const sx = logScale(0.1, 1e5, box.left, box.right);
+  const sy = linearScale(100, ttt.a1 + 40, box.bottom, box.top);
+
+  const clip = (pts: { t: number; T: number }[]): [number, number][] =>
+    thin(
+      pts.filter((p) => p.t >= 0.1 && p.t <= 1e5),
+      22,
+    ).map((p) => [p.t, p.T] as [number, number]);
+
+  return [
+    comment('1080 steel’s TTT nose, from buildTtt() — start, finish and Mₛ'),
+    node('line', {
+      x1: f(box.left, 0),
+      y1: f(sy(ttt.a1), 0),
+      x2: f(box.right, 0),
+      y2: f(sy(ttt.a1), 0),
+      stroke: GRID,
+      strokeWidth: 1,
+    }),
+    idxCurve(idxPath(clip(ttt.start), sx, sy), SERIES_A),
+    idxCurve(idxPath(clip(ttt.finish), sx, sy), SERIES_A, 1.4, 0.55),
+    node('line', {
+      x1: f(box.left, 0),
+      y1: f(sy(ttt.ms), 0),
+      x2: f(box.right, 0),
+      y2: f(sy(ttt.ms), 0),
+      stroke: ACCENT,
+      strokeWidth: 1.4,
+      strokeDasharray: '5 4',
+    }),
+  ];
+}
+
+/* ------------------------------------------------ panel 7: mechanical --- */
+
+interface MechModule {
+  MECH_MATERIALS: { id: string; name: string }[];
+  buildCurve(m: unknown, samples?: number): {
+    points: { strain: number; stress: number }[];
+    utsStrain: number;
+    fractureStrain: number;
+  };
+}
+
+/** Three of the seven, chosen to span the range of ductility on one axis pair. */
+const MECH_SERIES = [
+  { id: 'steel1020', colour: SERIES_A },
+  { id: 'al', colour: SERIES_B },
+  { id: 'cu', colour: SERIES_C },
+];
+
+function renderStressPanel(mod: MechModule): string[] {
+  const curves = MECH_SERIES.map((s) => {
+    const material = mod.MECH_MATERIALS.find((m) => m.id === s.id);
+    if (!material) throw new Error(`MECH_MATERIALS has no ${s.id}`);
+    return { colour: s.colour, curve: mod.buildCurve(material, 120) };
+  });
+
+  const box = panelBox(2, 0);
+  const maxStrain = Math.max(...curves.map((c) => c.curve.fractureStrain));
+  const maxStress = Math.max(...curves.flatMap((c) => c.curve.points.map((p) => p.stress)));
+  const sx = linearScale(0, maxStrain, box.left, box.right);
+  const sy = linearScale(0, maxStress * 1.05, box.bottom, box.top);
+
+  const out: string[] = [comment('engineering curves from buildCurve(), through yield, UTS and fracture')];
+  for (const c of curves) {
+    const pts = thin(c.curve.points, 40).map((p) => [p.strain, p.stress] as [number, number]);
+    out.push(idxCurve(idxPath(pts, sx, sy), c.colour));
+  }
+  return out;
+}
+
+/* --------------------------------------------------- panel 8: failure --- */
+
+interface FailureModule {
+  FRACTURE_ALLOYS: { id: string; name: string; kic: number; yieldStrength: number }[];
+  criticalCrackSize(kic: number, sigma: number, Y: number): number;
+}
+
+/** Three of the five, spanning the toughness range from 2024 aluminium up. */
+const FRACTURE_SERIES = ['7075', 'ti-6al-4v', '4340-425'];
+
+/**
+ * Critical crack size against applied stress, log-y — the curve the failure
+ * module exists to put a number on. Each alloy's line is cut off at its own
+ * yield strength, because past that the linear-elastic assumption behind
+ * `criticalCrackSize` is no longer the one being made.
+ */
+function renderFracturePanel(mod: FailureModule): string[] {
+  const box = panelBox(2, 1);
+  const sx = linearScale(100, 1400, box.left, box.right);
+  const sy = logScale(0.1, 400, box.bottom, box.top);
+  const colours = [SERIES_B, SERIES_C, SERIES_A];
+
+  const out: string[] = [comment('critical crack size against stress, from criticalCrackSize(), log axis')];
+  FRACTURE_SERIES.forEach((id, i) => {
+    const alloy = mod.FRACTURE_ALLOYS.find((a) => a.id === id);
+    if (!alloy) throw new Error(`FRACTURE_ALLOYS has no ${id}`);
+    const top = Math.min(1400, alloy.yieldStrength);
+    const pts: [number, number][] = [];
+    for (let j = 0; j <= 20; j++) {
+      const sigma = 100 + ((top - 100) * j) / 20;
+      const a = mod.criticalCrackSize(alloy.kic, sigma, 1) * 1000; // m → mm
+      if (a >= 0.1 && a <= 400) pts.push([sigma, a]);
+    }
+    if (pts.length > 1) out.push(idxCurve(idxPath(pts, sx, sy), colours[i]));
+  });
+  return out;
+}
+
+/* -------------------------------------------- panel 9: semiconductors --- */
+
+interface SemiModule {
+  SEMICONDUCTORS: { id: string; Eg: number; gapKind: 'direct' | 'indirect' }[];
+}
+
+/** The visible band in electronvolts: 1239.8/700 to 1239.8/400. */
+const VISIBLE_EV: [number, number] = [1.771, 3.0995];
+
+/**
+ * The axis stops just past the widest gap in the set rather than at a round
+ * 3.6 eV. At 3.6 the largest bar reached two thirds of the panel and the
+ * visible band sat almost entirely to the right of every one of them — the
+ * comparison the panel exists to make, drawn in the empty quarter.
+ */
+const BANDGAP_MAX_EV = 2.6;
+
+function renderBandGapPanel(mod: SemiModule): string[] {
+  const box = panelBox(2, 2);
+  const gaps = [...mod.SEMICONDUCTORS].sort((a, b) => a.Eg - b.Eg);
+  const widest = Math.max(...gaps.map((g) => g.Eg));
+  if (widest > BANDGAP_MAX_EV) throw new Error(`a band gap of ${widest} eV runs off the panel`);
+  const sx = linearScale(0, BANDGAP_MAX_EV, box.left, box.right);
+  const rowH = (box.bottom - box.top) / gaps.length;
+  const barH = Math.max(4, rowH - 6);
+
+  const out: string[] = [
+    comment('band gaps from SEMICONDUCTORS, against the visible range 1.77–3.10 eV'),
+    /*
+     * One rule, at the red end of the visible spectrum, rather than a filled
+     * band. The fill was a block behind the bars, and bars crossing into it
+     * changed colour — at thumbnail size that read as a fourth material. The
+     * band's other edge is at 3.10 eV, off this axis, so drawing it clamped to
+     * the panel would have claimed the visible range ends at 2.6; the caption
+     * says what the one rule is instead.
+     */
+    node('path', {
+      d: `M${f(sx(VISIBLE_EV[0]), 0)},${f(box.top, 0)}V${f(box.bottom, 0)}`,
+      fill: 'none',
+      stroke: ACCENT,
+      strokeWidth: 1.2,
+      strokeDasharray: '4 3',
+    }),
+  ];
+  gaps.forEach((s, i) => {
+    out.push(
+      node('rect', {
+        x: f(box.left, 0),
+        y: f(box.top + i * rowH + 3, 0),
+        width: f(Math.max(1, sx(s.Eg) - box.left), 0),
+        height: f(barH, 0),
+        // Direct and indirect are the distinction the module is built around,
+        // and the same two colours it uses on screen.
+        fill: s.gapKind === 'direct' ? SERIES_A : SERIES_D,
+        opacity: s.gapKind === 'direct' ? 0.95 : 0.6,
+      }),
+    );
+  });
+  return out;
+}
+
+/* ------------------------------------------------------- panel 10: XRD --- */
+
+interface XrdPanelModule {
+  XRD_SAMPLES: { id: string; lattice: string; a: number }[];
+  XRD_SOURCES: { id: string; lambda: number }[];
+  computePattern(
+    lattice: string,
+    a: number,
+    lambda: number,
+    maxTwoTheta?: number,
+  ): { twoTheta: number; intensity: number }[];
+}
+
+/**
+ * α-iron rather than copper. Fig. 5 further down the page is the copper
+ * pattern at full size; showing BCC here means the two plates together carry
+ * the comparison the module is for — BCC opens on 110, FCC on 111.
+ */
+function renderXrdPanel(mod: XrdPanelModule): string[] {
+  const box = panelBox(3, 0);
+  const sample = mod.XRD_SAMPLES.find((s) => s.id === 'fe')!;
+  const source = mod.XRD_SOURCES.find((s) => s.id === 'cu')!;
+  const peaks = mod.computePattern(sample.lattice, sample.a, source.lambda, 140);
+  const sx = linearScale(20, 140, box.left, box.right);
+  const sy = linearScale(0, 100, box.bottom, box.top);
+
+  const sticks = peaks
+    .map((p) => {
+      const x = f(sx(p.twoTheta), 0);
+      return `M${x},${f(box.bottom, 0)}L${x},${f(sy(p.intensity), 0)}`;
+    })
+    .join('');
+
+  return [
+    comment('α-iron on Cu Kα, from computePattern() — every allowed BCC line'),
+    node('line', {
+      x1: f(box.left, 0),
+      y1: f(box.bottom, 0),
+      x2: f(box.right, 0),
+      y2: f(box.bottom, 0),
+      stroke: GRID,
+      strokeWidth: 1,
+    }),
+    node('path', { d: sticks, fill: 'none', stroke: SERIES_A, strokeWidth: 2 }),
+  ];
+}
+
+/* ------------------------------------------------- panel 11: selection --- */
+
+interface SelectionPanelModule {
+  SELECTION_MATERIALS: { cls: string; density: number; modulus: number }[];
+}
+
+const IDX_CLASS_COLOUR: Record<string, string> = {
+  metal: 'a',
+  ceramic: 'b',
+  composite: 'c',
+  polymer: 'd',
+  elastomer: 'accent',
+};
+
+const IDX_TOKEN: Record<string, string> = {
+  a: SERIES_A,
+  b: SERIES_B,
+  c: SERIES_C,
+  d: SERIES_D,
+  accent: ACCENT,
+};
+
+/**
+ * All 54 materials on log–log stiffness against density, one path per class.
+ *
+ * Markers are 3-unit squares written as path subpaths rather than `<circle>`
+ * elements: fifty-four circles cost about 2.4 kB and five paths cost 900 bytes,
+ * and at this size the difference between a square and a disc is a rounding
+ * error in the rasteriser.
+ */
+function renderSelectionPanel(mod: SelectionPanelModule): string[] {
+  const box = panelBox(3, 1);
+  const sx = logScale(0.3, 30, box.left, box.right);
+  const sy = logScale(1e-3, 1e3, box.bottom, box.top);
+
+  const byClass = new Map<string, string[]>();
+  for (const m of mod.SELECTION_MATERIALS) {
+    const key = IDX_CLASS_COLOUR[m.cls] ?? 'a';
+    const x = Math.round(sx(m.density));
+    const y = Math.round(sy(m.modulus));
+    const marks = byClass.get(key) ?? [];
+    marks.push(`M${x - 2},${y - 2}h4v4h-4z`);
+    byClass.set(key, marks);
+  }
+
+  const out: string[] = [comment('all 54 materials, E against ρ on log axes — SELECTION_MATERIALS')];
+  for (const key of ['a', 'b', 'c', 'd', 'accent']) {
+    const marks = byClass.get(key);
+    if (!marks) continue;
+    out.push(node('path', { d: marks.join(''), fill: IDX_TOKEN[key], opacity: 0.85 }));
+  }
+  return out;
+}
+
+/* ------------------------------------------------- panel 12: corrosion --- */
+
+interface CorrosionPanelModule {
+  POURBAIX: {
+    id: string;
+    regions: { kind: string; points: [number, number][] }[];
+  }[];
+}
+
+/**
+ * Aluminium's Pourbaix diagram, from `POURBAIX`.
+ *
+ * The galvanic series was drawn here first, as twenty-five ruled potentials.
+ * It is the module's headline, and at panel scale it came out as a barcode:
+ * twenty-five identical horizontal lines, meaningless without the alloy names
+ * there is no room for. The Pourbaix map is the module's other half and it
+ * survives the reduction, because its meaning is in the *shape* — aluminium is
+ * amphoteric, so it corrodes at both ends of the pH scale and passivates only
+ * in the middle, and that is legible as three blocks with no labels at all.
+ *
+ * The blocks are tinted rather than solid so their labels stay on `--fig-label`,
+ * which the plates already hold to the 4.5:1 text floor. Measured on the tints
+ * actually used — immunity at 30%, the rest at 22% — the labels come out at
+ * 5.18 / 5.80 / 5.39:1 in light and 6.19 / 6.99 / 7.25:1 in dark.
+ */
+const POURBAIX_FILL: Record<string, string> = {
+  immunity: SERIES_A,
+  passivation: SERIES_C,
+  corrosion: ACCENT,
+};
+
+/** Field labels short enough to sit inside their own block at this width. */
+const POURBAIX_LABEL: Record<string, string> = {
+  immunity: 'immune',
+  passivation: 'passive',
+  corrosion: 'corrodes',
+};
+
+const POURBAIX_PH: [number, number] = [0, 14];
+/**
+ * Wider than aluminium's own data, on purpose. Set to the metal's exact extent
+ * the four fields filled the plot box edge to edge, which made this the only
+ * panel on the plate with no air in it and by a distance the heaviest thing on
+ * a sheet of thin-line figures.
+ */
+const POURBAIX_E: [number, number] = [-2.9, 1.7];
+
+function renderPourbaixPanel(mod: CorrosionPanelModule): string[] {
+  const box = panelBox(3, 2);
+  const metal = mod.POURBAIX.find((m) => m.id === 'al');
+  if (!metal) throw new Error('POURBAIX has no aluminium');
+  const sx = linearScale(POURBAIX_PH[0], POURBAIX_PH[1], box.left, box.right);
+  const sy = linearScale(POURBAIX_E[0], POURBAIX_E[1], box.bottom, box.top);
+
+  const out: string[] = [comment('aluminium’s Pourbaix map from POURBAIX — corrodes at both ends of the pH scale')];
+  for (const r of metal.regions) {
+    const xs = r.points.map((q) => q[0]);
+    const ys = r.points.map((q) => q[1]);
+    const x = sx(Math.min(...xs));
+    const y = sy(Math.max(...ys));
+    const w = sx(Math.max(...xs)) - x;
+    const h = sy(Math.min(...ys)) - y;
+    out.push(
+      node('rect', {
+        x: f(x, 0),
+        y: f(y, 0),
+        width: f(w, 0),
+        height: f(h, 0),
+        fill: POURBAIX_FILL[r.kind] ?? GRID,
+        // Lighter than they were. `--fig-accent` is reserved for the one thing
+        // a figure points at, and two large blocks of it were the loudest
+        // marks on the plate; at this weight the fields read as fields and the
+        // rule around them carries the boundary.
+        opacity: r.kind === 'immunity' ? 0.22 : 0.16,
+      }),
+      node('rect', {
+        x: f(x, 0),
+        y: f(y, 0),
+        width: f(w, 0),
+        height: f(h, 0),
+        fill: 'none',
+        stroke: POURBAIX_FILL[r.kind] ?? GRID,
+        strokeWidth: 1,
+      }),
+    );
+    // Only where the block is wide enough to hold the word. A label that spills
+    // into the neighbouring field would say the opposite of what it means.
+    const label = POURBAIX_LABEL[r.kind];
+    // 17, not 22: aluminium's immunity field is 0.6 V of a 4.6 V axis, which is
+    // 20 units tall, and suppressing its label left a three-field diagram
+    // telling a two-field story.
+    if (label && w > label.length * 6.2 && h > 17) {
+      out.push(
+        textNode(label, {
+          x: f(x + w / 2, 0),
+          y: f(y + h / 2 + 4, 0),
+          textAnchor: 'middle',
+          fontSize: 10.5,
+          fill: LABEL,
+        }),
+      );
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------- the whole plate --- */
+
+interface IndexPlateModules {
+  elements: ElementRow[];
+  crystal: CrystalModule;
+  miller: MillerModule;
+  diffusion: DiffusionModule;
+  pbsn: PbSnModule;
+  heat: HeatModule;
+  mech: MechModule;
+  failure: FailureModule;
+  semi: SemiModule;
+  xrd: XrdPanelModule;
+  selection: SelectionPanelModule;
+  corrosion: CorrosionPanelModule;
+}
+
+/** Column headings, in `NAV_GROUPS` order — one course group per column. */
+const IDX_GROUPS = ['Structure', 'Microstructure', 'Properties', 'Analysis'];
+
+/**
+ * Panel headings, in the same order the module index below the plate lists
+ * them. `figures.test.ts` checks this against `NAV_GROUPS` rather than trusting
+ * it: a module added to the app without a panel here would otherwise leave the
+ * plate quietly claiming to be all twelve.
+ */
+const IDX_PANELS: { col: number; row: number; id: string; title: string; caption: string }[] = [
+  { col: 0, row: 0, id: 'trends', title: 'Periodic trends', caption: '118 elements, by melting point where measured' },
+  { col: 0, row: 1, id: 'crystals', title: 'Crystal structures', caption: 'the face-centred cubic cell' },
+  { col: 0, row: 2, id: 'miller', title: 'Miller indices', caption: '(111) cutting the cell' },
+  { col: 1, row: 0, id: 'defects', title: 'Defects & diffusion', caption: 'carburising at 1, 4 and 9 hours' },
+  { col: 1, row: 1, id: 'phase', title: 'Phase diagrams', caption: 'the Pb–Sn eutectic' },
+  { col: 1, row: 2, id: 'heattreat', title: 'Heat treatment', caption: '1080 steel, TTT nose and Mₛ' },
+  { col: 2, row: 0, id: 'mechanical', title: 'Mechanical properties', caption: 'three metals, to fracture' },
+  { col: 2, row: 1, id: 'failure', title: 'Failure analysis', caption: 'critical crack size vs stress' },
+  { col: 2, row: 2, id: 'semiconductors', title: 'Semiconductors', caption: 'band gaps; visible light begins at the rule' },
+  { col: 3, row: 0, id: 'xrd', title: 'XRD simulator', caption: 'α-iron on a copper anode' },
+  { col: 3, row: 1, id: 'selection', title: 'Material selection', caption: '54 materials, E against ρ' },
+  { col: 3, row: 2, id: 'corrosion', title: 'Corrosion', caption: 'aluminium: immune, passive, dissolving' },
+];
+
+function renderIndexPlate(mods: IndexPlateModules): string {
+  const body: string[] = [comment('four columns, one per course group; three modules in each')];
+
+  // Column headings.
+  IDX_GROUPS.forEach((label, c) => {
+    body.push(
+      textNode(label.toUpperCase(), {
+        x: f(IDX_MARGIN + c * CELL_W + 18, 0),
+        y: 30,
+        fontSize: 11,
+        letterSpacing: '0.14em',
+        fill: LABEL,
+      }),
+    );
+  });
+
+  // The grid the panels sit in: one rule under the headings, three down and two
+  // across. A rule separates; a box around each panel would be twelve cards.
+  const gridTop = IDX_HEADER;
+  const gridBottom = IDX_HEADER + 3 * CELL_H;
+  const lines: string[] = [`M${IDX_MARGIN},${gridTop}H${IDX_W - IDX_MARGIN}`];
+  for (let c = 1; c < 4; c++) {
+    lines.push(`M${IDX_MARGIN + c * CELL_W},${gridTop}V${gridBottom}`);
+  }
+  for (let r = 1; r < 3; r++) {
+    lines.push(`M${IDX_MARGIN},${gridTop + r * CELL_H}H${IDX_W - IDX_MARGIN}`);
+  }
+  body.push(node('path', { d: lines.join(''), fill: 'none', stroke: GRID, strokeWidth: 1 }));
+
+  for (const p of IDX_PANELS) body.push(...panelHead(p.col, p.row, p.title, p.caption));
+
+  body.push(
+    ...renderTablePanel(mods.elements),
+    ...renderCrystalPanel(mods.crystal),
+    ...renderMillerPanel(mods.miller),
+    ...renderDiffusionPanel(mods.diffusion),
+    ...renderPbSnPanel(mods.pbsn),
+    ...renderTttPanel(mods.heat),
+    ...renderStressPanel(mods.mech),
+    ...renderFracturePanel(mods.failure),
+    ...renderBandGapPanel(mods.semi),
+    ...renderXrdPanel(mods.xrd),
+    ...renderSelectionPanel(mods.selection),
+    ...renderPourbaixPanel(mods.corrosion),
+  );
+
+  return figureFile(
+    'ModuleIndexPlate',
+    [
+      'Twelve panels, one per module, each plotted from that module’s own model',
+      'code — the periodic table from `data/elements.json`, the TTT nose from',
+      '`heattreat/model.ts`, the Ashby cloud from `selection/materials.ts`, the',
+      'diffraction sticks from `xrd/diffraction.ts`, and so on for all twelve.',
+      '',
+      'Four columns, one per course group, in `NAV_GROUPS` order.',
+      '',
+      'Larger than the four single plates, and lazily imported by the landing',
+      'page for that reason: it heads the modules chapter, far below the fold,',
+      'so it has no business in the first paint.',
+    ],
+    body,
+    [IDX_W, IDX_H],
+  );
+}
+
 /* ============================================================== driver === */
 
 export interface GeneratedFigure {
@@ -1027,7 +1877,7 @@ export interface GeneratedFigure {
 }
 
 /**
- * Builds all four figures. Exported so `figures.test.ts` can re-run exactly
+ * Builds all five figures. Exported so `figures.test.ts` can re-run exactly
  * this and compare it with what is committed — the test must never re-implement
  * the rendering, or it would only be testing its own copy.
  *
@@ -1049,11 +1899,47 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
     fatigueStrength: failureModel.fatigueStrength,
   };
 
+  const elementsModule = await import('../src/data/elements.json', { with: { type: 'json' } });
+  const crystal = (await import('../src/crystal/structures.ts')) as unknown as { STRUCTURES: unknown[] };
+  const geometry = await import('../src/crystal/geometry.ts');
+  const miller = (await import('../src/crystal/miller.ts')) as unknown as MillerModule;
+  const diffusion = (await import('../src/diffusion/model.ts')) as unknown as DiffusionModule;
+  const heat = (await import('../src/heattreat/model.ts')) as unknown as { buildTtt: HeatModule['buildTtt'] };
+  const steels = (await import('../src/heattreat/steels.ts')) as unknown as { STEELS: { id: string }[] };
+  const failureAlloys = failureData as unknown as { FRACTURE_ALLOYS: FailureModule['FRACTURE_ALLOYS'] };
+  const semi = (await import('../src/electronic/materials.ts')) as unknown as SemiModule;
+  const corrosion = (await import('../src/corrosion/data.ts')) as unknown as CorrosionPanelModule;
+
+  const indexPlate = renderIndexPlate({
+    elements: (elementsModule.default ?? elementsModule) as unknown as ElementRow[],
+    crystal: {
+      STRUCTURES: crystal.STRUCTURES as CrystalModule['STRUCTURES'],
+      buildAtoms: geometry.buildAtoms as unknown as CrystalModule['buildAtoms'],
+    },
+    miller,
+    diffusion,
+    pbsn: phase as unknown as PbSnModule,
+    heat: { STEELS: steels.STEELS, buildTtt: heat.buildTtt },
+    mech: {
+      MECH_MATERIALS: mech.MECH_MATERIALS,
+      buildCurve: mech.buildCurve as unknown as MechModule['buildCurve'],
+    },
+    failure: {
+      FRACTURE_ALLOYS: failureAlloys.FRACTURE_ALLOYS,
+      criticalCrackSize: failureModel.criticalCrackSize,
+    },
+    semi,
+    xrd: xrd as unknown as XrdPanelModule,
+    selection: selection as unknown as SelectionPanelModule,
+    corrosion,
+  });
+
   return [
     { path: 'src/assets/figures/PhaseFigure.tsx', source: renderPhaseFigure(phase) },
     { path: 'src/assets/figures/FatigueFigure.tsx', source: renderFatigueFigure(fatigue) },
     { path: 'src/assets/figures/AshbyFigure.tsx', source: renderAshbyFigure(selection) },
     { path: 'src/assets/figures/XrdFigure.tsx', source: renderXrdFigure(xrd) },
+    { path: 'src/assets/figures/ModuleIndexPlate.tsx', source: indexPlate },
   ];
 }
 

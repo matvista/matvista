@@ -485,3 +485,74 @@ export function factorOfSafety(
 export function fromStressRatio(R: number, sigmaMax: number): { m: number; a: number } {
   return { m: (sigmaMax * (1 + R)) / 2, a: (sigmaMax * (1 - R)) / 2 };
 }
+
+/* ================================ P5 — the three regions, and the threshold == */
+
+/**
+ * Stress-intensity range at a crack of length `a`, MPa·√m.
+ *
+ * The same expression as `stressIntensity`, applied to the *range* rather than
+ * the peak — which is the quantity crack growth actually responds to.
+ */
+export function deltaK(dSigma: number, a: number, Y: number): number {
+  return Y * dSigma * Math.sqrt(Math.PI * a);
+}
+
+/** Crack length at which ΔK first reaches the threshold, m. */
+export function thresholdCrackSize(dKth: number, dSigma: number, Y: number): number | null {
+  if (dSigma <= 0 || Y <= 0 || dKth <= 0) return null;
+  return (dKth / (Y * dSigma)) ** 2 / Math.PI;
+}
+
+/**
+ * ΔK_th is **R-dependent**, and quoting one number per steel class would be
+ * false precision — the same class runs from roughly 6 MPa·√m at R = 0 down
+ * towards 3 at high mean stress. It is a control the reader sets, with the
+ * range stated, rather than a table this repo cannot source honestly.
+ */
+export const DKTH_RANGE = { min: 1.5, max: 12, typical: 6 } as const;
+
+export type LifeRefusal = 'below threshold' | 'no interval' | null;
+
+export interface CrackLifeResult {
+  /** Cycles from a₀ to a_f, or null where the integration does not apply. */
+  cycles: number | null;
+  refusal: LifeRefusal;
+  /** ΔK at the starting and final crack lengths, MPa·√m. */
+  dKStart: number;
+  dKEnd: number;
+}
+
+/**
+ * Paris life with the threshold enforced.
+ *
+ * `parisLife` integrates happily below ΔK_th and returns a confident finite
+ * number for a crack that would never advance — a limitation this file has
+ * stated in prose since it was written. ΔK rises with crack length, so if the
+ * *starting* crack is below threshold the whole history is, and the answer is
+ * not a large number of cycles but no propagation at all.
+ */
+export function crackLife(
+  C: number,
+  m: number,
+  a0: number,
+  af: number,
+  dSigma: number,
+  Y: number,
+  dKth: number,
+): CrackLifeResult {
+  const dKStart = deltaK(dSigma, a0, Y);
+  const dKEnd = deltaK(dSigma, af, Y);
+  if (a0 >= af || dSigma <= 0) {
+    return { cycles: null, refusal: 'no interval', dKStart, dKEnd };
+  }
+  if (dKStart < dKth) {
+    return { cycles: null, refusal: 'below threshold', dKStart, dKEnd };
+  }
+  return {
+    cycles: parisLife(C, m, a0, af, dSigma, Y),
+    refusal: null,
+    dKStart,
+    dKEnd,
+  };
+}

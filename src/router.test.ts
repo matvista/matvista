@@ -22,7 +22,12 @@ describe('parsing', () => {
     ['#/xrd/', { tab: 'xrd', params: {} }],
     ['#//xrd', { tab: 'xrd', params: {} }],
     ['#/xrd?', { tab: 'xrd', params: {} }],
-    ['#/xrd?a', { tab: 'xrd', params: { a: '' } }],
+    // A valueless key and an empty value are the same nothing, and neither is
+    // a state `buildHash` can write. Both parsed to `{ a: '' }` until the
+    // round-trip block below; see the note in `parseHash`.
+    ['#/xrd?a', { tab: 'xrd', params: {} }],
+    ['#/xrd?a=', { tab: 'xrd', params: {} }],
+    ['#/xrd?a=&b=2', { tab: 'xrd', params: { b: '2' } }],
   ])('parses %s', (hash, expected) => {
     expect(parseHash(hash)).toEqual(expected);
   });
@@ -99,5 +104,41 @@ describe('numbers', () => {
     for (const v of [0.001, 0.05, 0.82, 1, 23.4, 50, 229.08665231934, 5000, -27.4]) {
       expect(parseNumber(formatNumber(v), NaN)).toBeCloseTo(Number(v.toPrecision(6)), 12);
     }
+  });
+});
+
+/**
+ * `buildHash` drops a param whose value is empty, so `?geom=` is a state the
+ * app can read but has no way to write. That asymmetry is not cosmetic: it is
+ * the whole basis of `FailureAnalysis`'s legacy-link test, which asks whether
+ * `geom` is *absent*, and a hand-typed empty value made that question return a
+ * different answer than the same link round-tripped through `buildHash`.
+ */
+describe('parse and build agree on what a param is', () => {
+  it('reads no param where buildHash would write none', () => {
+    expect(parseHash('#/failure?geom=&Y=1.2').params).toEqual({ Y: '1.2' });
+    expect(parseHash('#/failure?geom=').params).toEqual({});
+  });
+
+  it('round-trips every hash it can produce', () => {
+    for (const h of [
+      '#/failure?geom=&Y=1.2',
+      '#/failure?geom=',
+      '#/failure?Y=1.2',
+      '#/failure?geom=edge&Y=1.2',
+      '#/crystals?s=fcc',
+      '#/failure?a=&b=&c=3',
+    ]) {
+      const r = parseHash(h);
+      expect(parseHash(buildHash(r.tab, r.params)).params).toEqual(r.params);
+    }
+  });
+
+  /**
+   * The empty value is dropped, not coerced to a present-and-empty key: an
+   * `in` check has to agree with the `== null` check `FailureAnalysis` makes.
+   */
+  it('leaves no empty key behind for a presence test to find', () => {
+    expect('geom' in parseHash('#/failure?geom=&Y=1.2').params).toBe(false);
   });
 });

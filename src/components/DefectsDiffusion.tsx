@@ -73,6 +73,9 @@ export function DefectsDiffusion() {
           </select>
         </div>
 
+        {/* showVoids is false here deliberately: this view is about point
+            defects, and the interstitial overlay belongs to Crystal
+            Structures, where it would not collide with the defect markers. */}
         <CrystalScene
           structure={structure}
           mode="ball"
@@ -80,6 +83,7 @@ export function DefectsDiffusion() {
           showBonds={false}
           showCoordination={false}
           defect={defect}
+          showVoids={false}
           autoRotate={autoRotate}
         />
 

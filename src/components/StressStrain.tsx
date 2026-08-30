@@ -11,6 +11,7 @@ import {
 } from '../mechanical/hardness';
 import {
   MECH_MATERIALS,
+  percentColdWork,
   buildCurve,
   hallPetch,
   trueStrain,
@@ -305,6 +306,9 @@ function MaterialReadout({
         Toughness is the whole area under the curve, which needs strength <em>and</em> ductility
         together. The two rank materials quite differently: check titanium against brass.
       </p>
+        {/* P1 (part) — the reduction geometry, exactly. */}
+        <ColdWorkBox />
+
         {/* P2 — hardness, computed from the scale's own definition. */}
         <HardnessBox materialId={material.id} materialName={material.name} />
 
@@ -557,6 +561,91 @@ function HardnessBox({ materialId, materialName }: { materialId: string; materia
         scales is empirical, calibrated per material class, and this module does not ship a
         ladder for it. Treating one as physics is the misconception the panel exists to
         correct.
+      </p>
+    </div>
+  );
+}
+
+/* ============================================================ cold work == */
+
+/**
+ * P1, the half of it this repo can source.
+ *
+ * `percentColdWork` has been exported and unit-tested since the module was
+ * written with no caller anywhere — dead code the plan explicitly wanted
+ * spent. It is exact: %CW is a statement about two cross-sections and nothing
+ * else, so a drawing reduction can be reported without any material data at
+ * all.
+ *
+ * **What is not here.** The plan's larger feature reads yield, tensile and
+ * ductility off Callister's cold-work curves and walks them back down an
+ * annealing axis. Those curves are roughly seventy digitised numbers across
+ * three materials, this repo has no source for them, and inventing them would
+ * put three confident curves on screen with nothing behind them. The
+ * geometry ships; the curves do not.
+ */
+function ColdWorkBox() {
+  const [d0, setD0] = useRouteNumber('cw0', 12, 1, 40);
+  const [d1, setD1] = useRouteNumber('cw1', 9, 0.5, 40);
+
+  const area = (d: number) => (Math.PI * d ** 2) / 4;
+  const valid = d1 < d0;
+  const cw = valid ? percentColdWork(area(d0), area(d1)) : null;
+
+  return (
+    <div className="density-box">
+      <h3>Cold work by drawing</h3>
+      <div className="fa-controls">
+        <label className="fa-slider">
+          <span>Before <strong>{d0.toFixed(1)}</strong> mm</span>
+          <input type="range" min={1} max={40} step={0.5} value={d0}
+            onChange={(e) => setD0(Number(e.target.value))} aria-label="Diameter before, mm" />
+        </label>
+        <label className="fa-slider">
+          <span>After <strong>{d1.toFixed(1)}</strong> mm</span>
+          <input type="range" min={0.5} max={40} step={0.5} value={d1}
+            onChange={(e) => setD1(Number(e.target.value))} aria-label="Diameter after, mm" />
+        </label>
+      </div>
+
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">Cross-section</th>
+            <td>
+              {area(d0).toFixed(1)} → {valid ? area(d1).toFixed(1) : '—'} mm²
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Cold work</th>
+            <td className={cw == null ? 'err-off' : ''}>
+              {cw == null ? 'not a reduction' : `${cw.toFixed(1)}%`}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {cw == null ? (
+        <p className="err-note">
+          <strong>Not a reduction.</strong> The drawn diameter is not smaller than the
+          starting one, so no cold work has been done — %CW is defined on a decrease in
+          cross-section and there is nothing here to report.
+        </p>
+      ) : (
+        <p className="trend-note">
+          %CW is a statement about two cross-sections and nothing else — it does not depend on
+          the material, which is why the same reduction means the same %CW in copper and in
+          steel while the strength it produces does not. Note how quickly it saturates: the
+          area goes as d², so halving the diameter is already 75% cold work.
+        </p>
+      )}
+
+      <p className="trend-note">
+        <strong>What is missing here, deliberately.</strong> The strength, hardness and
+        ductility this reduction would produce are read off measured curves, one set per
+        material. This module has no source for them, and drawing them from memory would put
+        three confident curves on screen with nothing behind them. The geometry is exact and
+        ships; the property curves do not.
       </p>
     </div>
   );

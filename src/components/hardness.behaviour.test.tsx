@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { MECH_MATERIALS } from '../mechanical/materials';
 import { brinell, isFerrous, knoop, tensileFromBrinell, vickers } from '../mechanical/hardness';
+import { percentColdWork } from '../mechanical/materials';
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children?: React.ReactNode }) => <div data-canvas>{children}</div>,
@@ -117,5 +118,53 @@ describe('the refusal is a behaviour, not a footnote', () => {
     const box = await renderHardness('#/mechanical?hs=vickers');
     expect(box.textContent).toMatch(/No conversion table here/);
     expect(box.textContent).toMatch(/calibrated per material class/);
+  });
+});
+
+describe('the cold-work reduction (P1, the sourced half)', () => {
+  async function renderCw(hash: string) {
+    window.location.hash = hash;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await act(async () => {
+      render(<App />);
+    });
+    await waitFor(() => expect(screen.getByLabelText('Diameter before, mm')).toBeDefined());
+    return screen.getByText(/Cold work by drawing/).closest('div') as HTMLElement;
+  }
+
+  const area = (d: number) => (Math.PI * d ** 2) / 4;
+
+  it.each([
+    [12, 9],
+    [20, 10],
+    [8, 7.5],
+  ])('%s mm → %s mm gives the model’s %%CW', async (a, b) => {
+    const box = await renderCw(`#/mechanical?cw0=${a}&cw1=${b}`);
+    const expected = percentColdWork(area(a as number), area(b as number));
+    expect(rowValue(box, /^Cold work/)).toBe(`${expected.toFixed(1)}%`);
+  });
+
+  /** d² means halving the diameter is already three quarters cold work. */
+  it('reaches 75% when the diameter halves', async () => {
+    const box = await renderCw('#/mechanical?cw0=20&cw1=10');
+    expect(rowValue(box, /^Cold work/)).toBe('75.0%');
+  });
+
+  it('refuses a drawn diameter that is not smaller', async () => {
+    const box = await renderCw('#/mechanical?cw0=10&cw1=12');
+    expect(rowValue(box, /^Cold work/)).toBe('not a reduction');
+    expect(box.textContent).toMatch(/Not a reduction/);
+  });
+
+  /**
+   * The omission is stated on the panel rather than left as an absence a
+   * reader would have to notice.
+   */
+  it('says which half of the feature is missing, and why', async () => {
+    const box = await renderCw('#/mechanical?cw0=12&cw1=9');
+    expect(box.textContent).toMatch(/What is missing here/);
+    expect(box.textContent).toMatch(/no source for them/);
   });
 });

@@ -288,3 +288,145 @@ export function wavelengthToRgb(nm: number): Rgb | null {
   const channel = (v: number) => Math.round(255 * (v * f) ** 0.8);
   return { r: channel(r), g: channel(g), b: channel(b) };
 }
+
+/* =========================================================== P9 — the diode == */
+
+/**
+ * Shockley's law, **normalised to the saturation current**: I/I_S.
+ *
+ * Normalised on purpose. An absolute I_S needs minority-carrier lifetimes and
+ * diffusion lengths this module does not carry and cannot source cleanly, and
+ * inventing them would put a confident ampere on screen with nothing behind
+ * it. Everything the panel teaches — the slope, the rectification ratio, the
+ * ratio between materials — survives normalisation intact.
+ */
+export function diodeCurrentRatio(V: number, T: number): number {
+  return Math.exp(V / thermalVoltage(T)) - 1;
+}
+
+/**
+ * Millivolts of forward bias per decade of current — 2.303·kT/q.
+ *
+ * About 60 mV at room temperature, and the point is that this is *not* a
+ * device parameter. It contains no material property at all: every diode ever
+ * made has the same slope at the same temperature, and it is a way of
+ * measuring kT/q.
+ */
+export function millivoltsPerDecade(T: number): number {
+  return Math.LN10 * thermalVoltage(T) * 1000;
+}
+
+/**
+ * Forward current over reverse current at ±V.
+ *
+ * Exactly exp(V/V_T): the −1 and the +1 cancel, since
+ * (eˣ − 1)/(1 − e⁻ˣ) = eˣ for all x.
+ */
+export function rectificationRatio(V: number, T: number): number {
+  return Math.exp(V / thermalVoltage(T));
+}
+
+/**
+ * How much larger one material's saturation current is than another's.
+ *
+ * I_S ∝ n_i², so the ratio follows from data the module already has. This is
+ * where "0.7 V for silicon, 0.3 V for germanium" comes from: it is not a fact
+ * about silicon, it is a consequence of germanium's much larger n_i.
+ */
+export function saturationCurrentRatio(niA: number, niB: number): number {
+  return (niA / niB) ** 2;
+}
+
+/**
+ * Depletion width under bias. Forward bias opposes the built-in field and
+ * narrows it; reverse bias adds to it and widens it.
+ *
+ * At V ≥ V_bi the depletion approximation has failed — the barrier is gone and
+ * the junction is no longer described by this expression — so it returns 0
+ * rather than the square root of a negative number.
+ */
+export function biasedDepletionWidth(
+  Vbi: number,
+  V: number,
+  Na: number,
+  Nd: number,
+  epsR: number,
+): number {
+  return depletionWidth(Vbi - V, Na, Nd, epsR);
+}
+
+/* ====================================================== P11 — the Hall effect == */
+
+/**
+ * Hall coefficient with both carriers, m³/C.
+ *
+ *   R_H = (p·μ_h² − n·μ_e²) / (q·(p·μ_h + n·μ_e)²)
+ *
+ * The two-carrier form, not 1/(pq), because this module's temperature slider
+ * reaches intrinsic conditions where the single-carrier expression is simply
+ * wrong — and wrong in an interesting way. Intrinsic silicon has n = p and a
+ * *negative* Hall coefficient, because electrons are the more mobile carrier
+ * and the sign follows mobility rather than count.
+ */
+export function hallCoefficient(c: Carriers, mu_e: number, mu_h: number): number {
+  const sn = c.n * mu_e;
+  const sp = c.p * mu_h;
+  const denom = Q * (sp + sn) ** 2;
+  if (denom === 0) return 0;
+  return (c.p * mu_h ** 2 - c.n * mu_e ** 2) / denom;
+}
+
+/** Transverse Hall voltage, V, for a bar of thickness `d` along the field. */
+export function hallVoltage(R_H: number, I: number, B: number, d: number): number {
+  if (d <= 0) return 0;
+  return (R_H * I * B) / d;
+}
+
+/**
+ * Carrier concentration recovered from a measured Hall voltage, m⁻³, on the
+ * single-carrier reading n = I·B/(q·d·|V_H|).
+ *
+ * This is the measurement the panel is about: dope the sample, "measure" it,
+ * and get the doping back. It is only the right reading where one carrier
+ * dominates — see `hallSingleCarrierValid`.
+ */
+export function carriersFromHall(V_H: number, I: number, B: number, d: number): number | null {
+  if (V_H === 0 || d <= 0 || I === 0 || B === 0) return null;
+  return Math.abs((I * B) / (Q * d * V_H));
+}
+
+/**
+ * How far the minority carrier's conductivity is from negligible.
+ *
+ * Fraction of the total σ carried by the minority carrier: 0 in a strongly
+ * extrinsic sample, 1/2 or thereabouts near intrinsic.
+ */
+export function minorityShare(c: Carriers, mu_e: number, mu_h: number): number {
+  const sn = c.n * mu_e;
+  const sp = c.p * mu_h;
+  const total = sn + sp;
+  if (total === 0) return 0;
+  return Math.min(sn, sp) / total;
+}
+
+/** Above this minority share the single-carrier Hall reading is refused. */
+export const HALL_SINGLE_CARRIER_MARGIN = 0.05;
+
+/**
+ * Whether n = 1/(R_H·q) may be read as the carrier concentration.
+ *
+ * This is the physics, not a caveat: near intrinsic the two carriers deflect
+ * in the same direction and their Hall voltages partly cancel, so the
+ * single-carrier reading returns a concentration that is not any real
+ * population's. The panel must refuse there, exactly as `isDegenerate` and
+ * `isFreezeOut` already do elsewhere in this file.
+ */
+export function hallSingleCarrierValid(c: Carriers, mu_e: number, mu_h: number): boolean {
+  return minorityShare(c, mu_e, mu_h) <= HALL_SINGLE_CARRIER_MARGIN;
+}
+
+/** 'n' or 'p' from the sign of the Hall coefficient — negative is n-type. */
+export function hallCarrierType(R_H: number): 'n' | 'p' | null {
+  if (R_H === 0) return null;
+  return R_H < 0 ? 'n' : 'p';
+}

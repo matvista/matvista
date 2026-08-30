@@ -3,6 +3,13 @@ import { useRouteNumber, useRouteString } from '../useRoute';
 import { STRUCTURES, getStructure } from '../crystal/structures';
 import { METALS } from '../crystal/metals';
 import {
+  linearDensity,
+  planarDensity,
+  planeMap,
+  rankPlanes,
+  type Triple as DTriple,
+} from '../crystal/density';
+import {
   acute,
   angleBetween,
   resolvedShearStress,
@@ -109,6 +116,20 @@ export function MillerIndices() {
   // Only the samples that are the same crystal — same symbol, and a test
   // asserts the lattice parameters agree — get a link.
   const xrdSample = XRD_SAMPLES.find((x) => x.id === metal.symbol.toLowerCase());
+
+  /**
+   * S10 — planar and linear density. On the **selected metal's** lattice, for
+   * the reason the S12 block above gives: atoms/nm² is only a real number for
+   * a real crystal, and `a` already comes from that metal.
+   */
+  const planeDensity = plane ? planarDensity(metalStructure, plane as DTriple) : null;
+  const dirDensity = direction ? linearDensity(metalStructure, direction as DTriple) : null;
+  const planeNet = plane ? planeMap(metalStructure, plane as DTriple) : null;
+  const rankedPlanes = rankPlanes(metalStructure, [
+    [1, 0, 0],
+    [1, 1, 0],
+    [1, 1, 1],
+  ]);
 
   return (
     <div className="mi-layout">
@@ -414,6 +435,91 @@ export function MillerIndices() {
             </p>
           </div>
         )}
+        <div className="density-box">
+          <h3>How tightly packed is it?</h3>
+          {a != null && planeDensity != null && plane ? (
+            <>
+              <table className="mi-deriv-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Planar density on {formatIndices(plane)}</th>
+                    <td>{(planeDensity / a ** 2).toFixed(1)} atoms/nm&sup2;</td>
+                  </tr>
+                  {dirDensity != null && direction && (
+                    <tr>
+                      <th scope="row">Linear density along {formatIndices(direction)}</th>
+                      <td>{(dirDensity / a).toFixed(2)} atoms/nm</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              {planeNet && (
+                <svg
+                  className="mi-net"
+                  viewBox="-1.6 -1.6 3.2 3.2"
+                  role="img"
+                  aria-label={`Atom centres lying in the ${formatIndices(plane)} plane, seen face-on`}
+                >
+                  <polygon
+                    points={netCellPoints(planeNet.cell)}
+                    fill="rgba(74,58,167,0.14)"
+                    stroke="#4a3aa7"
+                    strokeWidth={0.02}
+                  />
+                  {planeNet.points.map(([x, y], i) => (
+                    <circle
+                      key={i}
+                      cx={x}
+                      cy={y}
+                      // R in units of a is 1/(a/R). Drawing 0.5/aOverR was
+                      // half the touching radius, which showed the densest
+                      // plane in FCC as a sparse dot pattern — the opposite of
+                      // what the caption beside it claims.
+                      r={1 / metalStructure.aOverR!}
+                      fill="#3987e5"
+                      opacity={0.85}
+                    />
+                  ))}
+                </svg>
+              )}
+              <p className="trend-note">
+                The circles are atom centres lying in this plane, seen face-on and drawn at the
+                radius they touch at; the outlined cell is the smallest 2D repeat. The density
+                above is not counted off this picture — it is (atoms per volume) &times;
+                (occupied plane spacing), which leaves no fractional shares to divide up.
+              </p>
+              <table className="mi-deriv-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Plane</th>
+                    <th scope="col">atoms/nm&sup2;</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankedPlanes.map((r) => (
+                    <tr key={r.hkl.join('')}>
+                      <th scope="row">{formatIndices(r.hkl as Triple)}</th>
+                      <td>{(r.density / a ** 2).toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="trend-note">
+                Densest first.{' '}
+                {metalStructure.id === 'fcc'
+                  ? 'FCC slips on {111}⟨110⟩ — the densest direction lying in the densest plane. The slip table above asserts that; this is why.'
+                  : 'BCC has no truly close-packed plane. {110} is only its densest, which is why its slip is spread across three plane families instead of one.'}
+              </p>
+            </>
+          ) : (
+            <p className="trend-note">
+              Defined for the structures with one atom per lattice point — simple cubic, FCC and
+              BCC. Diamond is FCC with a two-atom basis and its planes come in puckered pairs, so
+              &ldquo;the atoms in the plane&rdquo; stops having a single answer.
+            </p>
+          )}
+        </div>
+
       </aside>
 
       <section className="mi-slip">
@@ -588,6 +694,19 @@ function Derivation({ hkl }: { hkl: Triple }) {
       )}
     </div>
   );
+}
+
+/** The 2D repeat cell as an SVG polygon: origin, v1, v1+v2, v2. */
+function netCellPoints(cell: [[number, number], [number, number]]): string {
+  const [v1, v2] = cell;
+  return [
+    [0, 0],
+    v1,
+    [v1[0] + v2[0], v1[1] + v2[1]],
+    v2,
+  ]
+    .map((q) => `${q[0]},${q[1]}`)
+    .join(' ');
 }
 
 /** A true minus sign, matching the intercept row above it. */

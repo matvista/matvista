@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react';
-import { useRouteString } from '../useRoute';
+import { useRouteEnum, useRouteString } from '../useRoute';
+import {
+  MIN_LINES_TO_INDEX,
+  identifyLattice,
+  indexPattern,
+  unlabelledLines,
+} from '../xrd/indexing';
 import { METALS } from '../crystal/metals';
 import {
   REFLECTION_RULES,
@@ -14,6 +20,8 @@ import {
   multiplicity,
   type XrdSample,
   type XrdSource,
+  type Peak,
+  type XrdLattice,
 } from '../xrd/diffraction';
 
 const W = 760;
@@ -206,6 +214,7 @@ export function XrdSimulator() {
         </table>
 
         <ExtinctionPanel sample={sample} source={source} />
+        <IndexingPanel peaks={peaks} lambda={source.lambda} answer={sample} />
       </aside>
     </div>
   );
@@ -316,6 +325,166 @@ function ExtinctionPanel({ sample, source }: { sample: XrdSample; source: XrdSou
         more crystallites correctly oriented to diffract. Check: {'{321}'} has m ={' '}
         {multiplicity(3, 2, 1)}.
       </p>
+    </div>
+  );
+}
+
+/* =========================================================== A1 — indexing == */
+
+const LATTICE_LABEL: Record<XrdLattice, string> = {
+  sc: 'Simple cubic',
+  bcc: 'BCC',
+  fcc: 'FCC',
+  diamond: 'Diamond cubic',
+};
+
+/**
+ * A1 — index the pattern yourself.
+ *
+ * The rest of this module hands over an indexed table before any work is done,
+ * which teaches that structure is read off peak *positions*. It is not: it is
+ * read off the ratios of sin²θ, which do not depend on the lattice parameter
+ * at all. Here the labels are withheld, the worksheet is laid out, and the
+ * reader picks a lattice and sees whether it survives.
+ */
+function IndexingPanel({
+  peaks,
+  lambda,
+  answer,
+}: {
+  peaks: Peak[];
+  lambda: number;
+  answer: XrdSample;
+}) {
+  const [guess, setGuess] = useRouteEnum<XrdLattice | 'none'>('guess', 'none', [
+    'none',
+    'sc',
+    'bcc',
+    'fcc',
+    'diamond',
+  ]);
+  const [revealed, setRevealed] = useRouteEnum<'yes' | 'no'>('reveal', 'no', ['yes', 'no']);
+
+  const lines = unlabelledLines(peaks);
+  const verdict = identifyLattice(peaks, lambda);
+  const worked = guess === 'none' ? null : indexPattern(peaks, lambda, guess);
+
+  if (lines.length < MIN_LINES_TO_INDEX) {
+    return (
+      <div className="density-box">
+        <h3>Index it yourself</h3>
+        <p className="trend-note">
+          Only {lines.length} lines are within reach at this wavelength, and the ratio sequence
+          does not become decisive until the fifth. Choose a shorter wavelength — the anode is
+          part of the experiment, not a detail of it.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="density-box">
+      <h3>Index it yourself</h3>
+      <p className="trend-note">
+        Structure is not read off where the peaks are — it is read off the <strong>ratios</strong>{' '}
+        of sin²θ, which are the same for any two crystals of the same structure whatever their
+        size. Work down the table and see which rule the whole column obeys.
+      </p>
+
+      <div className="fa-controls">
+        <select
+          value={guess}
+          onChange={(e) => setGuess(e.target.value as XrdLattice | 'none')}
+          aria-label="Trial lattice"
+        >
+          <option value="none">Pick a lattice…</option>
+          {(['sc', 'bcc', 'fcc', 'diamond'] as XrdLattice[]).map((l) => (
+            <option key={l} value={l}>{LATTICE_LABEL[l]}</option>
+          ))}
+        </select>
+        <label className="ab-screen-toggle">
+          <input
+            type="checkbox"
+            checked={revealed === 'yes'}
+            onChange={(e) => setRevealed(e.target.checked ? 'yes' : 'no')}
+          />
+          Reveal
+        </label>
+      </div>
+
+      <table className="mi-deriv-table">
+        <thead>
+          <tr>
+            <th scope="col">2θ</th>
+            <th scope="col">sin²θ</th>
+            <th scope="col">ratio</th>
+            {worked && <th scope="col">N</th>}
+            {worked && <th scope="col">(hkl)</th>}
+            {worked && <th scope="col">a (nm)</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, i) => {
+            const w = worked?.lines[i];
+            const sin2 = Math.sin((l.twoTheta * Math.PI) / 360) ** 2;
+            const first = Math.sin((lines[0].twoTheta * Math.PI) / 360) ** 2;
+            return (
+              <tr key={l.twoTheta}>
+                <td>{l.twoTheta.toFixed(2)}°</td>
+                <td>{sin2.toFixed(4)}</td>
+                <td>{(sin2 / first).toFixed(3)}</td>
+                {worked && <td className={w && w.hkl == null ? 'err-off' : ''}>{w?.N}</td>}
+                {worked && <td>{w?.hkl ? `(${w.hkl.join('')})` : 'forbidden'}</td>}
+                {worked && <td>{w?.a.toFixed(4)}</td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {worked && (
+        <p className={worked.consistent && worked.unexplained.length === 0 ? 'trend-note' : 'err-note'}>
+          {!worked.consistent ? (
+            <>
+              <strong>Ruled out.</strong> Under {LATTICE_LABEL[guess as XrdLattice]} the ratios
+              demand a reflection this lattice forbids, so no assignment of these lines to it
+              works at all.
+            </>
+          ) : worked.unexplained.length > 0 ? (
+            <>
+              <strong>Consistent, but incomplete.</strong> Every line fits, yet{' '}
+              {LATTICE_LABEL[guess as XrdLattice]} also allows N ={' '}
+              {worked.unexplained.join(', ')} in this range and the trace does not show them.
+              Absent reflections are evidence too — that is what separates diamond cubic from
+              FCC, whose allowed set contains it.
+            </>
+          ) : (
+            <>
+              <strong>Consistent.</strong> Every line lands on an allowed reflection, nothing
+              this lattice promises is missing, and all {worked.lines.length} lines agree on
+              a = {worked.a.toFixed(4)} nm to{' '}
+              {(worked.spread * 100).toPrecision(2)}%.
+            </>
+          )}
+        </p>
+      )}
+
+      {verdict && verdict.ambiguousWith.length > 0 && (
+        <p className="trend-note">
+          <strong>These lines cannot decide.</strong> {LATTICE_LABEL[verdict.best.lattice]} and{' '}
+          {verdict.ambiguousWith.map((l) => LATTICE_LABEL[l]).join(', ')} give the same ratio
+          sequence over the {lines.length} lines available. Simple cubic and BCC only separate
+          at the seventh, where simple cubic skips 7 — no three squares sum to it — and BCC
+          does not.
+        </p>
+      )}
+
+      {revealed === 'yes' && (
+        <p className="detail-summary">
+          It was <strong>{answer.name}</strong> — {LATTICE_LABEL[answer.lattice]}, a ={' '}
+          {answer.a.toFixed(4)} nm.
+        </p>
+      )}
     </div>
   );
 }

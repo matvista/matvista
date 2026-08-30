@@ -3,6 +3,7 @@ import {
   DIFFUSION_SYSTEMS, concentrationAt, depthForConcentration, diffusionCoefficient,
   dtForTarget, equalDtCurve, equalDtOptions, erf, erfInverse, siteDensity, timeForTarget,
   vacancyFraction,
+  activationFromPair,
 } from './model';
 
 describe('carburising (Callister ex. 5.4)', () => {
@@ -377,3 +378,78 @@ describe('the equal-Dt process curve', () => {
   });
 });
 
+
+describe('recovering Q_d and D₀ from two measurements', () => {
+  /**
+   * The round trip that matters: take two points off a system's own Arrhenius
+   * line and the fit must return the tabulated constants exactly. It is a
+   * closed-form inversion, not a regression, so "exactly" means floating
+   * point rather than a tolerance.
+   */
+  it.each(DIFFUSION_SYSTEMS.map((s) => s.id))('%s: recovers its tabulated constants', (id) => {
+    const sys = DIFFUSION_SYSTEMS.find((s) => s.id === id)!;
+    const T1 = 900;
+    const T2 = 1300;
+    const fit = activationFromPair(
+      T1,
+      diffusionCoefficient(sys, T1),
+      T2,
+      diffusionCoefficient(sys, T2),
+    )!;
+    expect(fit.Qd).toBeCloseTo(sys.Qd, 6);
+    expect(fit.D0 / sys.D0).toBeCloseTo(1, 9);
+  });
+
+  /** The answer cannot depend on which of the two points is given first. */
+  it('is symmetric in its two points', () => {
+    const sys = DIFFUSION_SYSTEMS[0];
+    const a = activationFromPair(800, diffusionCoefficient(sys, 800), 1200, diffusionCoefficient(sys, 1200))!;
+    const b = activationFromPair(1200, diffusionCoefficient(sys, 1200), 800, diffusionCoefficient(sys, 800))!;
+    expect(a.Qd).toBeCloseTo(b.Qd, 6);
+    expect(a.D0 / b.D0).toBeCloseTo(1, 9);
+  });
+
+  /** Widely separated points and close ones describe the same line. */
+  it('does not depend on how far apart the two temperatures are', () => {
+    const sys = DIFFUSION_SYSTEMS[3];
+    const wide = activationFromPair(700, diffusionCoefficient(sys, 700), 1600, diffusionCoefficient(sys, 1600))!;
+    const near = activationFromPair(1000, diffusionCoefficient(sys, 1000), 1010, diffusionCoefficient(sys, 1010))!;
+    expect(wide.Qd).toBeCloseTo(sys.Qd, 5);
+    expect(near.Qd).toBeCloseTo(sys.Qd, 3);
+  });
+
+  it('refuses the inputs the line is not defined on', () => {
+    // Equal temperatures: the slope is vertical, so ±Infinity...
+    expect(activationFromPair(1000, 1e-12, 1000, 1e-13)).toBeNull();
+    // ...and NaN when the two measurements are identical as well.
+    expect(activationFromPair(1000, 1e-12, 1000, 1e-12)).toBeNull();
+    expect(activationFromPair(1000, 0, 1200, 1e-13)).toBeNull();
+    expect(activationFromPair(0, 1e-12, 1200, 1e-13)).toBeNull();
+    expect(activationFromPair(-100, 1e-12, 1200, 1e-13)).toBeNull();
+  });
+
+  /**
+   * D₀ is the intercept at 1/T = 0, not a diffusion coefficient anyone
+   * measures: every system's D₀ is orders of magnitude above its D at any
+   * temperature it is tabulated for.
+   */
+  it('puts D₀ far above any D the system actually reaches', () => {
+    for (const sys of DIFFUSION_SYSTEMS) {
+      expect(diffusionCoefficient(sys, 1600)).toBeLessThan(sys.D0);
+    }
+  });
+
+  /**
+   * The two mechanisms separate by slope. Interstitial diffusion needs no
+   * vacancy, so its activation energies are the lower family — which is the
+   * plot's teaching point, and it is a property of the data rather than of
+   * the drawing.
+   */
+  it('separates the interstitial and vacancy families by activation energy', () => {
+    const inter = DIFFUSION_SYSTEMS.filter((s) => s.mechanism === 'interstitial').map((s) => s.Qd);
+    const vac = DIFFUSION_SYSTEMS.filter((s) => s.mechanism === 'vacancy').map((s) => s.Qd);
+    expect(inter.length).toBeGreaterThan(1);
+    expect(vac.length).toBeGreaterThan(1);
+    expect(Math.max(...inter)).toBeLessThan(Math.min(...vac));
+  });
+});

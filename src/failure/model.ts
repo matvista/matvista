@@ -394,3 +394,183 @@ export function larsonMiller(T_K: number, hours: number, C = 20): number {
 export function ruptureHours(P: number, T_K: number, C = 20): number {
   return 10 ** (P / T_K - C);
 }
+
+/* ============================================ P4 — mean stress and Haigh == */
+
+/**
+ * Mean-stress criteria.
+ *
+ * **Citation, because it is not this repo's usual source.** Callister covers
+ * the mean-stress *effect* (fig. 8.24) but not these lines: modified Goodman,
+ * Gerber and Soderberg are Shigley's, and the yield line is Langer's. The S–N
+ * panel beside this one is fully reversed loading — the laboratory case, and
+ * almost never the service case. A bolt is preloaded, a pressure vessel cycles
+ * from zero, a spring works about a set deflection, and in every one of those
+ * a tensile mean stress eats fatigue capacity.
+ */
+export type MeanStressCriterion = 'goodman' | 'gerber' | 'soderberg' | 'yield';
+
+export const MEAN_STRESS_CRITERIA: MeanStressCriterion[] = [
+  'goodman',
+  'gerber',
+  'soderberg',
+  'yield',
+];
+
+/**
+ * The alternating stress a criterion still allows at mean stress `sigmaM`, MPa.
+ *
+ * A compressive mean stress is treated as not consuming any fatigue capacity:
+ * every line returns S_e at or below σ_m = 0. That is standard conservative
+ * practice rather than a claim that compression cannot matter — it closes
+ * cracks rather than opening them, and the criteria are calibrated on tension.
+ */
+export function allowableAmplitude(
+  criterion: MeanStressCriterion,
+  sigmaM: number,
+  Se: number,
+  Su: number,
+  Sy: number,
+): number {
+  /**
+   * The Langer yield line first, because it is the one line here that is not a
+   * fatigue criterion and does not pass through S_e.
+   *
+   *     σa = S_y − |σm|
+   *
+   * symmetric about σm = 0 and reaching zero at ±S_y. An earlier version
+   * returned `min(S_e, S_y − σm)` on the compressive side, which made the line
+   * jump 190 MPa across σm = 0 for titanium and — worse — disagreed with
+   * `factorOfSafety`, which never consulted that branch. Two derivations of
+   * one line contradicting each other, in the panel whose subject is criteria
+   * disagreeing.
+   */
+  if (criterion === 'yield') return Math.max(0, Sy - Math.abs(sigmaM));
+  // Compression does not consume fatigue capacity: cracks close rather than
+  // open, and the three criteria are calibrated in tension.
+  if (sigmaM <= 0) return Se;
+  switch (criterion) {
+    case 'goodman':
+      return Math.max(0, Se * (1 - sigmaM / Su));
+    case 'gerber':
+      return Math.max(0, Se * (1 - (sigmaM / Su) ** 2));
+    case 'soderberg':
+      return Math.max(0, Se * (1 - sigmaM / Sy));
+  }
+  // Unreachable: `yield` returned above, and the three fatigue criteria are
+  // exhausted by the switch.
+  return Se;
+}
+
+/**
+ * Factor of safety along a proportional load line — the point moves out from
+ * the origin, so σ_m and σ_a scale together and n multiplies both.
+ *
+ * Returns null where the point is at the origin and every criterion is
+ * satisfied by any factor at all.
+ */
+export function factorOfSafety(
+  criterion: MeanStressCriterion,
+  sigmaM: number,
+  sigmaA: number,
+  Se: number,
+  Su: number,
+  Sy: number,
+): number | null {
+  if (sigmaA <= 0 && sigmaM <= 0) return null;
+  // Matches the line above: on σa = S_y − |σm| this returns exactly 1.
+  if (criterion === 'yield') return Sy / (sigmaA + Math.abs(sigmaM));
+  if (sigmaM <= 0) return sigmaA > 0 ? Se / sigmaA : null;
+
+  if (criterion === 'gerber') {
+    // n·σa/Se + (n·σm/Su)² = 1, solved for n.
+    const A = sigmaA / Se;
+    const B = (sigmaM / Su) ** 2;
+    if (B === 0) return A > 0 ? 1 / A : null;
+    return (-A + Math.sqrt(A * A + 4 * B)) / (2 * B);
+  }
+  const denom = sigmaA / Se + sigmaM / (criterion === 'goodman' ? Su : Sy);
+  return denom > 0 ? 1 / denom : null;
+}
+
+/**
+ * Mean and alternating stress from a stress ratio R = σ_min/σ_max.
+ *
+ * R = −1 is fully reversed, which is what the S–N panel assumes; R = 0 is
+ * zero-to-tension, the pressure-vessel case; R → 1 is a static load with a
+ * vanishing ripple.
+ */
+export function fromStressRatio(R: number, sigmaMax: number): { m: number; a: number } {
+  return { m: (sigmaMax * (1 + R)) / 2, a: (sigmaMax * (1 - R)) / 2 };
+}
+
+/* ================================ P5 — the three regions, and the threshold == */
+
+/**
+ * Stress-intensity range at a crack of length `a`, MPa·√m.
+ *
+ * The same expression as `stressIntensity`, applied to the *range* rather than
+ * the peak — which is the quantity crack growth actually responds to.
+ */
+export function deltaK(dSigma: number, a: number, Y: number): number {
+  return Y * dSigma * Math.sqrt(Math.PI * a);
+}
+
+/** Crack length at which ΔK first reaches the threshold, m. */
+export function thresholdCrackSize(dKth: number, dSigma: number, Y: number): number | null {
+  if (dSigma <= 0 || Y <= 0 || dKth <= 0) return null;
+  return (dKth / (Y * dSigma)) ** 2 / Math.PI;
+}
+
+/**
+ * ΔK_th is **R-dependent**, and quoting one number per steel class would be
+ * false precision — the same class runs from roughly 6 MPa·√m at R = 0 down
+ * towards 3 at high mean stress. It is a control the reader sets, with the
+ * range stated, rather than a table this repo cannot source honestly.
+ */
+export const DKTH_RANGE = { min: 1.5, max: 12, typical: 6 } as const;
+
+export type LifeRefusal = 'below threshold' | 'no interval' | null;
+
+export interface CrackLifeResult {
+  /** Cycles from a₀ to a_f, or null where the integration does not apply. */
+  cycles: number | null;
+  refusal: LifeRefusal;
+  /** ΔK at the starting and final crack lengths, MPa·√m. */
+  dKStart: number;
+  dKEnd: number;
+}
+
+/**
+ * Paris life with the threshold enforced.
+ *
+ * `parisLife` integrates happily below ΔK_th and returns a confident finite
+ * number for a crack that would never advance — a limitation this file has
+ * stated in prose since it was written. ΔK rises with crack length, so if the
+ * *starting* crack is below threshold the whole history is, and the answer is
+ * not a large number of cycles but no propagation at all.
+ */
+export function crackLife(
+  C: number,
+  m: number,
+  a0: number,
+  af: number,
+  dSigma: number,
+  Y: number,
+  dKth: number,
+): CrackLifeResult {
+  const dKStart = deltaK(dSigma, a0, Y);
+  const dKEnd = deltaK(dSigma, af, Y);
+  if (a0 >= af || dSigma <= 0) {
+    return { cycles: null, refusal: 'no interval', dKStart, dKEnd };
+  }
+  if (dKStart < dKth) {
+    return { cycles: null, refusal: 'below threshold', dKStart, dKEnd };
+  }
+  return {
+    cycles: parisLife(C, m, a0, af, dSigma, Y),
+    refusal: null,
+    dKStart,
+    dKEnd,
+  };
+}

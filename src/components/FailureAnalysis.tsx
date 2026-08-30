@@ -5,6 +5,7 @@ import {
   BRITTLE_SOLIDS, FRACTURE_ALLOYS, GROWTH_CLASSES, S590_CURVE,
   S590_P_MAX, S590_P_MIN, getFatigueBehaviour, getFractureAlloy, getGrowthClass,
   s590Parameter, s590Stress, type FractureAlloy,
+  type GrowthClass,
 } from '../failure/materials';
 import {
   CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
@@ -12,6 +13,14 @@ import {
   hoopStress, lameHoopStress, larsonMiller, leakBeforeBreakThickness, lefmSizeRequirement,
   parisLife, THIN_WALL_MIN_RATIO,
   plasticZoneRadius, ruptureHours, stressIntensity,
+  MEAN_STRESS_CRITERIA,
+  allowableAmplitude,
+  factorOfSafety,
+  fromStressRatio,
+  type MeanStressCriterion,
+  DKTH_RANGE,
+  crackLife,
+  thresholdCrackSize,
 } from '../failure/model';
 
 const W = 660;
@@ -20,11 +29,12 @@ const PAD = { l: 66, r: 24, t: 18, b: 50 };
 const plotW = W - PAD.l - PAD.r;
 const plotH = H - PAD.t - PAD.b;
 
-type Panel = 'fracture' | 'fatigue' | 'growth' | 'creep';
-const PANELS: Panel[] = ['fracture', 'fatigue', 'growth', 'creep'];
+type Panel = 'fracture' | 'fatigue' | 'mean' | 'growth' | 'creep';
+const PANELS: Panel[] = ['fracture', 'fatigue', 'mean', 'growth', 'creep'];
 const PANEL_LABEL: Record<Panel, string> = {
   fracture: 'Fracture toughness',
   fatigue: 'Fatigue (S–N)',
+  mean: 'Mean stress',
   growth: 'Crack growth',
   creep: 'Creep rupture',
 };
@@ -50,6 +60,7 @@ export function FailureAnalysis() {
 
       {panel === 'fracture' && <FracturePanel />}
       {panel === 'fatigue' && <FatiguePanel />}
+      {panel === 'mean' && <MeanStressPanel />}
       {panel === 'growth' && <GrowthPanel />}
       {panel === 'creep' && <CreepPanel />}
     </div>
@@ -780,10 +791,19 @@ function GrowthPanel() {
   const g = useCrackGeometry();
   const Y = g.Y;
 
+  const [dKth, setDKth] = useRouteNumber('dkth', DKTH_RANGE.typical, DKTH_RANGE.min, DKTH_RANGE.max);
+
   const cls = getGrowthClass(classId);
   const a0 = a0Mm / 1000;
   const af = Y == null ? null : criticalCrackSize(cls.kic, dSigma, Y);
-  const life = Y == null || af == null ? null : parisLife(cls.C, cls.m, a0, af, dSigma, Y);
+  /**
+   * P5 — the guarded life. `parisLife` answers for a crack below threshold;
+   * `crackLife` refuses, which is what the reader needs to see.
+   */
+  const guarded =
+    Y == null || af == null ? null : crackLife(cls.C, cls.m, a0, af, dSigma, Y, dKth);
+  const life = guarded?.cycles ?? null;
+  const aTh = Y == null ? null : thresholdCrackSize(dKth, dSigma, Y);
 
   // Crack length against cycles.
   const pts = useMemo(() => {
@@ -848,6 +868,51 @@ function GrowthPanel() {
           <text x={16} y={PAD.t + plotH / 2} className="dd-tick" textAnchor="middle"
             transform={`rotate(-90 16 ${PAD.t + plotH / 2})`}>crack length (mm)</text>
         </svg>
+
+        <label className="fa-slider">
+          <span>
+            Threshold ΔK<sub>th</sub> <strong>{dKth.toFixed(1)}</strong> MPa·√m
+          </span>
+          <input
+            type="range"
+            min={DKTH_RANGE.min}
+            max={DKTH_RANGE.max}
+            step={0.1}
+            value={dKth}
+            onChange={(e) => setDKth(Number(e.target.value))}
+            aria-label="Threshold stress-intensity range, MPa root m"
+          />
+        </label>
+
+        {guarded != null && (
+          <GrowthRegions cls={cls} dKth={dKth} dKStart={guarded.dKStart} dKEnd={guarded.dKEnd} />
+        )}
+
+        {guarded?.refusal === 'below threshold' ? (
+          <p className="err-note">
+            <strong>This crack does not grow.</strong> At {a0Mm.toFixed(2)} mm and Δσ ={' '}
+            {dSigma} MPa the range is ΔK = {guarded.dKStart.toFixed(1)} MPa·√m, below the{' '}
+            {dKth.toFixed(1)} threshold — and ΔK only rises with crack length, so the whole
+            history is below it. The Paris law would still return a number here, and that
+            number would be wrong: the answer is not a long life, it is no propagation. A crack
+            has to reach {aTh == null ? '—' : `${(aTh * 1000).toFixed(2)} mm`} before it starts.
+          </p>
+        ) : (
+          <p className="trend-note">
+            The straight line is region II, where the Paris law applies. Its slope is m ={' '}
+            {cls.m} on <em>log–log</em> axes, which is the whole content of the exponent:
+            halving Δσ multiplies the life by 2<sup>{cls.m}</sup> ≈ {(2 ** cls.m).toFixed(0)}.
+            The shaded bands are where the law stops — below ΔK<sub>th</sub> nothing propagates,
+            above K<sub>IC</sub> the crack runs. Neither band is drawn as a curve, because
+            fitting one needs constants this module cannot source honestly.
+          </p>
+        )}
+
+        <p className="trend-note">
+          ΔK<sub>th</sub> is a control rather than a tabulated value because it depends on the
+          stress ratio R — the same class runs from about 6 MPa·√m at R = 0 down towards 3 at
+          high mean stress, and quoting one number per class would be false precision.
+        </p>
 
         <p className="trend-note">{cls.note}</p>
       </section>
@@ -1061,4 +1126,224 @@ function fmtHours(h: number): string {
   if (h >= 8760) return `${(h / 8760).toPrecision(3)} years`;
   if (h >= 24) return `${(h / 24).toPrecision(3)} days`;
   return `${h.toPrecision(3)} h`;
+}
+
+/* ============================================================ mean stress == */
+
+const CRITERION_STYLE: Record<MeanStressCriterion, { color: string; label: string }> = {
+  goodman: { color: '#3987e5', label: 'Modified Goodman' },
+  gerber: { color: '#1baf7a', label: 'Gerber' },
+  soderberg: { color: '#eb6834', label: 'Soderberg' },
+  yield: { color: '#e34948', label: 'Yield (Langer)' },
+};
+
+/**
+ * P4 — the Haigh diagram.
+ *
+ * The S–N panel next door assumes R = −1, fully reversed. That is the
+ * laboratory case; almost nothing in service is loaded that way, and a tensile
+ * mean stress consumes fatigue capacity that panel never accounts for.
+ */
+function MeanStressPanel() {
+  const [matId, setMatId] = useRouteString('m', 'steel1020');
+  const [sigmaMax, setSigmaMax] = useRouteNumber('smax', 300, 10, 1200);
+  const [R, setR] = useRouteNumber('R', 0, -1, 0.95);
+
+  const mat = MECH_MATERIALS.find((m) => m.id === matId) ?? MECH_MATERIALS[5];
+  const beh = getFatigueBehaviour(mat.id);
+  const Se = beh.ratio * mat.uts;
+  const Su = mat.uts;
+  const Sy = mat.yield;
+
+  const { m: sigmaM, a: sigmaA } = fromStressRatio(R, sigmaMax);
+
+  const W = 560;
+  const H = 320;
+  const P = { l: 62, r: 18, t: 18, b: 48 };
+  /**
+   * The axes have to contain the operating point. Fixing them to S_u and
+   * max(S_e, S_y) left the marker off the canvas for four of the seven
+   * materials at ordinary slider settings — selecting aluminium at the
+   * default 300 MPa drew a diagram with no visible point and no visible load
+   * line, beside a table printing a factor of 0.17.
+   */
+  const xMax = Math.max(Su * 1.05, sigmaM * 1.12, 1);
+  const yMax = Math.max(Se, Sy) * 1.15 > sigmaA * 1.12
+    ? Math.max(Se, Sy) * 1.15
+    : sigmaA * 1.12;
+  const px = (v: number) => P.l + (v / xMax) * (W - P.l - P.r);
+  const py = (v: number) => H - P.b - (v / yMax) * (H - P.t - P.b);
+
+  const curve = (c: MeanStressCriterion) =>
+    Array.from({ length: 80 }, (_, i) => {
+      const sm = (xMax * i) / 79;
+      return `${px(sm)},${py(allowableAmplitude(c, sm, Se, Su, Sy))}`;
+    }).join(' ');
+
+  const factors = MEAN_STRESS_CRITERIA.map((c) => ({
+    c,
+    n: factorOfSafety(c, sigmaM, sigmaA, Se, Su, Sy),
+  }));
+  const governing = factors.reduce((lo, f) =>
+    f.n != null && (lo.n == null || f.n < lo.n) ? f : lo,
+  );
+
+  return (
+    <section className="fa-panel">
+      <div className="fa-controls">
+        <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
+          {MECH_MATERIALS.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+        <label className="fa-slider">
+          <span>Peak stress <strong>{sigmaMax.toFixed(0)}</strong> MPa</span>
+          <input type="range" min={10} max={1200} step={5} value={sigmaMax}
+            onChange={(e) => setSigmaMax(Number(e.target.value))}
+            aria-label="Peak stress, MPa" />
+        </label>
+        <label className="fa-slider">
+          <span>Stress ratio R <strong>{R.toFixed(2)}</strong></span>
+          <input type="range" min={-1} max={0.95} step={0.05} value={R}
+            onChange={(e) => setR(Number(e.target.value))}
+            aria-label="Stress ratio R" />
+        </label>
+      </div>
+
+      <svg className="fa-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+        aria-label="Haigh diagram: alternating stress against mean stress">
+        <line x1={P.l} x2={W - P.r} y1={py(0)} y2={py(0)} className="dd-axis" />
+        <line x1={P.l} x2={P.l} y1={P.t} y2={py(0)} className="dd-axis" />
+        {MEAN_STRESS_CRITERIA.map((c) => (
+          <polyline key={c} points={curve(c)} fill="none"
+            stroke={CRITERION_STYLE[c].color} strokeWidth={2}
+            strokeDasharray={c === 'yield' ? '5 4' : undefined} />
+        ))}
+        {/* The load line: constant R means the point moves out from the origin. */}
+        <line x1={px(0)} y1={py(0)} x2={px(sigmaM)} y2={py(sigmaA)}
+          stroke="#8a8f98" strokeDasharray="3 3" strokeWidth={1} />
+        <circle cx={px(sigmaM)} cy={py(sigmaA)} r={5.5} fill="#eda100"
+          stroke="#fff" strokeWidth={1.5} />
+        <text x={W / 2} y={H - 12} className="dd-tick" textAnchor="middle">
+          mean stress σ_m (MPa)
+        </text>
+        <text x={16} y={P.t + 10} className="dd-tick">σ_a (MPa)</text>
+      </svg>
+
+      <ul className="ht-frac-list">
+        {MEAN_STRESS_CRITERIA.map((c) => (
+          <li key={c}>
+            <i style={{ background: CRITERION_STYLE[c].color }} />
+            {CRITERION_STYLE[c].label}
+          </li>
+        ))}
+      </ul>
+
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">σ_m / σ_a</th>
+            <td>{sigmaM.toFixed(0)} / {sigmaA.toFixed(0)} MPa</td>
+          </tr>
+          {factors.map(({ c, n }) => (
+            <tr key={c}>
+              <th scope="row">n against {CRITERION_STYLE[c].label}</th>
+              <td className={n != null && n < 1 ? 'err-off' : ''}>
+                {n == null ? '—' : n.toFixed(2)}
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <th scope="row">Governing</th>
+            <td>{CRITERION_STYLE[governing.c].label}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="trend-note">
+        S<sub>e</sub> here is {Se.toFixed(0)} MPa — {beh.ratio}·S<sub>u</sub> from the same
+        design estimate the S–N panel uses, not measured data. The three fatigue criteria are
+        <strong> Shigley&rsquo;s</strong> and the yield line is Langer&rsquo;s; Callister covers
+        the mean-stress effect but not these constructions.
+      </p>
+      <p className="trend-note">
+        Slide R from −1 towards 1 and watch the point swing towards the σ_m axis while the
+        peak stress stays put: the same maximum stress becomes far more damaging as the mean
+        rises.
+      </p>
+      <p className="trend-note">
+        <strong>Notice what governs here.</strong> Every material in this module is annealed,
+        so its yield strength is low relative to its tensile strength — and S<sub>e</sub> ≈{' '}
+        {beh.ratio}·S<sub>u</sub> comes out {Se > Sy ? 'above' : 'below'} σ_y at{' '}
+        {Se.toFixed(0)} against {Sy.toFixed(0)} MPa. Where S<sub>e</sub> exceeds σ_y the Langer
+        line sits below all three fatigue criteria everywhere, so <em>yielding governs at every
+        load</em> and the fatigue lines never bind. That is not a quirk of the plot: an annealed
+        metal fails by yielding long before it fails by fatigue, and the reason the three
+        criteria are worth arguing about is hardened alloys, where σ_y is high and
+        S<sub>e</sub> is not.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * P5 — where the Paris law applies, and where it does not.
+ *
+ * Region II is the straight line the module already integrates. Regions I and
+ * III are drawn as the boundaries that end it — ΔK_th on the left, K_IC on the
+ * right — and **not** as a fitted sigmoid: the shape of the curve in those
+ * regions needs constants this repo cannot source, and drawing an invented
+ * curve would be the confident-number mistake the module is otherwise careful
+ * about. What is drawn is the line and where it stops being true.
+ */
+function GrowthRegions({
+  cls,
+  dKth,
+  dKStart,
+  dKEnd,
+}: {
+  cls: GrowthClass;
+  dKth: number;
+  dKStart: number;
+  dKEnd: number;
+}) {
+  const W = 520;
+  const H = 260;
+  const P = { l: 62, r: 16, t: 14, b: 44 };
+  const kLo = Math.log10(Math.max(1, dKth * 0.5));
+  const kHi = Math.log10(cls.kic * 1.15);
+  const rateAt = (dK: number) => cls.C * dK ** cls.m;
+  const rLo = Math.log10(rateAt(10 ** kLo));
+  const rHi = Math.log10(rateAt(10 ** kHi));
+  const px = (k: number) => P.l + ((Math.log10(k) - kLo) / (kHi - kLo)) * (W - P.l - P.r);
+  const py = (r: number) => P.t + ((rHi - Math.log10(r)) / (rHi - rLo)) * (H - P.t - P.b);
+
+  // Region II only: the Paris line between the two boundaries.
+  const paris = [dKth, cls.kic]
+    .map((k) => `${px(k)},${py(rateAt(k))}`)
+    .join(' ');
+
+  return (
+    <svg className="fa-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label="Crack growth rate against stress-intensity range, log-log, with the threshold and toughness bounds">
+      <rect x={P.l} y={P.t} width={Math.max(0, px(dKth) - P.l)} height={H - P.t - P.b}
+        fill="rgba(107,114,128,0.16)" />
+      <rect x={px(cls.kic)} y={P.t} width={Math.max(0, W - P.r - px(cls.kic))} height={H - P.t - P.b}
+        fill="rgba(227,73,72,0.14)" />
+      <polyline points={paris} fill="none" stroke="#4a3aa7" strokeWidth={2.4} />
+      <line x1={px(dKth)} x2={px(dKth)} y1={P.t} y2={H - P.b} stroke="#6b7280" strokeDasharray="4 3" />
+      <line x1={px(cls.kic)} x2={px(cls.kic)} y1={P.t} y2={H - P.b} stroke="#e34948" strokeDasharray="4 3" />
+      {[dKStart, dKEnd].map((k, i) =>
+        k >= 10 ** kLo && k <= 10 ** kHi ? (
+          <circle key={i} cx={px(k)} cy={py(rateAt(k))} r={5} fill="#eda100" stroke="#fff"
+            strokeWidth={1.4} />
+        ) : null,
+      )}
+      <text x={px(dKth)} y={H - P.b + 16} className="dd-tick" textAnchor="middle">ΔK_th</text>
+      <text x={px(cls.kic)} y={H - P.b + 16} className="dd-tick" textAnchor="middle">K_IC</text>
+      <text x={W / 2} y={H - 6} className="dd-tick" textAnchor="middle">
+        ΔK (MPa·√m), log scale · slope m = {cls.m}
+      </text>
+    </svg>
+  );
 }

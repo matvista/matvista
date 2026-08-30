@@ -15,6 +15,7 @@ import {
   siteDensity,
   vacancyFraction,
   type DiffusionSystem,
+  activationFromPair,
 } from '../diffusion/model';
 import { prefersReducedMotion } from '../motion';
 import { CrystalScene } from './CrystalScene';
@@ -73,6 +74,9 @@ export function DefectsDiffusion() {
           </select>
         </div>
 
+        {/* showVoids is false here deliberately: this view is about point
+            defects, and the interstitial overlay belongs to Crystal
+            Structures, where it would not collide with the defect markers. */}
         <CrystalScene
           structure={structure}
           mode="ball"
@@ -80,6 +84,7 @@ export function DefectsDiffusion() {
           showBonds={false}
           showCoordination={false}
           defect={defect}
+          showVoids={false}
           autoRotate={autoRotate}
         />
 
@@ -554,6 +559,8 @@ function DiffusionPanel() {
         setHours={setHours}
       />
 
+      <ArrheniusPanel sys={sys} />
+
       <p className="trend-note">{sys.note}</p>
       <p className="density-note">
         Two things to try. Drop the temperature by 100 °C and watch how much longer the same case
@@ -563,5 +570,163 @@ function DiffusionPanel() {
         vacancy mechanism has roughly double the activation energy of the interstitial one.
       </p>
     </section>
+  );
+}
+
+/* ===================================================== M1 — Arrhenius plot == */
+
+/** The window the tabulated systems are actually used over. */
+const ARR_TMIN_C = 400;
+const ARR_TMAX_C = 1400;
+
+/**
+ * log₁₀ D against 1000/T — the plot a lab report is built on, and the one
+ * place D₀ stops looking like a diffusion coefficient and starts looking like
+ * what it is: the intercept at 1/T = 0, a temperature no experiment visits.
+ *
+ * The two mechanisms separate here without being told apart by colour alone:
+ * interstitial diffusion needs no vacancy, so its lines are the shallow
+ * family. That ordering is asserted in `model.test.ts` as a property of the
+ * data, not of this drawing.
+ */
+function ArrheniusPanel({ sys }: { sys: DiffusionSystem }) {
+  const [t1C, setT1C] = useRouteNumber('aT1', 700, ARR_TMIN_C, ARR_TMAX_C);
+  const [t2C, setT2C] = useRouteNumber('aT2', 1100, ARR_TMIN_C, ARR_TMAX_C);
+
+  const W = 560;
+  const H = 300;
+  const PAD = { l: 58, r: 14, t: 14, b: 46 };
+  const K = 273.15;
+
+  const xOf = (invT: number) => {
+    const lo = 1000 / (ARR_TMAX_C + K);
+    const hi = 1000 / (ARR_TMIN_C + K);
+    return PAD.l + ((invT - lo) / (hi - lo)) * (W - PAD.l - PAD.r);
+  };
+
+  // Domain from the data over the drawn window, so no line leaves the box.
+  const logs = DIFFUSION_SYSTEMS.flatMap((d) =>
+    [ARR_TMIN_C, ARR_TMAX_C].map((c) => Math.log10(diffusionCoefficient(d, c + K))),
+  );
+  const yLo = Math.floor(Math.min(...logs));
+  const yHi = Math.ceil(Math.max(...logs));
+  const yOf = (l: number) => PAD.t + ((yHi - l) / (yHi - yLo)) * (H - PAD.t - PAD.b);
+
+  const lineFor = (d: DiffusionSystem) =>
+    [ARR_TMIN_C, ARR_TMAX_C]
+      .map((c) => `${xOf(1000 / (c + K))},${yOf(Math.log10(diffusionCoefficient(d, c + K)))}`)
+      .join(' ');
+
+  const T1 = t1C + K;
+  const T2 = t2C + K;
+  const D1 = diffusionCoefficient(sys, T1);
+  const D2 = diffusionCoefficient(sys, T2);
+  const fit = activationFromPair(T1, D1, T2, D2);
+
+  return (
+    <div className="density-box">
+      <h3>Reading Q<sub>d</sub> and D₀ off the line</h3>
+      <svg
+        className="dd-plot"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label="Arrhenius plot: log D against 1000 over temperature, for every tabulated system"
+      >
+        {Array.from({ length: yHi - yLo + 1 }, (_, i) => yLo + i).map((l) => (
+          <g key={l}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={yOf(l)} y2={yOf(l)} className="dd-grid" />
+            <text x={PAD.l - 8} y={yOf(l) + 4} className="dd-tick" textAnchor="end">
+              1e{l}
+            </text>
+          </g>
+        ))}
+        {DIFFUSION_SYSTEMS.map((d) => (
+          <polyline
+            key={d.id}
+            points={lineFor(d)}
+            fill="none"
+            stroke={d.mechanism === 'interstitial' ? '#1baf7a' : '#4a3aa7'}
+            strokeWidth={d.id === sys.id ? 3 : 1.2}
+            opacity={d.id === sys.id ? 1 : 0.42}
+          />
+        ))}
+        {[
+          [T1, D1],
+          [T2, D2],
+        ].map(([T, D], i) => (
+          <circle
+            key={i}
+            cx={xOf(1000 / T)}
+            cy={yOf(Math.log10(D))}
+            r={5}
+            fill="#eb6834"
+            stroke="#fff"
+            strokeWidth={1.5}
+          />
+        ))}
+        <text x={W / 2} y={H - 8} className="dd-tick" textAnchor="middle">
+          1000/T (K⁻¹) — right is colder
+        </text>
+      </svg>
+
+      <div className="dd-controls">
+        <label>
+          First measurement, {t1C} °C
+          <input
+            type="range"
+            min={ARR_TMIN_C}
+            max={ARR_TMAX_C}
+            step={10}
+            value={t1C}
+            onChange={(e) => setT1C(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          Second measurement, {t2C} °C
+          <input
+            type="range"
+            min={ARR_TMIN_C}
+            max={ARR_TMAX_C}
+            step={10}
+            value={t2C}
+            onChange={(e) => setT2C(Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <table className="detail-props dd-results">
+        <tbody>
+          <tr>
+            <th scope="row">Recovered Q<sub>d</sub></th>
+            <td>{fit ? `${(fit.Qd / 1000).toFixed(1)} kJ/mol` : 'needs two temperatures'}</td>
+          </tr>
+          <tr>
+            <th scope="row">Recovered D₀</th>
+            <td>{fit ? `${fit.D0.toExponential(2)} m²/s` : '—'}</td>
+          </tr>
+          <tr>
+            <th scope="row">Tabulated</th>
+            <td>
+              {(sys.Qd / 1000).toFixed(1)} kJ/mol · {sys.D0.toExponential(2)} m²/s
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="trend-note">
+        Two points on a straight line define it, so the pair above returns the constants exactly —
+        which is the point: Q<sub>d</sub> is a slope you can measure, and D₀ is where the line
+        reaches 1000/T = 0, off the left of this plot at infinite temperature. Nobody measures D₀;
+        it is an extrapolation, and it is {(sys.D0 / diffusionCoefficient(sys, ARR_TMAX_C + K)).toExponential(0)}{' '}
+        times the D this system reaches at {ARR_TMAX_C} °C.
+      </p>
+      <p className="trend-note">
+        The green lines are interstitial, the indigo vacancy. The interstitial family is shallower
+        because an interstitial atom never has to wait for a vacancy to appear beside it — it only
+        has to squeeze. Note that the squeeze is about the <em>path</em> between sites, not the size
+        of the sites: carbon&rsquo;s hole in FCC iron is the roomier one, and its activation energy
+        is still the higher of the two irons.
+      </p>
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import elementsRaw from '../data/elements.json';
 import { useRouteString } from '../useRoute';
+import { CARBON_RADIUS, CARBON_SITE, interstitialSites, siteFit } from '../crystal/interstitial';
 import { STRUCTURES, getStructure, packingFactor } from '../crystal/structures';
 import { coordinationShell } from '../crystal/geometry';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
@@ -22,8 +23,11 @@ export function CrystalStructures() {
   // not to do. There is a checkbox either way, so this only sets the default.
   const [autoRotate, setAutoRotate] = useState(!prefersReducedMotion());
   const [metalSymbol, setMetalSymbol] = useRouteString('metal', 'Cu');
+  const [showVoids, setShowVoids] = useState(false);
 
   const structure = getStructure(id);
+  const voids = interstitialSites(getStructure(id));
+  const carbonSite = voids?.find((v) => v.kind === CARBON_SITE) ?? null;
   const metal = METALS.find((m) => m.symbol === metalSymbol) ?? METALS[4];
 
   // Both numbers the panel used to recite are now derived. APF comes from the
@@ -120,6 +124,7 @@ export function CrystalStructures() {
           showBonds={showBonds}
           showCoordination={showCoordination}
           autoRotate={autoRotate}
+          showVoids={showVoids}
         />
 
         <div className="crystal-checks">
@@ -146,6 +151,15 @@ export function CrystalStructures() {
               onChange={(e) => setAutoRotate(e.target.checked)}
             />
             Rotate
+          </label>
+          <label title={voids == null ? 'Not defined for this structure' : undefined}>
+            <input
+              type="checkbox"
+              checked={showVoids && voids != null}
+              disabled={voids == null}
+              onChange={(e) => setShowVoids(e.target.checked)}
+            />
+            Interstitial holes
           </label>
           <span className="drag-hint">Drag to rotate · scroll to zoom</span>
         </div>
@@ -301,6 +315,77 @@ export function CrystalStructures() {
             are near 1.86, come out ~15% too dense.
           </p>
         </div>
+
+        <div className="density-box">
+          <h3>The holes between the atoms</h3>
+          {voids ? (
+            <>
+              <table className="mi-deriv-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Site</th>
+                    <th scope="col">Per cell</th>
+                    <th scope="col">r/R</th>
+                    <th scope="col">Largest sphere</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {voids.map((set) => (
+                    <tr key={set.kind}>
+                      <th scope="row">
+                        {set.kind[0].toUpperCase() + set.kind.slice(1)}
+                        {set.distorted ? ' *' : ''}
+                      </th>
+                      <td>{set.perCell}</td>
+                      <td>{set.radiusRatio.toFixed(3)}</td>
+                      <td>{(set.radiusRatio * metal.R).toFixed(4)} nm</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {carbonSite && (
+                <p className="detail-summary">
+                  Carbon (r = {CARBON_RADIUS} nm) goes into the <strong>octahedral</strong> site.
+                  With {metal.name}&rsquo;s radius it needs{' '}
+                  <strong>
+                    {siteFit(carbonSite.radiusRatio, metal.R, CARBON_RADIUS).strain.toFixed(1)}
+                    &times;
+                  </strong>{' '}
+                  the room there is — which is why the packing factor does not predict how much
+                  carbon a structure dissolves. FCC is the denser packing and still takes far
+                  more, because it gathers its void into fewer, roomier octahedral holes.
+                </p>
+              )}
+              {carbonSite?.distorted && (
+                <p className="trend-note">
+                  Note that this is not the biggest hole here: the tetrahedral site is{' '}
+                  {voids.find((v) => v.kind === 'tetrahedral')?.radiusRatio.toFixed(3)} against the
+                  octahedral {carbonSite.radiusRatio.toFixed(3)}, and carbon still does not use
+                  it. Shape decides, not size — the octahedral site opens along one axis only,
+                  which is elastically cheaper than opening four ways at once, and that one-axis
+                  strain is what makes quenched martensite tetragonal rather than cubic.
+                </p>
+              )}
+              {voids.some((v) => v.distorted) && (
+                <p className="trend-note">
+                  * The BCC octahedral hole is not a regular octahedron: two hosts sit at
+                  a/2 and four at a/&radic;2, so the near pair alone fixes the sphere that
+                  fits. r/R = 0.155 is the standard idealisation, and the drawn sphere is
+                  rounder than the site really is.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="trend-note">
+              Not defined here. HCP has the same close-packed holes as FCC, but this
+              module draws the hexagonal cell as a prism rather than in lattice vectors;
+              diamond&rsquo;s voids are not this octahedral/tetrahedral pair; and a
+              compound&rsquo;s interstices are already occupied, which is what makes it a
+              compound.
+            </p>
+          )}
+        </div>
+
       </aside>
     </div>
   );

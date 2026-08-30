@@ -2605,3 +2605,62 @@ input[type='range'] {
   height: auto;
   margin: 0.3rem 0 0.5rem;
 }
+
+/* A6 — attribute-limit screening on the Ashby chart. */
+.ab-screen-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.ab-funnel {
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.ab-funnel-lim {
+  opacity: 0.7;
+}
+.ab-funnel-note {
+  display: block;
+  opacity: 0.75;
+  margin-top: 0.25rem;
+}
+
+/* M5 — microstructure cartoons beside the phase diagram. */
+.ms-strip {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+.ms-fig {
+  margin: 0;
+  flex: 0 0 auto;
+  width: 130px;
+}
+.ms-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 3px;
+}
+.ms-caption {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}
+.ab-front-ring {
+  stroke: #eda100;
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+/* P2 — indenter sketch. */
+.hd-indenter {
+  width: 120px;
+  height: 120px;
+  display: block;
+  margin: 0.4rem 0;
+}

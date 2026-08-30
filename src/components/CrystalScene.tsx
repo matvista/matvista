@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import type { StructureDef } from '../crystal/structures';
 import { buildAtoms, buildBonds, buildCellEdges, coordinationShell, distance } from '../crystal/geometry';
 import { applyDefect, type DefectKind } from '../crystal/defects';
+import { interstitialSites, type InterstitialKind } from '../crystal/interstitial';
 
 export type ViewMode = 'ball' | 'fill';
 
@@ -21,7 +22,19 @@ interface Props {
    * scene now own a checkbox for it.
    */
   autoRotate: boolean;
+  /** Draw the interstitial holes as wireframe spheres sized to what fits. */
+  showVoids: boolean;
 }
+
+/**
+ * One colour per hole shape. Wireframe throughout: these are absences, and a
+ * solid sphere would read as another atom.
+ */
+const VOID_COLOR: Record<InterstitialKind, string> = {
+  octahedral: '#4a3aa7',
+  tetrahedral: '#1baf7a',
+  cubic: '#eda100',
+};
 
 export function CrystalScene({
   structure,
@@ -31,6 +44,7 @@ export function CrystalScene({
   showCoordination,
   defect,
   autoRotate,
+  showVoids,
 }: Props) {
   return (
     <div className="canvas-wrap">
@@ -51,6 +65,7 @@ export function CrystalScene({
           showBonds={showBonds}
           showCoordination={showCoordination}
           defect={defect}
+          showVoids={showVoids}
         />
         <OrbitControls
           enablePan={false}
@@ -71,6 +86,7 @@ function Cell({
   showBonds,
   showCoordination,
   defect,
+  showVoids,
 }: Omit<Props, 'autoRotate'>) {
   const defectResult = useMemo(
     () => (defect && defect !== 'none' ? applyDefect(structure, defect) : null),
@@ -143,6 +159,23 @@ function Cell({
           </mesh>
         );
       })}
+
+      {/* The holes between the atoms, each drawn at the largest sphere that
+          fits without pushing its hosts apart. `aOverR` is the host radius in
+          cell units, so `ratio / aOverR` puts the void on the same scale as
+          the space-filling atoms. */}
+      {showVoids &&
+        structure.aOverR != null &&
+        (interstitialSites(structure) ?? []).map((set) => (
+          <group key={set.kind}>
+            {set.positions.map((p, i) => (
+              <mesh key={i} position={[p[0] - 0.5, p[1] - 0.5, p[2] - 0.5]}>
+                <sphereGeometry args={[set.radiusRatio / structure.aOverR!, 16, 12]} />
+                <meshBasicMaterial color={VOID_COLOR[set.kind]} wireframe />
+              </mesh>
+            ))}
+          </group>
+        ))}
 
       {/* An empty site: dashed-looking wireframe so the absence reads as deliberate. */}
       {defectResult?.vacancySite && (

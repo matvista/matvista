@@ -7,11 +7,19 @@
  * than BCC's 0.68. The denser structure holds far more carbon.
  *
  * The resolution is that packing factor counts the total void space and says
- * nothing about how it is divided. FCC gathers its smaller void into four
- * roomy octahedral holes per cell (r/R = 0.414); BCC scatters more void into
- * six cramped ones (r/R = 0.155). Carbon fits the first far better than the
- * second, which is why quenching austenite traps carbon it cannot shed and
- * makes martensite.
+ * nothing about how it is divided, nor which division a solute can use.
+ * Carbon sits in the **octahedral** site in both irons, and those are
+ * r/R = 0.414 in FCC against 0.155 in BCC — the hundredfold solubility gap.
+ *
+ * It would be wrong to say BCC simply has smaller holes. Its *tetrahedral*
+ * site is r/R = 0.291, larger than FCC's 0.225 and nearly twice its own
+ * octahedral one, and carbon still does not go there. The reason is the shape
+ * rather than the size: the BCC octahedral site has only two hosts at a/2 and
+ * four further off, so admitting carbon pushes one pair apart along a single
+ * axis, while the tetrahedral site would have to open four ways at once. One
+ * axis is elastically cheaper — and that uniaxial strain, repeated over every
+ * trapped carbon, is what makes quenched martensite body-centred *tetragonal*
+ * rather than cubic.
  */
 import type { StructureDef } from './structures';
 import { distance, expandToSupercell } from './geometry';
@@ -187,7 +195,10 @@ export function largestInterstitialRadius(
   s: StructureDef,
   site: [number, number, number],
 ): number | null {
-  if (s.aOverR == null) return null;
+  // Cubic as well as single-R: the fractional site coordinates below are
+  // Cartesian offsets in a cubic cell, and `buildHexAtoms` emits a drawn
+  // prism, so a hexagonal cell would return a confident meaningless number.
+  if (s.aOverR == null || s.cell !== 'cubic') return null;
   const centred: [number, number, number] = [site[0] - 0.5, site[1] - 0.5, site[2] - 0.5];
   const cloud = expandToSupercell(s);
   let min = Infinity;
@@ -198,8 +209,16 @@ export function largestInterstitialRadius(
   return min * s.aOverR - 1;
 }
 
-/** Carbon's radius in steel, nm — the value Callister uses for this comparison. */
+/** Carbon's radius, nm — Callister's atomic radius for carbon. */
 export const CARBON_RADIUS = 0.071;
+
+/**
+ * The site carbon occupies in iron, in both allotropes. Named rather than
+ * derived, because it is *not* the largest site in BCC — see the note at the
+ * top of this file. Taking the roomiest hole instead would put carbon in BCC's
+ * tetrahedral site and quietly teach the wrong mechanism.
+ */
+export const CARBON_SITE: InterstitialKind = 'octahedral';
 
 /**
  * How a solute of radius `rSolute` compares with the largest sphere the site

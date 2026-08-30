@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import elementsRaw from '../data/elements.json';
 import { useRouteString } from '../useRoute';
-import { CARBON_RADIUS, interstitialSites, siteFit } from '../crystal/interstitial';
+import { CARBON_RADIUS, CARBON_SITE, interstitialSites, siteFit } from '../crystal/interstitial';
 import { STRUCTURES, getStructure, packingFactor } from '../crystal/structures';
 import { coordinationShell } from '../crystal/geometry';
 import { IDEAL_COA, METALS, theoreticalDensity } from '../crystal/metals';
@@ -27,6 +27,7 @@ export function CrystalStructures() {
 
   const structure = getStructure(id);
   const voids = interstitialSites(getStructure(id));
+  const carbonSite = voids?.find((v) => v.kind === CARBON_SITE) ?? null;
   const metal = METALS.find((m) => m.symbol === metalSymbol) ?? METALS[4];
 
   // Both numbers the panel used to recite are now derived. APF comes from the
@@ -342,21 +343,29 @@ export function CrystalStructures() {
                   ))}
                 </tbody>
               </table>
-              <p className="detail-summary">
-                Carbon (r = {CARBON_RADIUS} nm) into the roomiest of these, with{' '}
-                {metal.name}&rsquo;s radius: it needs{' '}
-                <strong>
-                  {siteFit(
-                    Math.max(...voids.map((v) => v.radiusRatio)),
-                    metal.R,
-                    CARBON_RADIUS,
-                  ).strain.toFixed(1)}
-                  &times;
-                </strong>{' '}
-                the room there is. This is why the packing factor does not predict how much
-                carbon a structure dissolves: FCC is the denser packing and still takes the
-                larger interstitial, because it gathers its void into fewer, roomier holes.
-              </p>
+              {carbonSite && (
+                <p className="detail-summary">
+                  Carbon (r = {CARBON_RADIUS} nm) goes into the <strong>octahedral</strong> site.
+                  With {metal.name}&rsquo;s radius it needs{' '}
+                  <strong>
+                    {siteFit(carbonSite.radiusRatio, metal.R, CARBON_RADIUS).strain.toFixed(1)}
+                    &times;
+                  </strong>{' '}
+                  the room there is — which is why the packing factor does not predict how much
+                  carbon a structure dissolves. FCC is the denser packing and still takes far
+                  more, because it gathers its void into fewer, roomier octahedral holes.
+                </p>
+              )}
+              {carbonSite?.distorted && (
+                <p className="trend-note">
+                  Note that this is not the biggest hole here: the tetrahedral site is{' '}
+                  {voids.find((v) => v.kind === 'tetrahedral')?.radiusRatio.toFixed(3)} against the
+                  octahedral {carbonSite.radiusRatio.toFixed(3)}, and carbon still does not use
+                  it. Shape decides, not size — the octahedral site opens along one axis only,
+                  which is elastically cheaper than opening four ways at once, and that one-axis
+                  strain is what makes quenched martensite tetragonal rather than cubic.
+                </p>
+              )}
               {voids.some((v) => v.distorted) && (
                 <p className="trend-note">
                   * The BCC octahedral hole is not a regular octahedron: two hosts sit at

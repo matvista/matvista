@@ -94,6 +94,42 @@ export function diffusionCoefficient(sys: DiffusionSystem, T_K: number): number 
 }
 
 /**
+ * The inverse problem, as a lab report sets it: two measurements of D at two
+ * temperatures, and recover Q_d and D₀.
+ *
+ * On a plot of ln D against 1/T the Arrhenius law is a straight line of slope
+ * −Q_d/R and intercept ln D₀, so
+ *
+ *     Q_d = −R · (ln D₁ − ln D₂) / (1/T₁ − 1/T₂)
+ *     D₀  = D₁ · exp(Q_d / R T₁)
+ *
+ * D₀ is where that line reaches 1/T = 0 — infinite temperature — which is the
+ * point of doing this at all: students read D₀ as "the diffusion coefficient"
+ * when it is an extrapolated intercept no experiment visits.
+ *
+ * Returns null rather than a number for inputs the line is not defined on:
+ * a repeated temperature, or a non-positive D or T.
+ */
+export function activationFromPair(
+  T1_K: number,
+  D1: number,
+  T2_K: number,
+  D2: number,
+): { Qd: number; D0: number } | null {
+  if (!(T1_K > 0) || !(T2_K > 0) || !(D1 > 0) || !(D2 > 0)) return null;
+  // Equal temperatures need no guard of their own: the division below gives
+  // ±Infinity, or NaN when the two D values match as well, and the finite
+  // check at the end rejects both. A separate `invDelta === 0` branch was
+  // here and no mutation of it could be observed, which is the definition of
+  // a line that is not doing anything.
+  const invDelta = 1 / T1_K - 1 / T2_K;
+  const Qd = (-GAS_CONSTANT * (Math.log(D1) - Math.log(D2))) / invDelta;
+  const D0 = D1 * Math.exp(Qd / (GAS_CONSTANT * T1_K));
+  if (!Number.isFinite(Qd) || !Number.isFinite(D0)) return null;
+  return { Qd, D0 };
+}
+
+/**
  * Gauss error function — Abramowitz & Stegun 7.1.26.
  * Max absolute error 1.5e-7, ample for plotting a concentration profile.
  */

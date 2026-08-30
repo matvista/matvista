@@ -2,6 +2,15 @@ import { useMemo } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
 import { DOPABLE, SEMICONDUCTORS } from '../electronic/materials';
 import {
+  driveInJunction,
+  driveInProfile,
+  driveInSurface,
+  junctionSharpness,
+  predepositionDose,
+  predepositionJunction,
+  predepositionProfile,
+} from '../electronic/doping';
+import {
   FREEZE_OUT_K, K_B, VISIBLE_MAX_NM, VISIBLE_MIN_NM, builtInPotential, carriers,
   conductivity, depletionSplit, depletionWidth, fermiOffset, intrinsicCarriers,
   intrinsicOnsetTemp, isDegenerate, isFreezeOut, photonEnergy, photonWavelength,
@@ -41,14 +50,15 @@ const INV_MAX = 20; // 1000 K down to 50 K, so freeze-out is on the plot
 const LOG_MIN = -6;
 const LOG_MAX = 6;
 
-type Panel = 'gaps' | 'doping' | 'junction' | 'diode' | 'hall';
-const PANELS: Panel[] = ['gaps', 'doping', 'junction', 'diode', 'hall'];
+type Panel = 'gaps' | 'doping' | 'junction' | 'diode' | 'hall' | 'profile';
+const PANELS: Panel[] = ['gaps', 'doping', 'junction', 'diode', 'hall', 'profile'];
 const PANEL_LABEL: Record<Panel, string> = {
   gaps: 'Band gaps',
   doping: 'Doping & conductivity',
   junction: 'p–n junction',
   diode: 'The diode',
   hall: 'Hall effect',
+  profile: 'Making a junction',
 };
 
 export function Semiconductors() {
@@ -68,6 +78,7 @@ export function Semiconductors() {
       {panel === 'junction' && <JunctionPanel />}
       {panel === 'diode' && <DiodePanel />}
       {panel === 'hall' && <HallPanel />}
+      {panel === 'profile' && <ProfilePanel />}
     </div>
   );
 }
@@ -992,6 +1003,153 @@ function HallPanel() {
           count and electrons are the more mobile carrier.
         </p>
       )}
+    </section>
+  );
+}
+
+/* =============================================== profile — making a junction == */
+
+/**
+ * P13 — the junction as a diffusion profile.
+ *
+ * `JunctionPanel` takes N_a and N_d as given, which leaves a reader believing
+ * a junction is an abrupt step. Here it is made: dopant diffuses in, the
+ * profile crosses the background doping, and where it crosses is the junction.
+ *
+ * √(Dt) is the control rather than a dopant table, for the reason in
+ * `electronic/doping.ts`: every result depends on D and t only through their
+ * product, and this repo will not ship diffusivities it cannot source.
+ */
+function ProfilePanel() {
+  const [step, setStep] = useRouteEnum<'predep' | 'drivein'>('step', 'predep', [
+    'predep',
+    'drivein',
+  ]);
+  // √(Dt) in nm, which is the length the profile is measured in.
+  const [rootDtNm, setRootDtNm] = useRouteNumber('rdt', 60, 5, 600);
+  const [logCs, setLogCs] = useRouteNumber('Cs', 20, 18, 21);
+  const [logCB, setLogCB] = useRouteNumber('CB', 15, 13, 18);
+  // The predeposition that supplied the dose, when the drive-in step is shown.
+  const [rootDt0Nm, setRootDt0Nm] = useRouteNumber('rdt0', 20, 5, 200);
+
+  const Cs = 10 ** logCs * 1e6; // cm⁻³ in the URL, m⁻³ in the model
+  const CB = 10 ** logCB * 1e6;
+  const Dt = (rootDtNm * 1e-9) ** 2;
+  const Dt0 = (rootDt0Nm * 1e-9) ** 2;
+  const Q = predepositionDose(Cs, Dt0);
+
+  const profile = (x: number) =>
+    step === 'predep' ? predepositionProfile(Cs, x, Dt) : driveInProfile(Q, x, Dt);
+  const xj = step === 'predep' ? predepositionJunction(Cs, CB, Dt) : driveInJunction(Q, CB, Dt);
+  const surface = step === 'predep' ? Cs : driveInSurface(Q, Dt);
+  const sharp = xj == null ? null : junctionSharpness(profile, CB, xj);
+
+  const W = 560;
+  const H = 300;
+  const P = { l: 66, r: 16, t: 16, b: 46 };
+  const xMax = Math.max(xj ?? 0, rootDtNm * 1e-9 * 4) * 1.25;
+  const yTop = Math.ceil(Math.log10(Math.max(surface, CB) * 1.5));
+  const yBot = Math.floor(Math.log10(CB / 100));
+  const px = (x: number) => P.l + (x / xMax) * (W - P.l - P.r);
+  const py = (c: number) =>
+    P.t + ((yTop - Math.log10(Math.max(c, 10 ** yBot))) / (yTop - yBot)) * (H - P.t - P.b);
+
+  const curve = Array.from({ length: 220 }, (_, i) => {
+    const x = (xMax * i) / 219;
+    return `${px(x)},${py(profile(x))}`;
+  }).join(' ');
+
+  return (
+    <section className="dd-block">
+      <div className="fa-tabs" role="tablist" aria-label="Process step">
+        {(['predep', 'drivein'] as const).map((t) => (
+          <button key={t} role="tab" aria-selected={step === t}
+            className={`toggle ${step === t ? 'toggle-on' : ''}`} onClick={() => setStep(t)}>
+            {t === 'predep' ? 'Predeposition (erfc)' : 'Drive-in (Gaussian)'}
+          </button>
+        ))}
+      </div>
+
+      <div className="fa-controls">
+        <Slider label="√(Dt)" unit="nm" value={rootDtNm} min={5} max={600} step={5}
+          onChange={setRootDtNm} />
+        {step === 'drivein' && (
+          <Slider label="√(Dt) of the predeposition" unit="nm" value={rootDt0Nm} min={5} max={200}
+            step={5} onChange={setRootDt0Nm} />
+        )}
+        <Slider label="Surface 10^" unit="cm⁻³" value={logCs} min={18} max={21} step={0.1}
+          fixed={1} onChange={setLogCs} />
+        <Slider label="Background 10^" unit="cm⁻³" value={logCB} min={13} max={18} step={0.1}
+          fixed={1} onChange={setLogCB} />
+      </div>
+
+      <svg className="dd-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+        aria-label="Dopant concentration against depth, log scale, with the background level">
+        {Array.from({ length: yTop - yBot + 1 }, (_, i) => yBot + i).map((d) => (
+          <line key={d} x1={P.l} x2={W - P.r} y1={py(10 ** d)} y2={py(10 ** d)} className="dd-grid" />
+        ))}
+        <line x1={P.l} x2={W - P.r} y1={py(CB)} y2={py(CB)} stroke="#e34948" strokeWidth={1.6}
+          strokeDasharray="6 4" />
+        <text x={W - P.r} y={py(CB) - 6} className="dd-tick" textAnchor="end">background</text>
+        <polyline points={curve} fill="none" stroke="#4a3aa7" strokeWidth={2} />
+        {xj != null && xj < xMax && (
+          <>
+            <line x1={px(xj)} x2={px(xj)} y1={P.t} y2={H - P.b} stroke="#eb6834" strokeWidth={1.4} />
+            <text x={px(xj) + 6} y={P.t + 14} className="dd-tick">x_j</text>
+          </>
+        )}
+        <text x={W / 2} y={H - 8} className="dd-tick" textAnchor="middle">
+          depth (0 to {(xMax * 1e9).toFixed(0)} nm)
+        </text>
+      </svg>
+
+      <table className="detail-props dd-results">
+        <tbody>
+          <tr>
+            <th scope="row">Surface concentration</th>
+            <td>{fmtExp(surface / 1e6)} cm⁻³</td>
+          </tr>
+          <tr>
+            <th scope="row">Junction depth x<sub>j</sub></th>
+            <td>{xj == null ? 'no junction' : `${(xj * 1e9).toFixed(0)} nm`}</td>
+          </tr>
+          <tr>
+            <th scope="row">Dose</th>
+            <td>{fmtExp((step === 'predep' ? predepositionDose(Cs, Dt) : Q) / 1e4)} cm⁻²</td>
+          </tr>
+          <tr>
+            <th scope="row">Crossing width, as a fraction of x<sub>j</sub></th>
+            <td>{sharp == null ? '—' : sharp.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {xj == null ? (
+        <p className="err-note">
+          <strong>No junction.</strong>{' '}
+          {step === 'predep'
+            ? 'The background is already at or above the surface concentration, so the incoming dopant never overcomes it and there is nothing to cross.'
+            : 'The dose has spread far enough that even its peak has fallen to the background. Over-driving does not deepen a junction indefinitely; it eventually erases it.'}
+        </p>
+      ) : (
+        <p className="trend-note">
+          The crossing takes place over <strong>{(sharp! * 100).toFixed(0)}%</strong> of the
+          junction depth — that is the width over which the doping falls from ten times the
+          background to a tenth of it. The abrupt-junction model the panel next door assumes
+          treats that width as zero. It is a fair approximation when the number here is small,
+          and this ratio is the same at every depth for a given profile shape, which is worth
+          knowing: making the junction deeper does not make it relatively sharper.
+        </p>
+      )}
+
+      <p className="trend-note">
+        Same equation as carburising a gear shaft — Fick&rsquo;s second law — and only the
+        boundary condition differs. Predeposition holds the surface at a fixed concentration
+        while dopant flows in, so the dose grows as √(Dt). Drive-in seals the surface, so a
+        fixed dose spreads and the surface concentration <em>falls</em>. √(Dt) is the control
+        rather than a dopant table because every number here depends on D and t only through
+        that product.
+      </p>
     </section>
   );
 }

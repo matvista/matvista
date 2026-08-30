@@ -2656,3 +2656,11 @@ input[type='range'] {
   stroke-width: 2;
   opacity: 0.9;
 }
+
+/* P2 — indenter sketch. */
+.hd-indenter {
+  width: 120px;
+  height: 120px;
+  display: block;
+  margin: 0.4rem 0;
+}

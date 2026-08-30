@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { useRouteNumber, useRouteString } from '../useRoute';
+import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
+import {
+  HARDNESS_SCALES,
+  brinell,
+  isFerrous,
+  knoop,
+  tensileFromBrinell,
+  vickers,
+  type HardnessScale,
+} from '../mechanical/hardness';
 import {
   MECH_MATERIALS,
   buildCurve,
@@ -296,6 +305,9 @@ function MaterialReadout({
         Toughness is the whole area under the curve, which needs strength <em>and</em> ductility
         together. The two rank materials quite differently: check titanium against brass.
       </p>
+        {/* P2 — hardness, computed from the scale's own definition. */}
+        <HardnessBox materialId={material.id} materialName={material.name} />
+
     </aside>
   );
 }
@@ -419,5 +431,133 @@ function HallPetchPanel() {
         and extremely fine grains.
       </p>
     </section>
+  );
+}
+
+/* ============================================================== hardness == */
+
+const INDENTER_COLOR = '#4a3aa7';
+
+/**
+ * P2 — hardness, and what it does and does not convert to.
+ *
+ * Each scale is computed from its own definition on the reader's inputs, so
+ * nothing here is a lookup. Cross-scale conversion is *not* offered, and the
+ * panel says why rather than leaving it as an absence — the misconception this
+ * exists to correct is that a conversion table is physics.
+ */
+function HardnessBox({ materialId, materialName }: { materialId: string; materialName: string }) {
+  const [scaleId, setScaleId] = useRouteEnum<HardnessScale>('hs', 'brinell', [
+    'brinell',
+    'vickers',
+    'knoop',
+  ]);
+  const [loadKgf, setLoadKgf] = useRouteNumber('hl', 500, 1, 3000);
+  const [sizeMm, setSizeMm] = useRouteNumber('hd', 3, 0.05, 9);
+
+  const scale = HARDNESS_SCALES.find((s) => s.id === scaleId)!;
+  const value =
+    scaleId === 'brinell'
+      ? brinell(loadKgf, 10, sizeMm)
+      : scaleId === 'vickers'
+        ? vickers(loadKgf, sizeMm)
+        : knoop(loadKgf, sizeMm);
+
+  const ferrous = isFerrous(materialId);
+  // Derived in one step: an intermediate `hb` that was null off the Brinell
+  // scale duplicated the guard the row below already applies, so mutating it
+  // changed nothing a reader could see.
+  const ts =
+    scaleId === 'brinell' && value != null ? tensileFromBrinell(value, ferrous) : null;
+
+  // Indenter sketches, drawn to the same scale so the shapes can be compared.
+  const S = 120;
+  const sketch =
+    scaleId === 'brinell' ? (
+      <circle cx={S / 2} cy={S / 2 - 10} r={34} fill="none" stroke={INDENTER_COLOR} strokeWidth={2} />
+    ) : scaleId === 'vickers' ? (
+      <polygon points={`${S / 2},${S / 2 + 26} ${S / 2 - 30},${S / 2 - 34} ${S / 2 + 30},${S / 2 - 34}`}
+        fill="none" stroke={INDENTER_COLOR} strokeWidth={2} />
+    ) : (
+      <polygon points={`${S / 2},${S / 2 + 26} ${S / 2 - 46},${S / 2 - 14} ${S / 2 + 46},${S / 2 - 14}`}
+        fill="none" stroke={INDENTER_COLOR} strokeWidth={2} />
+    );
+
+  return (
+    <div className="density-box">
+      <h3>Hardness</h3>
+      <div className="fa-controls">
+        <select value={scaleId} onChange={(e) => setScaleId(e.target.value as HardnessScale)}
+          aria-label="Hardness scale">
+          {HARDNESS_SCALES.map((s) => (
+            <option key={s.id} value={s.id}>{s.name} ({s.symbol})</option>
+          ))}
+        </select>
+        <label className="fa-slider">
+          <span>Load <strong>{loadKgf.toFixed(0)}</strong> kgf</span>
+          <input type="range" min={1} max={3000} step={1} value={loadKgf}
+            onChange={(e) => setLoadKgf(Number(e.target.value))} aria-label="Load, kgf" />
+        </label>
+        <label className="fa-slider">
+          <span>
+            {scaleId === 'brinell' ? 'Impression' : 'Diagonal'}{' '}
+            <strong>{sizeMm.toFixed(2)}</strong> mm
+          </span>
+          <input type="range" min={0.05} max={9} step={0.05} value={sizeMm}
+            onChange={(e) => setSizeMm(Number(e.target.value))}
+            aria-label="Impression size, mm" />
+        </label>
+      </div>
+
+      <svg viewBox={`0 0 ${S} ${S}`} className="hd-indenter" role="img"
+        aria-label={`${scale.name} indenter: ${scale.indenter}`}>
+        <line x1={8} x2={S - 8} y1={S / 2 + 26} y2={S / 2 + 26} stroke="#6b7280" strokeWidth={1.5} />
+        {sketch}
+      </svg>
+
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">{scale.name} ({scale.symbol})</th>
+            <td>{value == null ? 'not a valid impression' : value.toFixed(0)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Indenter</th>
+            <td>{scale.indenter}</td>
+          </tr>
+          <tr>
+            <th scope="row">Tensile strength from hardness</th>
+            <td className={ts == null ? 'err-off' : ''}>
+              {scaleId !== 'brinell'
+                ? 'Brinell only'
+                : ts == null
+                  ? `refused for ${materialName}`
+                  : `${ts.toFixed(0)} MPa`}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="trend-note">{scale.note}</p>
+
+      {scaleId === 'brinell' && !ferrous && (
+        <p className="err-note">
+          <strong>Refused.</strong> TS ≈ 3.45·HB is calibrated on <em>steels</em>.{' '}
+          {materialName} is not one, and applying it anyway would return a confident number
+          with nothing behind it. This is not a caveat about the correlation — it is what
+          ASTM E140&rsquo;s own scope says about hardness conversions generally: they are not
+          transferable between material classes.
+        </p>
+      )}
+
+      <p className="trend-note">
+        <strong>No conversion table here, on purpose.</strong> Every figure above is computed
+        from the scale&rsquo;s own definition — the indenter geometry, the load and the
+        impression you measured — so it is arithmetic rather than a lookup. Converting between
+        scales is empirical, calibrated per material class, and this module does not ship a
+        ladder for it. Treating one as physics is the misconception the panel exists to
+        correct.
+      </p>
+    </div>
   );
 }

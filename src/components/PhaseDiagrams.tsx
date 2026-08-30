@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useRouteNumber, useRouteString } from '../useRoute';
+import { Microstructure } from './Microstructure';
 import {
   EUTECTOID_X,
   FERRITE_MAX,
@@ -10,6 +11,7 @@ import {
   type MicroconstituentResult,
   type PhaseRuleResult,
   type PhaseSystem,
+  coolingSequence,
 } from '../phase/systems';
 
 const W = 720;
@@ -38,6 +40,15 @@ export function PhaseDiagrams() {
   const [pointX, setPointX] = useRouteNumber('x', 0.4);
   const [pointT, setPointT] = useRouteNumber('T', 650);
   const point = { x: pointX, T: pointT };
+  /**
+   * M5 — the stages between the top of the diagram and where the reader has
+   * put the marker. Recomputed only when the composition or that temperature
+   * moves; dragging the marker walks the strip forward one card at a time.
+   */
+  const sequence = useMemo(
+    () => coolingSequence(system, pointX, system.tMax, pointT),
+    [system, pointX, pointT],
+  );
   // The store updates synchronously, so the second write sees the first.
   const setPoint = (p: { x: number; T: number }) => {
     setPointX(p.x);
@@ -372,6 +383,36 @@ export function PhaseDiagrams() {
         )}
 
         {micro && <MicroPanel micro={micro} x={clamped.x} unit={system.xLabel} />}
+
+        {/* M5 — the same alloy, cooled. The panel above says which phases are
+            present; this says what they would look like, which is a different
+            question with the same answer to the first one. */}
+        <div className="density-box">
+          <h3>Cooling it down</h3>
+          <div className="ms-strip">
+            {sequence.map((stage, i) => (
+              <Microstructure
+                key={`${stage.region}-${stage.T.toFixed(2)}`}
+                point={stage.point}
+                seed={i * 7919 + Math.round(pointX * 100)}
+                lamellar={stage.point.phases.filter((ph) => ph.name !== 'L').length > 1}
+                label={`${stage.region} · ${stage.T.toFixed(0)} °C`}
+              />
+            ))}
+          </div>
+          <p className="trend-note">
+            <strong>Schematic.</strong> Grain shapes and sizes are generated from the
+            composition and a fixed seed, so the same link always draws the same picture — but
+            they are a cartoon of the constituents, not a micrograph. What is real is which
+            constituents appear, in what order, and at what temperature.
+          </p>
+          <p className="trend-note">
+            The blue grains are the phase that forms first; the striped field is the lamellar
+            mixture the remaining liquid or austenite turns into all at once at the invariant
+            temperature. Move the composition to the eutectic and the blue disappears — same two
+            phases as before, no primary grains, and a structure that behaves quite differently.
+          </p>
+        </div>
 
       </aside>
     </div>

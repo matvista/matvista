@@ -2626,3 +2626,28 @@ input[type='range'] {
   opacity: 0.75;
   margin-top: 0.25rem;
 }
+
+/* M5 — microstructure cartoons beside the phase diagram. */
+.ms-strip {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+.ms-fig {
+  margin: 0;
+  flex: 0 0 auto;
+  width: 130px;
+}
+.ms-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 3px;
+}
+.ms-caption {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}

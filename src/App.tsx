@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { AppNav } from './components/AppNav';
+import { Colophon } from './components/Colophon';
 import { ThemeToggle } from './components/ThemeToggle';
 import { findItemOrNull } from './nav';
 import { Landing } from './components/Landing';
@@ -100,6 +101,14 @@ export default function App() {
           </Suspense>
         )}
       </main>
+
+      {/* Outside `<main>` on purpose. A `<footer>` nested inside main, article,
+          section, aside or nav is a generic element rather than the
+          `contentinfo` landmark, so a screen-reader user gets nothing to jump
+          to and no signal that the page's content has ended. Landing page only:
+          the module pages end in a control panel rather than in prose, and
+          whether they want a foot is a separate question. */}
+      {tab === 'home' && <Colophon />}
     </div>
   );
 }

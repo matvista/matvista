@@ -323,6 +323,119 @@ already share `.mi-deriv-table`, so they can be lifted together later.
 
 ---
 
+## Landing page: a live figure, a figure index, and two more claims — shipped
+
+Not a module. The front page was elegant and static: five committed plates, six
+sections in identical form, and an opening sentence promising "something you
+drive rather than read" over six thousand pixels of nothing to drive. Four
+changes, in order of how much they matter.
+
+**The worked example is live.** `phase/eutectoid.ts` is new: the four Fe–C fixed
+points, the lever rule, and `eutectoidSplit(C0)` — pure arithmetic, no imports.
+`phase/systems.ts` now takes those constants *from* it and re-exports them, so
+all twelve existing import sites are unchanged and there is one 0.76 in the
+repository. The landing page imports the small file and gets a composition
+control for a few hundred bytes instead of the 3.15 kB gzipped `systems` chunk.
+
+The departure worth recording: review argued for `await import('../phase/systems')`
+on first drag instead, citing this file's own rule that anything past first
+interaction should be a dynamic import. It was not taken, and the reason is that
+the rule is about payload and the dynamic import is the *larger* payload — 3.15 kB
+fetched on the first drag against a few hundred inlined — while also putting a
+loading state on the one control whose whole job is to feel immediate. What the
+extraction costs is a second implementation of ten lines of lever arithmetic;
+`phase/eutectoid.test.ts` walks every 0.01 wt% across the domain holding it to
+`steelMicrostructure` at twelve decimal places, which is the same guard
+`figures.test.ts` gives the committed plates and which this repo already treats
+as sufficient.
+
+**A twelve-panel figure index.** The idea was already sitting in this file's
+backlog — "a tiny live-rendered SVG per card reusing each module's own drawing
+code" — and it turned out to be the answer to a different question: the twelve
+signature marks on the module index are hand-drawn abstractions, and the fix for
+"they read as smudges" is not to draw them bigger. `gen-module-figures.ts` now
+emits a fifth plate, 1224 × 724, four columns of three, one column per course
+group. Every panel is real output: 118 elements at their true table positions
+shaded by melting point where one is tabulated, `buildAtoms` on the FCC cell, `planePolygon`
+for (111), `concentrationAt` at 1, 4 and 9 hours, `PB_SN.boundaries`,
+`buildTtt('1080')`, `buildCurve` for three metals, `criticalCrackSize` for three
+alloys, `SEMICONDUCTORS` against the visible range, `computePattern` on α-iron,
+all 54 Ashby materials, and aluminium's Pourbaix map.
+
+Two departures. The corrosion panel was the galvanic series first, which is the
+module's headline and which reduces, at 266 units wide, to twenty-five identical
+horizontal rules — a barcode. The Pourbaix map survives the reduction because its
+meaning is in the shape: aluminium corrodes at *both* ends of the pH scale, and
+that is legible as three blocks. And the periodic-table panel was 9.6 kB as 118
+`<rect>` elements, more than the other eleven together; it is seven `<path>`s
+now — six melting-point bands and one for the eleven elements that have no
+tabulated melting point at all — at 2.65 kB, measured rather than estimated.
+The whole plate is 17.8 kB raw / 3.90 kB gzipped, held to a budget asserted in
+`figures.test.ts`, and imported only when the reader is approaching it. `lazy()`
+alone was not enough for that: React starts the import when the component
+renders, and the section is in the first render tree, so the chunk was going out
+on page load — off the critical path, but fetched by every visitor whether they
+scrolled or not. It mounts on its own `useReveal` now, and so do the three
+showcase plates that were there before it.
+
+**Two sections the README had and the page did not.** The Miller ↔ XRD agreement,
+with copper's (111) at d = 0.2087 nm and 2θ = 43.32°, and (100) — which is not
+missing for want of an angle: it has a d-spacing and Bragg solves for it at
+24.61°, and it is absent because the structure factor vanishes. Review caught
+both numbers wrong in the plan: 43.30 is the *literature* value the README
+quotes, and the first draft said (100) had no angle at all. Both are now asserted
+in `docs.test.ts` against `dSpacing`, `braggTwoTheta` and `isAllowed`, reading
+the lattice parameter and wavelength out of the data rather than restating them.
+And the six shareable links, with a test that checks every *parameter* against
+the data that defines it — `sys=fe-c` against `PHASE_SYSTEMS`, `geom=vessel`
+against `CRACK_GEOMETRIES` — because route names are stable and parameters are
+what rot.
+
+**A colophon, and three rule weights.** The colophon renders from `App.tsx`
+*outside* `<main>`: a `<footer>` nested inside main is a generic element rather
+than the `contentinfo` landmark, which is the whole point of having one. It is
+prose rather than four columns of links — the module index above is already the
+canonical list, and the page was on its way to carrying forty-eight links to
+twelve destinations. And every rule on the page used to be the same hairline;
+chapters now open on a 2px `--chrome-edge`, the one token already measured as a
+boundary, and two of the seven are set to a 44 rem reading measure between the
+full-width ones so the plates read as large. Not an alternation — the other five
+carry column grids or a plate that wants the room — and the comment in
+`landing.css` says so rather than claiming the tidier thing.
+
+Dropped along the way, and worth not rediscovering: a specimen strip of the
+twelve marks under the hero (a fourth copy of the same links), enlarging the
+marks (the wrong fix), § numerals on all seven sections (the hero and the facts
+band are not chapters), and re-tuning the showcase grid (it was already right).
+
+**Cost, and the thing that turned it around.** The pass first came out at
++4.78 kB gzipped on first paint, over a target this file's own rule says must
+not be waived. Looking for the fat found something better than fat: the three
+showcase plates further down the page are 34 kB of committed SVG markup, sitting
+in the one chunk every visitor parses before anything paints, for figures three
+screens below the fold. They are `lazy()` now, on the same reveal gate as the
+figure index — which is exactly what the deployment section already said to do
+and which nobody had applied to the plates that were there before.
+
+From `npm run build` against this branch's parent `43b5fd8`:
+
+| | before | after |
+|---|---|---|
+| index chunk | 301.23 kB / 85.22 kB gz | **282.83 kB / 83.55 kB gz** |
+| stylesheet | 37.93 kB / 7.91 kB gz | **42.72 kB / 8.70 kB gz** |
+| **first paint** | **93.13 kB gz** | **92.25 kB gz** |
+
+So the page gained a live instrument, twelve generated figures, two sections and
+a colophon, and first paint went **down by 0.88 kB gzipped**. Measured over the
+wire against `npm run preview` with the cache disabled: 92.93 kB for the
+document, the chunk and the stylesheet, first contentful paint at 108 ms, and
+nothing else requested at all until the reader scrolls.
+
+Four chunks are deferred behind the reveal gate — `ModuleIndexPlate` 3.90 kB
+gzipped, `XrdFigure` 2.94, `FatigueFigure` 2.64, `AshbyFigure` 1.89 — and each
+lands in a box that already holds its viewBox's aspect ratio, so cumulative
+layout shift over a full scroll of the page measures **0**.
+
 ## Deferred: Materials Project integration
 
 Browsing 150k+ computed materials is the one candidate that does not hold under
@@ -347,8 +460,9 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 301.1 kB | 85.2 kB | always |
-| stylesheet | 37.3 kB | 7.8 kB | always |
+| `index` — React, shell, landing page | 282.8 kB | 83.6 kB | always |
+| stylesheet | 42.7 kB | 8.7 kB | always |
+| the landing page's four deferred plates (`ModuleIndexPlate`, `XrdFigure`, `FatigueFigure`, `AshbyFigure`) | 51.3 kB | 11.4 kB total | as the reader approaches each |
 | `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
 | twelve per-module chunks | — | 72.5 kB total | one per module opened |
@@ -358,8 +472,10 @@ The 3D chunk is the one to find by size rather than by name: it was `geometry-*.
 `2218d7b` and is `OrbitControls-*.js` now, without any file being renamed.
 
 The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — the stylesheet is render-blocking, so both count — **92.96 kB gzipped**,
-measured at **93.6 kB over the wire** with the document and its headers. three.js is
+stylesheet — the stylesheet is render-blocking, so both count — **92.25 kB gzipped**,
+measured at **92.93 kB over the wire** with the document and its headers. The landing
+page's four plates below the fold are deliberately *not* in that number: each is a lazy
+chunk fetched when the reader approaches it. three.js is
 reachable from only three modules and is no part of first paint.
 
 A module of the existing kind costs **1.95–12.06 kB gzipped** (twelve of them total

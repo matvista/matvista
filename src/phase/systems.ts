@@ -5,7 +5,15 @@
  * taken from Callister & Rethwisch ch. 9. The *curves between* those fixed
  * points are fitted or linearised — documented per system — so read the
  * labelled points as data and the boundaries as interpolation.
+ *
+ * The Fe–C eutectoid's four fixed points and the lever rule itself live one
+ * file down, in `eutectoid.ts`, and are re-exported here so every existing
+ * import site is unchanged. The landing page needs exactly those four numbers
+ * and cannot afford this file to get them — see that file's header.
  */
+import { CEMENTITE_X, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, GAMMA_MAX, lever } from './eutectoid';
+
+export { CEMENTITE_X, EUTECTOID_T, EUTECTOID_X, FERRITE_MAX, GAMMA_MAX, lever };
 
 export interface PhaseAmount {
   name: string;
@@ -70,12 +78,6 @@ export interface PhaseSystem {
   regionLabels: { text: string; x: number; T: number }[];
   note: string;
   evaluate(x: number, T: number): PhasePoint;
-}
-
-/** Lever rule: fraction of the phase at C1, given overall C0 between C1 and C2. */
-export function lever(C0: number, C1: number, C2: number): number {
-  if (C2 === C1) return 1;
-  return (C2 - C0) / (C2 - C1);
 }
 
 function twoPhase(
@@ -285,13 +287,11 @@ export const PB_SN: PhaseSystem = {
 // peritectic region near pure iron is omitted — Callister notes δ-ferrite "is
 // of no technological importance".
 
-export const EUTECTOID_X = 0.76;
-export const EUTECTOID_T = 727;
+/* EUTECTOID_X, EUTECTOID_T, GAMMA_MAX, FERRITE_MAX and CEMENTITE_X are defined
+   in `eutectoid.ts` and re-exported at the top of this file. The eutectic pair
+   below stays here: nothing outside this module needs it. */
 export const FE_EUT_X = 4.3;
 export const FE_EUT_T = 1147;
-export const GAMMA_MAX = 2.14;
-export const FERRITE_MAX = 0.022;
-export const CEMENTITE_X = 6.7;
 const FE_MP = 1538;
 const FERRITE_RT = 0.005;
 const FEC_TMIN = 400;

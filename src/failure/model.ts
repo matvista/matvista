@@ -394,3 +394,94 @@ export function larsonMiller(T_K: number, hours: number, C = 20): number {
 export function ruptureHours(P: number, T_K: number, C = 20): number {
   return 10 ** (P / T_K - C);
 }
+
+/* ============================================ P4 — mean stress and Haigh == */
+
+/**
+ * Mean-stress criteria.
+ *
+ * **Citation, because it is not this repo's usual source.** Callister covers
+ * the mean-stress *effect* (fig. 8.24) but not these lines: modified Goodman,
+ * Gerber and Soderberg are Shigley's, and the yield line is Langer's. The S–N
+ * panel beside this one is fully reversed loading — the laboratory case, and
+ * almost never the service case. A bolt is preloaded, a pressure vessel cycles
+ * from zero, a spring works about a set deflection, and in every one of those
+ * a tensile mean stress eats fatigue capacity.
+ */
+export type MeanStressCriterion = 'goodman' | 'gerber' | 'soderberg' | 'yield';
+
+export const MEAN_STRESS_CRITERIA: MeanStressCriterion[] = [
+  'goodman',
+  'gerber',
+  'soderberg',
+  'yield',
+];
+
+/**
+ * The alternating stress a criterion still allows at mean stress `sigmaM`, MPa.
+ *
+ * A compressive mean stress is treated as not consuming any fatigue capacity:
+ * every line returns S_e at or below σ_m = 0. That is standard conservative
+ * practice rather than a claim that compression cannot matter — it closes
+ * cracks rather than opening them, and the criteria are calibrated on tension.
+ */
+export function allowableAmplitude(
+  criterion: MeanStressCriterion,
+  sigmaM: number,
+  Se: number,
+  Su: number,
+  Sy: number,
+): number {
+  if (sigmaM <= 0) return criterion === 'yield' ? Math.min(Se, Sy - sigmaM) : Se;
+  switch (criterion) {
+    case 'goodman':
+      return Math.max(0, Se * (1 - sigmaM / Su));
+    case 'gerber':
+      return Math.max(0, Se * (1 - (sigmaM / Su) ** 2));
+    case 'soderberg':
+      return Math.max(0, Se * (1 - sigmaM / Sy));
+    case 'yield':
+      return Math.max(0, Sy - sigmaM);
+  }
+}
+
+/**
+ * Factor of safety along a proportional load line — the point moves out from
+ * the origin, so σ_m and σ_a scale together and n multiplies both.
+ *
+ * Returns null where the point is at the origin and every criterion is
+ * satisfied by any factor at all.
+ */
+export function factorOfSafety(
+  criterion: MeanStressCriterion,
+  sigmaM: number,
+  sigmaA: number,
+  Se: number,
+  Su: number,
+  Sy: number,
+): number | null {
+  if (sigmaA <= 0 && sigmaM <= 0) return null;
+  if (criterion === 'yield') return Sy / (sigmaA + sigmaM);
+  if (sigmaM <= 0) return sigmaA > 0 ? Se / sigmaA : null;
+
+  if (criterion === 'gerber') {
+    // n·σa/Se + (n·σm/Su)² = 1, solved for n.
+    const A = sigmaA / Se;
+    const B = (sigmaM / Su) ** 2;
+    if (B === 0) return A > 0 ? 1 / A : null;
+    return (-A + Math.sqrt(A * A + 4 * B)) / (2 * B);
+  }
+  const denom = sigmaA / Se + sigmaM / (criterion === 'goodman' ? Su : Sy);
+  return denom > 0 ? 1 / denom : null;
+}
+
+/**
+ * Mean and alternating stress from a stress ratio R = σ_min/σ_max.
+ *
+ * R = −1 is fully reversed, which is what the S–N panel assumes; R = 0 is
+ * zero-to-tension, the pressure-vessel case; R → 1 is a static load with a
+ * vanishing ripple.
+ */
+export function fromStressRatio(R: number, sigmaMax: number): { m: number; a: number } {
+  return { m: (sigmaMax * (1 + R)) / 2, a: (sigmaMax * (1 - R)) / 2 };
+}

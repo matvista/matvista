@@ -113,6 +113,53 @@ describe('the Haigh panel', () => {
     expect(rowValue(t, /σ_m/)).toBe('0 / 300 MPa');
   });
 
+  /**
+   * The operating point must be inside the drawn box for every material at
+   * every slider position. It was off-canvas for four of the seven at the
+   * default peak stress — aluminium's marker sat at cy = −648 in a viewBox
+   * 320 tall, with the table beside it printing a factor.
+   */
+  it.each([
+    ['al', 300, 0],
+    ['al', 1200, 0.5],
+    ['cu', 300, 0],
+    ['brass', 600, 0.5],
+    ['steel1020', 1200, -1],
+    ['ti', 300, -1],
+    ['ni', 900, 0.9],
+  ])('%s at %s MPa, R=%s: the point is on the canvas', async (m, smax, R) => {
+    await renderPanel(`#/failure?panel=mean&m=${m}&smax=${smax}&R=${R}`);
+    const svg = document.querySelector('svg[aria-label^="Haigh diagram"]')!;
+    const box = svg.getAttribute('viewBox')!.split(' ').map(Number);
+    const c = svg.querySelector('circle')!;
+    const cx = Number(c.getAttribute('cx'));
+    const cy = Number(c.getAttribute('cy'));
+    expect(cx).toBeGreaterThanOrEqual(box[0]);
+    expect(cx).toBeLessThanOrEqual(box[0] + box[2]);
+    expect(cy).toBeGreaterThanOrEqual(box[1]);
+    expect(cy).toBeLessThanOrEqual(box[1] + box[3]);
+  });
+
+  /**
+   * The panel used to claim the criteria disagree and that the governing row
+   * was the interesting one. For every annealed material shipped here
+   * S_e > σ_y, so the Langer line governs at every load and no fatigue
+   * criterion ever binds. The panel now says that, and this pins it to the
+   * data rather than to the sentence.
+   */
+  it('explains that yielding governs, where the data says it does', async () => {
+    for (const id of ['al', 'cu', 'steel1020']) {
+      const mat = MECH_MATERIALS.find((m) => m.id === id)!;
+      const beh = getFatigueBehaviour(id);
+      expect(beh.ratio * mat.uts).toBeGreaterThan(mat.yield);
+      const t = await renderPanel(`#/failure?panel=mean&m=${id}&smax=300&R=0`);
+      expect(rowValue(t, /^Governing/)).toMatch(/Yield/);
+      expect(t.closest('section')!.textContent).toMatch(/yielding governs at every/);
+      cleanup();
+      window.location.hash = '';
+    }
+  });
+
   it('says whose criteria these are', async () => {
     await renderPanel('#/failure?panel=mean');
     expect(document.body.textContent).toMatch(/Shigley/);

@@ -339,7 +339,16 @@ export function screen(
 }
 
 export interface ScreenStage {
-  label: string;
+  /**
+   * Which limit this stage applied, and its value — not a formatted string.
+   *
+   * The label used to be built here as `${prefix} ${v}`, straight from the
+   * slider's unrounded value, so the funnel read "ρ ≤ 2.9999999999999996"
+   * six lines below a slider showing "3.00 Mg/m³". Formatting is the panel's
+   * job; the model reports what was applied.
+   */
+  limit: keyof AttributeLimits | null;
+  value: number | null;
   /** Materials still in play after this stage has been applied. */
   survivors: SelectionMaterial[];
 }
@@ -355,21 +364,14 @@ export function screenStages(
   materials: SelectionMaterial[],
   limits: AttributeLimits,
 ): ScreenStage[] {
-  const stages: ScreenStage[] = [{ label: 'All materials', survivors: materials }];
-  const steps: [keyof AttributeLimits, string][] = [
-    ['densityMax', 'ρ ≤'],
-    ['modulusMin', 'E ≥'],
-    ['strengthMin', 'σ ≥'],
-  ];
+  const stages: ScreenStage[] = [{ limit: null, value: null, survivors: materials }];
+  const steps: (keyof AttributeLimits)[] = ['densityMax', 'modulusMin', 'strengthMin'];
   const applied: AttributeLimits = {};
-  for (const [key, prefix] of steps) {
+  for (const key of steps) {
     const v = limits[key];
     if (v == null) continue;
     applied[key] = v;
-    stages.push({
-      label: `${prefix} ${v}`,
-      survivors: screen(materials, applied),
-    });
+    stages.push({ limit: key, value: v, survivors: screen(materials, applied) });
   }
   return stages;
 }

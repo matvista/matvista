@@ -10,7 +10,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { XRD_SAMPLES, XRD_SOURCES, computePattern } from '../xrd/diffraction';
-import { MIN_LINES_TO_INDEX, identifyLattice, indexPattern } from '../xrd/indexing';
+import {
+  MIN_LINES_TO_INDEX,
+  identifyLattice,
+  indexPattern,
+  unlabelledLines,
+} from '../xrd/indexing';
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children?: React.ReactNode }) => <div data-canvas>{children}</div>,
@@ -85,7 +90,45 @@ describe('the panel judges the reader’s choice the way the model does', () => 
   it('accepts fcc for silicon but names the lines it cannot explain', async () => {
     const box = await renderIndexing('#/xrd?sample=si&source=cu&guess=fcc');
     expect(box.textContent).toMatch(/Consistent, but incomplete/);
-    expect(box.textContent).toMatch(/\b4\b/);
+    // The sentence itself, not a bare digit: 2θ values contain a 4 too, so
+    // `/\b4\b/` over the whole panel passed on the wrong text entirely.
+    const si = XRD_SAMPLES.find((x) => x.id === 'si')!;
+    const unexplained = indexPattern(
+      computePattern(si.lattice, si.a, cu.lambda),
+      cu.lambda,
+      'fcc',
+    )!.unexplained;
+    expect(unexplained.length).toBeGreaterThan(0);
+    expect(box.textContent).toContain(`N = ${unexplained.join(', ')}`);
+  });
+
+  /**
+   * Simple cubic on a copper pattern used to be captioned "every line fits"
+   * while putting two angles on (100) and two on (200).
+   */
+  it('rules out simple cubic on an FCC pattern', async () => {
+    const box = await renderIndexing('#/xrd?sample=cu&source=cu&guess=sc');
+    expect(box.textContent).toMatch(/Ruled out/);
+    expect(box.textContent).not.toMatch(/Consistent/);
+  });
+
+  /** The worksheet's ratio column is relative to the FIRST line, by definition. */
+  it('divides sin²θ by the first line, not another', async () => {
+    const box = await renderIndexing('#/xrd?sample=cu&source=cu');
+    const rows = [...box.querySelectorAll('tbody tr')];
+    const ratios = rows.map((r) => Number(r.children[2].textContent));
+    expect(ratios[0]).toBeCloseTo(1, 3);
+    for (let i = 1; i < ratios.length; i++) expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
+  });
+
+  /** Each line gets its own a — a shared mean would hide a bad assignment. */
+  it('prints a per line, not one figure repeated', async () => {
+    const box = await renderIndexing('#/xrd?sample=si&source=cu&guess=fcc');
+    const rows = [...box.querySelectorAll('tbody tr')];
+    const as = rows.map((r) => r.children[5].textContent);
+    const si = XRD_SAMPLES.find((x) => x.id === 'si')!;
+    const model = indexPattern(computePattern(si.lattice, si.a, cu.lambda), cu.lambda, 'fcc')!;
+    model.lines.forEach((l, i) => expect(as[i]).toBe(l.a.toFixed(4)));
   });
 
   it('accepts diamond for silicon outright', async () => {
@@ -114,14 +157,23 @@ describe('the panel judges the reader’s choice the way the model does', () => 
     expect(box.textContent).not.toMatch(/cannot decide/);
   });
 
-  /** Too few lines to try at all: the panel refuses rather than guessing. */
+  /**
+   * Too few lines to try at all: the panel refuses rather than guessing. No
+   * escape hatch — the earlier version returned early if it could not find a
+   * short pattern, which would have disabled itself silently had the data
+   * moved.
+   */
   it('refuses a pattern with fewer than five lines', async () => {
-    const short = XRD_SAMPLES.find(
-      (s) => computePattern(s.lattice, s.a, XRD_SOURCES.find((x) => x.id === 'cr')!.lambda).length <
-        MIN_LINES_TO_INDEX,
+    const cr = XRD_SOURCES.find((x) => x.id === 'cr')!;
+    const short = XRD_SAMPLES.filter(
+      (s) => unlabelledLines(computePattern(s.lattice, s.a, cr.lambda)).length < MIN_LINES_TO_INDEX,
     );
-    if (short == null) return;
-    const box = await renderIndexing(`#/xrd?sample=${short.id}&source=cr`);
-    expect(box.textContent).toMatch(/does not become decisive/);
+    expect(short.length, 'no sample gives fewer than five lines under Cr Kα').toBeGreaterThan(0);
+    for (const s of short) {
+      const box = await renderIndexing(`#/xrd?sample=${s.id}&source=cr`);
+      expect(box.textContent, s.id).toMatch(/does not become decisive/);
+      cleanup();
+      window.location.hash = '';
+    }
   });
 });

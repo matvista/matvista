@@ -28,9 +28,59 @@ describe('the endpoints are exact', () => {
     expect(allowableAmplitude('goodman', Sy, Se, Su, Sy)).toBeGreaterThan(0);
   });
 
-  it('the yield line runs from S_y to zero', () => {
-    expect(allowableAmplitude('yield', 0, Se, Su, Sy)).toBeCloseTo(Math.min(Se, Sy), 12);
+  /**
+   * The Langer line is not a fatigue criterion and does not pass through S_e:
+   * it is σa = S_y − |σm|, reaching S_y at zero mean stress and zero at ±S_y.
+   *
+   * The assertion this replaces read `toBeCloseTo(Math.min(Se, Sy))` — it
+   * restated the implementation's own expression, and its name described
+   * something it did not check. It passed while the line jumped 190 MPa across
+   * σm = 0 for titanium.
+   */
+  it('the yield line runs from S_y to zero, symmetric about the axis', () => {
+    expect(allowableAmplitude('yield', 0, Se, Su, Sy)).toBeCloseTo(Sy, 12);
     expect(allowableAmplitude('yield', Sy, Se, Su, Sy)).toBeCloseTo(0, 12);
+    expect(allowableAmplitude('yield', -Sy, Se, Su, Sy)).toBeCloseTo(0, 12);
+    for (const sm of [50, 200, 450]) {
+      expect(allowableAmplitude('yield', -sm, Se, Su, Sy)).toBeCloseTo(
+        allowableAmplitude('yield', sm, Se, Su, Sy),
+        12,
+      );
+    }
+  });
+
+  /** Continuous across σm = 0 — every line, including the yield line. */
+  it.each(MEAN_STRESS_CRITERIA)('%s is continuous at zero mean stress', (c) => {
+    const eps = 1e-6;
+    const below = allowableAmplitude(c, -eps, Se, Su, Sy);
+    const at = allowableAmplitude(c, 0, Se, Su, Sy);
+    const above = allowableAmplitude(c, eps, Se, Su, Sy);
+    expect(below).toBeCloseTo(at, 4);
+    expect(above).toBeCloseTo(at, 4);
+  });
+
+  /**
+   * The line and the factor are separate derivations, so they must agree on
+   * the compressive side too — that is where they diverged.
+   */
+  it.each([-50, -200, -450])('the yield factor matches its own line at σm = %s', (sm) => {
+    const sa = allowableAmplitude('yield', sm, Se, Su, Sy);
+    expect(factorOfSafety('yield', sm, sa, Se, Su, Sy)!).toBeCloseTo(1, 9);
+  });
+
+  /**
+   * Past S_u, Goodman's bracket goes negative and the clamp is what stops a
+   * negative allowable amplitude reaching the panel. Reachable: aluminium has
+   * S_u = 90 MPa and the peak-stress slider runs to 1200.
+   */
+  it.each([
+    ['goodman', Su * 1.5],
+    ['goodman', Su * 4],
+    ['gerber', Su * 2],
+    ['soderberg', Sy * 3],
+    ['yield', Sy * 2],
+  ])('%s never returns a negative amplitude at σm = %s', (c, sm) => {
+    expect(allowableAmplitude(c as MeanStressCriterion, sm as number, Se, Su, Sy)).toBe(0);
   });
 });
 

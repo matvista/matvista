@@ -89,7 +89,11 @@ export interface IndexingResult {
    * the angles. A right one makes them agree to rounding.
    */
   spread: number;
-  /** False when the ratios demand an N this lattice forbids. */
+  /**
+   * False when the ratios demand an N this lattice forbids, when two lines
+   * are driven onto the same reflection, or when the ratios are too far from
+   * whole numbers to be rounded honestly.
+   */
   consistent: boolean;
   /**
    * Reflections this lattice allows, inside the range of lines observed, that
@@ -113,17 +117,26 @@ export function indexPattern(
   lattice: XrdLattice,
 ): IndexingResult | null {
   if (peaks.length === 0) return null;
-  const sorted = [...peaks].sort((p, q) => p.twoTheta - q.twoTheta);
+  // The merged trace, so the worksheet and the assignment see the same lines.
+  const sorted = unlabelledLines(peaks);
   const allowed = new Set(allowedNSequence(lattice, 200));
   const N1 = Math.min(...allowed);
 
   /**
    * N is *derived from the ratio*, not read off a list by position:
    * N_i = round(N₁ · sin²θ_i / sin²θ₁). Taking the i-th allowed value for the
-   * i-th line instead assumes no reflection is ever missing from the trace,
-   * and reflections do go missing — beyond the 2θ window, or too weak to
-   * measure — which put the whole assignment out by one and made a correct
-   * lattice look wrong. This is also what a student actually does.
+   * i-th line instead breaks whenever any reflection after the first is
+   * missing from the trace, which happens at the high-angle end where the 2θ
+   * window cuts off. This is also what a student actually does.
+   *
+   * **It does not remove the assumption, it relocates it.** N₁ is pinned to
+   * the lowest allowed reflection, so the method still assumes the *first*
+   * line observed is that reflection. Lose the first line and the answer is
+   * not uncertain but confidently wrong — every shipped sample then indexes
+   * as simple cubic with a cell about half the true size, with nothing
+   * unexplained and no ambiguity reported. The 2θ window truncates the
+   * high-angle end rather than the low, so this is not reachable here; it is
+   * asserted in the tests so the limit is recorded rather than assumed away.
    */
   const sin2 = sorted.map((p) => Math.sin((p.twoTheta * Math.PI) / 360) ** 2);
   let worstRatioError = 0;
@@ -143,8 +156,18 @@ export function indexPattern(
     };
   });
 
-  // A hypothesis that needs a forbidden reflection is not a hypothesis.
-  const consistent = lines.every((l) => allowed.has(l.N));
+  /**
+   * A hypothesis has to survive three things, not one.
+   *
+   * Requiring only that each N is *allowed* let simple cubic "explain" a
+   * copper pattern by giving two different angles the same reflection —
+   * (100) twice, (200) twice — with the derived a spanning 12% and the panel
+   * captioned "every line fits". An assignment that maps two lines to one
+   * plane is not an assignment.
+   */
+  const strictlyIncreasing = lines.every((l, i) => i === 0 || l.N > lines[i - 1].N);
+  const consistent =
+    lines.every((l) => allowed.has(l.N)) && strictlyIncreasing && worstRatioError <= 0.12;
   const seen = new Set(lines.map((l) => l.N));
   const lo = Math.min(...lines.map((l) => l.N));
   const hi = Math.max(...lines.map((l) => l.N));
@@ -214,17 +237,40 @@ export function identifyLattice(
   return { best: results[0], candidates: results, ambiguousWith };
 }
 
+/** Two reflections closer than this in 2θ are one line on a trace. */
+const COINCIDENT_2THETA = 1e-6;
+
 /**
- * The peaks a reader would actually see, for a sample whose identity is
- * hidden — the same list `computePattern` gives, with the labels withheld.
+ * The lines a reader would actually measure.
+ *
+ * `computePattern` emits one entry per {hkl} *family*, and distinct families
+ * can share an N — (300) and (221) both give 9 — so they arrive as two peaks
+ * at identical 2θ. On a trace that is one line. Polonium under Cu Kα showed
+ * fifteen rows where a reader can count fourteen, with two identical
+ * worksheet rows and a duplicate React key, until this merged them.
  */
 export function unlabelledLines(peaks: Peak[]): { twoTheta: number; intensity: number }[] {
-  return [...peaks]
-    .sort((p, q) => p.twoTheta - q.twoTheta)
-    .map((p) => ({ twoTheta: p.twoTheta, intensity: p.intensity }));
+  const out: { twoTheta: number; intensity: number }[] = [];
+  for (const p of [...peaks].sort((a, b) => a.twoTheta - b.twoTheta)) {
+    const last = out[out.length - 1];
+    if (last != null && Math.abs(p.twoTheta - last.twoTheta) < COINCIDENT_2THETA) {
+      // Coincident families superimpose; a detector sees the sum.
+      last.intensity += p.intensity;
+      continue;
+    }
+    out.push({ twoTheta: p.twoTheta, intensity: p.intensity });
+  }
+  return out;
 }
 
-/** Recompute 2θ from an indexed line, to check the worksheet closes. */
+/**
+ * Recompute 2θ from an indexed line — the worksheet closing on itself.
+ *
+ * Was dead code with a comment claiming a purpose nothing carried out. It is
+ * now the round-trip assertion in `indexing.test.ts`: take the a a hypothesis
+ * derives, put its N back through Bragg, and land on the angle the line was
+ * measured at.
+ */
 export function twoThetaFor(a: number, N: number, lambda: number): number | null {
   for (let h = 0; h <= 12; h++) {
     for (let k = 0; k <= h; k++) {

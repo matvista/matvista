@@ -10,6 +10,7 @@ import {
   type SelectionMaterial,
   screenStages,
   type AttributeLimits,
+  paretoFront,
 } from '../selection/materials';
 
 const W = 760;
@@ -36,6 +37,18 @@ type YProp = 'modulus' | 'strength';
 
 const Y_PROPS: YProp[] = ['modulus', 'strength'];
 
+/** Formatting for the funnel — the model reports the value, not the wording. */
+const LIMIT_LABEL: Record<string, string> = {
+  densityMax: 'ρ ≤',
+  modulusMin: 'E ≥',
+  strengthMin: 'σ ≥',
+};
+const LIMIT_UNIT: Record<string, string> = {
+  densityMax: 'Mg/m³',
+  modulusMin: 'GPa',
+  strengthMin: 'MPa',
+};
+
 export function AshbyChart() {
   const [yProp, setYProp] = useRouteEnum<YProp>('y', 'modulus', Y_PROPS);
   const [indexId, setIndexId] = useRouteString('index', 'e12-rho');
@@ -56,6 +69,7 @@ export function AshbyChart() {
   const screenOn = screenMode === 'on';
   const [limDPos, setLimDPos] = useRouteNumber('limD', 1, 0, 1);
   const [limYPos, setLimYPos] = useRouteNumber('limY', 0, 0, 1);
+  const [frontMode, setFrontMode] = useRouteEnum<'on' | 'off'>('front', 'off', ['on', 'off']);
 
   const applicable = INDICES.filter((i) => i.property === yProp);
   const index = applicable.find((i) => i.id === indexId) ?? applicable[0];
@@ -82,6 +96,17 @@ export function AshbyChart() {
       ? { densityMax, modulusMin: yFloor }
       : { densityMax, strengthMin: yFloor }
     : {};
+  /**
+   * The trade-off front against a second index. Ranking on one index gives an
+   * order; ranking on two gives a *frontier*, and the materials on it are the
+   * ones no other material beats on both counts. A weighted sum would need a
+   * number nobody has — see `paretoFront`.
+   */
+  const secondIndex = applicable.find((i) => i.id !== index.id) ?? null;
+  const front =
+    frontMode === 'on' && secondIndex != null
+      ? new Set(paretoFront(visible, index, secondIndex).map((m) => m.name))
+      : null;
   const stages = screenStages(visible, limits);
   const survivors = stages[stages.length - 1].survivors;
   const survivorNames = new Set(survivors.map((m) => m.name));
@@ -162,6 +187,14 @@ export function AshbyChart() {
             />
             Attribute limits
           </label>
+          <label className="ab-screen-toggle">
+            <input
+              type="checkbox"
+              checked={frontMode === 'on'}
+              onChange={(e) => setFrontMode(e.target.checked ? 'on' : 'off')}
+            />
+            Trade-off front
+          </label>
           <span className="drag-hint">Click any point for detail</span>
         </div>
 
@@ -200,14 +233,35 @@ export function AshbyChart() {
           </div>
         )}
 
+        {front != null && secondIndex != null && (
+          <p className="ab-funnel">
+            <strong>Trade-off front.</strong> {front.size} of {visible.length} materials are on
+            the frontier of {index.label} against {secondIndex.label} — nothing else beats them
+            on both at once. Everything inside the frontier is beaten outright by something on
+            it, whatever weighting you would have chosen; the ones on it are where a real choice
+            has to be made, and no arithmetic makes it for you.
+          </p>
+        )}
+
         {screenOn && (
           <p className="ab-funnel">
             <strong>Screen, then rank.</strong>{' '}
             {stages.map((st, i) => (
-              <span key={st.label}>
+              <span key={st.limit ?? 'all'}>
                 {i > 0 && ' → '}
                 {st.survivors.length}
-                {i > 0 && <span className="ab-funnel-lim"> after {st.label}</span>}
+                {st.limit != null && (
+                  <span className="ab-funnel-lim">
+                    {' '}
+                    after {LIMIT_LABEL[st.limit]}{' '}
+                    {st.limit === 'densityMax'
+                      ? st.value!.toFixed(2)
+                      : st.value! < 1
+                        ? st.value!.toFixed(3)
+                        : st.value!.toFixed(0)}{' '}
+                    {LIMIT_UNIT[st.limit]}
+                  </span>
+                )}
               </span>
             ))}
             {' → '}
@@ -286,6 +340,9 @@ export function AshbyChart() {
                 aria-label={m.name}
                 opacity={screenedOut ? 0.18 : 1}
               >
+                {front?.has(m.name) && (
+                  <circle cx={x} cy={y} r={9} className="ab-front-ring" fill="none" />
+                )}
                 <Marker shape={style.shape} x={x} y={y} r={isSel ? 8 : 5.5} color={style.color} selected={isSel} />
               </g>
             );

@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen as rtl, waitFor } from '@testing-library/react';
-import { SELECTION_MATERIALS, screenStages } from '../selection/materials';
+import { INDICES, SELECTION_MATERIALS, paretoFront, screenStages } from '../selection/materials';
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children?: React.ReactNode }) => <div data-canvas>{children}</div>,
@@ -117,9 +117,111 @@ describe('screening is visibly a different operation from ranking', () => {
     expect(dimmed).toBeLessThan(SELECTION_MATERIALS.length);
   });
 
+  /**
+   * The rectangle *is* the claim "screening is a region", and its width,
+   * height and anchor were all ungated — only that they were positive. The
+   * axes give the plot's own frame, so the box can be checked against the
+   * slider positions without reaching into the component's constants.
+   */
+  it.each([
+    [0.25, 0.2],
+    [0.5, 0.4],
+    [0.9, 0.05],
+  ])('the box matches limD=%s limY=%s exactly', async (limD, limY) => {
+    await renderChart(`#/selection?screen=on&limD=${limD}&limY=${limY}&y=modulus`);
+    const svg = document.querySelector('svg.ss-plot')!;
+    const axes = [...svg.querySelectorAll('line.dd-axis')];
+    const xs = axes.map((l) => [Number(l.getAttribute('x1')), Number(l.getAttribute('x2'))]);
+    const ys = axes.map((l) => [Number(l.getAttribute('y1')), Number(l.getAttribute('y2'))]);
+    const left = Math.min(...xs.flat());
+    const right = Math.max(...xs.flat());
+    const top = Math.min(...ys.flat());
+    const bottom = Math.max(...ys.flat());
+
+    const box = document.querySelector('rect.ab-limit-box')!;
+    // `lx(fromPos(p))` is exactly `left + p·plotW`, so the box's right edge is
+    // the slider position, and its floor is the y-slider position.
+    expect(Number(box.getAttribute('x'))).toBeCloseTo(left, 6);
+    expect(Number(box.getAttribute('y'))).toBeCloseTo(top, 6);
+    expect(Number(box.getAttribute('width'))).toBeCloseTo((limD as number) * (right - left), 6);
+    expect(Number(box.getAttribute('height'))).toBeCloseTo(
+      (1 - (limY as number)) * (bottom - top),
+      6,
+    );
+  });
+
+  /**
+   * The funnel used to print the slider's raw float — "ρ ≤ 2.9999999999999996"
+   * six lines under a slider reading "3.00 Mg/m³".
+   */
+  it('prints rounded limits, matching the sliders above it', async () => {
+    await renderChart('#/selection?screen=on&limD=0.5&limY=0.3&y=modulus');
+    const text = document.querySelector('.ab-funnel')!.textContent!;
+    expect(text).not.toMatch(/\d\.\d{5,}/);
+    // And the value it prints is the one the slider label shows.
+    const slider = [...document.querySelectorAll('.fa-slider span')].find((n) =>
+      /Density at most/.test(n.textContent ?? ''),
+    )!;
+    const shown = slider.textContent!.match(/([\d.]+)\s*Mg/)![1];
+    expect(text).toContain(shown);
+  });
+
   it('says a limit and an index are different things', async () => {
     await renderChart('#/selection?screen=on&limD=0.5&limY=0.3');
     expect(document.querySelector('.ab-funnel')!.textContent).toMatch(/allowed/);
     expect(document.querySelector('.ab-funnel')!.textContent).toMatch(/better/);
+  });
+});
+
+describe('the trade-off front', () => {
+  /**
+   * `paretoFront` shipped with a full test suite and no caller at all — the
+   * commit that introduced it said "not yet imported by a component" and the
+   * reader half never imported it. It is on the chart now, and this is the
+   * gate that says so.
+   */
+  it('is off by default', async () => {
+    await renderChart('#/selection');
+    expect((rtl.getByLabelText('Trade-off front') as HTMLInputElement).checked).toBe(false);
+    expect(document.querySelectorAll('circle.ab-front-ring')).toHaveLength(0);
+  });
+
+  it('rings exactly the materials the model puts on the front', async () => {
+    await renderChart('#/selection?front=on&y=modulus&index=e12-rho');
+    const applicable = INDICES.filter((i) => i.property === 'modulus');
+    const a = applicable.find((i) => i.id === 'e12-rho')!;
+    const b = applicable.find((i) => i.id !== 'e12-rho')!;
+    const expected = paretoFront(SELECTION_MATERIALS, a, b);
+    expect(expected.length).toBeGreaterThan(0);
+    expect(expected.length).toBeLessThan(SELECTION_MATERIALS.length);
+    expect(document.querySelectorAll('circle.ab-front-ring')).toHaveLength(expected.length);
+  });
+
+  it('reports the count and says what a frontier means', async () => {
+    await renderChart('#/selection?front=on&y=modulus&index=e12-rho');
+    const text = [...document.querySelectorAll('.ab-funnel')]
+      .map((n) => n.textContent)
+      .join(' ');
+    expect(text).toMatch(/Trade-off front/);
+    expect(text).toMatch(/beats them on both/);
+  });
+
+  it('changes with the index it is measured against', async () => {
+    await renderChart('#/selection?front=on&y=modulus&index=e12-rho');
+    const a = document.querySelectorAll('circle.ab-front-ring').length;
+    cleanup();
+    window.location.hash = '';
+    await renderChart('#/selection?front=on&y=strength&index=s23-rho');
+    const b = document.querySelectorAll('circle.ab-front-ring').length;
+    // Different property, different frontier — not necessarily a different
+    // size, so assert the membership rather than the count.
+    const applicable = INDICES.filter((i) => i.property === 'strength');
+    const expected = paretoFront(
+      SELECTION_MATERIALS,
+      applicable.find((i) => i.id === 's23-rho') ?? applicable[0],
+      applicable.find((i) => i.id !== (applicable.find((x) => x.id === 's23-rho') ?? applicable[0]).id)!,
+    );
+    expect(b).toBe(expected.length);
+    expect(a).toBeGreaterThan(0);
   });
 });

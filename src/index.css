@@ -2651,3 +2651,8 @@ input[type='range'] {
   opacity: 0.85;
   margin-top: 0.25rem;
 }
+.ab-front-ring {
+  stroke: #eda100;
+  stroke-width: 2;
+  opacity: 0.9;
+}

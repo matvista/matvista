@@ -1102,8 +1102,17 @@ function MeanStressPanel() {
   const W = 560;
   const H = 320;
   const P = { l: 62, r: 18, t: 18, b: 48 };
-  const xMax = Su * 1.05;
-  const yMax = Math.max(Se, Sy) * 1.15;
+  /**
+   * The axes have to contain the operating point. Fixing them to S_u and
+   * max(S_e, S_y) left the marker off the canvas for four of the seven
+   * materials at ordinary slider settings — selecting aluminium at the
+   * default 300 MPa drew a diagram with no visible point and no visible load
+   * line, beside a table printing a factor of 0.17.
+   */
+  const xMax = Math.max(Su * 1.05, sigmaM * 1.12, 1);
+  const yMax = Math.max(Se, Sy) * 1.15 > sigmaA * 1.12
+    ? Math.max(Se, Sy) * 1.15
+    : sigmaA * 1.12;
   const px = (v: number) => P.l + (v / xMax) * (W - P.l - P.r);
   const py = (v: number) => H - P.b - (v / yMax) * (H - P.t - P.b);
 
@@ -1202,9 +1211,18 @@ function MeanStressPanel() {
       <p className="trend-note">
         Slide R from −1 towards 1 and watch the point swing towards the σ_m axis while the
         peak stress stays put: the same maximum stress becomes far more damaging as the mean
-        rises. Soderberg runs to σ_y rather than S<sub>u</sub>, so it guards against yielding
-        and Goodman does not — which is why the two can disagree about whether a part is safe,
-        and why the governing row is worth reading rather than any single number.
+        rises.
+      </p>
+      <p className="trend-note">
+        <strong>Notice what governs here.</strong> Every material in this module is annealed,
+        so its yield strength is low relative to its tensile strength — and S<sub>e</sub> ≈{' '}
+        {beh.ratio}·S<sub>u</sub> comes out {Se > Sy ? 'above' : 'below'} σ_y at{' '}
+        {Se.toFixed(0)} against {Sy.toFixed(0)} MPa. Where S<sub>e</sub> exceeds σ_y the Langer
+        line sits below all three fatigue criteria everywhere, so <em>yielding governs at every
+        load</em> and the fatigue lines never bind. That is not a quirk of the plot: an annealed
+        metal fails by yielding long before it fails by fatigue, and the reason the three
+        criteria are worth arguing about is hardened alloys, where σ_y is high and
+        S<sub>e</sub> is not.
       </p>
     </section>
   );

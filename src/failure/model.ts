@@ -432,7 +432,23 @@ export function allowableAmplitude(
   Su: number,
   Sy: number,
 ): number {
-  if (sigmaM <= 0) return criterion === 'yield' ? Math.min(Se, Sy - sigmaM) : Se;
+  /**
+   * The Langer yield line first, because it is the one line here that is not a
+   * fatigue criterion and does not pass through S_e.
+   *
+   *     σa = S_y − |σm|
+   *
+   * symmetric about σm = 0 and reaching zero at ±S_y. An earlier version
+   * returned `min(S_e, S_y − σm)` on the compressive side, which made the line
+   * jump 190 MPa across σm = 0 for titanium and — worse — disagreed with
+   * `factorOfSafety`, which never consulted that branch. Two derivations of
+   * one line contradicting each other, in the panel whose subject is criteria
+   * disagreeing.
+   */
+  if (criterion === 'yield') return Math.max(0, Sy - Math.abs(sigmaM));
+  // Compression does not consume fatigue capacity: cracks close rather than
+  // open, and the three criteria are calibrated in tension.
+  if (sigmaM <= 0) return Se;
   switch (criterion) {
     case 'goodman':
       return Math.max(0, Se * (1 - sigmaM / Su));
@@ -440,9 +456,10 @@ export function allowableAmplitude(
       return Math.max(0, Se * (1 - (sigmaM / Su) ** 2));
     case 'soderberg':
       return Math.max(0, Se * (1 - sigmaM / Sy));
-    case 'yield':
-      return Math.max(0, Sy - sigmaM);
   }
+  // Unreachable: `yield` returned above, and the three fatigue criteria are
+  // exhausted by the switch.
+  return Se;
 }
 
 /**
@@ -461,7 +478,8 @@ export function factorOfSafety(
   Sy: number,
 ): number | null {
   if (sigmaA <= 0 && sigmaM <= 0) return null;
-  if (criterion === 'yield') return Sy / (sigmaA + sigmaM);
+  // Matches the line above: on σa = S_y − |σm| this returns exactly 1.
+  if (criterion === 'yield') return Sy / (sigmaA + Math.abs(sigmaM));
   if (sigmaM <= 0) return sigmaA > 0 ? Se / sigmaA : null;
 
   if (criterion === 'gerber') {

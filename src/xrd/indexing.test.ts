@@ -3,10 +3,13 @@ import { XRD_SAMPLES, XRD_SOURCES, computePattern } from './diffraction';
 import {
   MIN_LINES_TO_INDEX,
   allowedNSequence,
+  hklForN,
   identifyLattice,
   indexPattern,
+  twoThetaFor,
   unlabelledLines,
 } from './indexing';
+import { isAllowed } from './diffraction';
 
 const cu = XRD_SOURCES.find((s) => s.id === 'cu')!;
 
@@ -216,5 +219,158 @@ describe('the absent reflections are half the argument', () => {
     expect(identifyLattice(peaks, cuSrc.lambda)!.candidates.map((c) => c.lattice)).not.toContain(
       'bcc',
     );
+  });
+});
+
+describe('an assignment has to be an assignment', () => {
+  const src = XRD_SOURCES.find((s) => s.id === 'cu')!;
+
+  /**
+   * Simple cubic "explained" a copper pattern by putting two different angles
+   * on (100) and two more on (200), with the derived a spanning 12%, and the
+   * panel captioned it "every line fits". Allowed-ness is not enough: the
+   * assignment must be one-to-one and ordered.
+   */
+  it('rejects a hypothesis that puts two lines on one reflection', () => {
+    const cu = XRD_SAMPLES.find((x) => x.id === 'cu')!;
+    const peaks = computePattern(cu.lattice, cu.a, src.lambda);
+    const asSc = indexPattern(peaks, src.lambda, 'sc')!;
+    const Ns = asSc.lines.map((l) => l.N);
+    expect(new Set(Ns).size).toBeLessThan(Ns.length); // it really does collide
+    expect(asSc.consistent).toBe(false);
+    expect(identifyLattice(peaks, src.lambda)!.candidates.map((c) => c.lattice)).not.toContain('sc');
+  });
+
+  it('rejects ratios too far from whole numbers to round honestly', () => {
+    const cu = XRD_SAMPLES.find((x) => x.id === 'cu')!;
+    const peaks = computePattern(cu.lattice, cu.a, src.lambda);
+    expect(indexPattern(peaks, src.lambda, 'sc')!.ratioError).toBeGreaterThan(0.12);
+    expect(indexPattern(peaks, src.lambda, 'fcc')!.ratioError).toBeLessThan(1e-9);
+  });
+
+  /**
+   * Distinct {hkl} families can share an N — (300) and (221) both give 9 — so
+   * `computePattern` emits two peaks at the same angle. A trace shows one
+   * line, and the worksheet must too.
+   */
+  it('merges reflections that arrive at the same angle', () => {
+    const po = XRD_SAMPLES.find((x) => x.id === 'po')!;
+    const peaks = computePattern(po.lattice, po.a, src.lambda);
+    const lines = unlabelledLines(peaks);
+    expect(lines.length).toBeLessThan(peaks.length);
+    for (let i = 1; i < lines.length; i++) {
+      expect(lines[i].twoTheta).toBeGreaterThan(lines[i - 1].twoTheta);
+    }
+    // Coincident families superimpose rather than one being dropped. Find the
+    // merged line rather than assuming where it is.
+    const coincident = lines.find(
+      (l) => peaks.filter((p) => Math.abs(p.twoTheta - l.twoTheta) < 1e-6).length > 1,
+    )!;
+    expect(coincident).toBeDefined();
+    const parts = peaks.filter((p) => Math.abs(p.twoTheta - coincident.twoTheta) < 1e-6);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(coincident.intensity).toBeCloseTo(parts.reduce((t, p) => t + p.intensity, 0), 9);
+  });
+
+  it('has strictly ascending lines for every shipped sample and anode', () => {
+    for (const s of XRD_SAMPLES) {
+      for (const source of XRD_SOURCES) {
+        const lines = unlabelledLines(computePattern(s.lattice, s.a, source.lambda));
+        for (let i = 1; i < lines.length; i++) {
+          expect(lines[i].twoTheta, `${s.id}/${source.id}`).toBeGreaterThan(lines[i - 1].twoTheta);
+        }
+      }
+    }
+  });
+});
+
+describe('the method’s own limits, recorded', () => {
+  const src = XRD_SOURCES.find((s) => s.id === 'cu')!;
+
+  /**
+   * The ratio method does not remove the missing-reflection assumption, it
+   * moves it to the *first* line: N₁ is pinned to the lowest allowed
+   * reflection, so losing the first line shifts every assignment.
+   *
+   * With only an allowed-ness check that produced a confident wrong answer —
+   * simple cubic at about half the true cell, nothing unexplained, no
+   * ambiguity reported. Requiring the assignment to be one-to-one and ordered
+   * turns that into a refusal, because the shifted ratios drive two lines onto
+   * the same reflection. The limit is still there; it now announces itself.
+   */
+  it.each(['cu', 'al', 'w', 'fe', 'si'])('%s: a missing first line is refused, not guessed', (id) => {
+    const s = XRD_SAMPLES.find((x) => x.id === id)!;
+    const peaks = computePattern(s.lattice, s.a, src.lambda);
+    const full = identifyLattice(peaks, src.lambda);
+    expect(full).not.toBeNull();
+
+    const truncated = peaks.slice(1);
+    const v = identifyLattice(truncated, src.lambda);
+    if (v == null) return; // every hypothesis rejected — the honest outcome
+    // If anything does survive, it must not be a confident wrong answer.
+    expect(v.best.a).toBeGreaterThan(s.a * 0.9);
+  });
+
+  it('needs five lines, and that number is the one it declares', () => {
+    expect(MIN_LINES_TO_INDEX).toBe(5);
+    const peaks = computePattern('fcc', 0.36, src.lambda);
+    expect(identifyLattice(peaks.slice(0, 4), src.lambda)).toBeNull();
+    expect(identifyLattice(peaks.slice(0, 5), src.lambda)).not.toBeNull();
+  });
+
+  /** The sequence has to reach far enough for the high-N samples. */
+  it('enumerates far enough to cover the longest pattern', () => {
+    expect(allowedNSequence('sc', 30).length).toBe(30);
+    expect(allowedNSequence('diamond', 20).length).toBe(20);
+    // Thirty simple-cubic values reach N = 35, which needs h up to 5 with
+    // (5,3,1); a smaller enumeration bound silently truncates the sequence.
+    expect(Math.max(...allowedNSequence('sc', 30))).toBe(35);
+    expect(allowedNSequence('bcc', 20).length).toBe(20);
+  });
+
+  it('never labels a line with a forbidden plane', () => {
+    for (const l of ['sc', 'bcc', 'fcc', 'diamond'] as const) {
+      for (const N of allowedNSequence(l, 15)) {
+        const hkl = hklForN(l, N)!;
+        expect(hkl, `${l} N=${N}`).not.toBeNull();
+        expect(isAllowed(l, hkl[0], hkl[1], hkl[2]), `${l} ${hkl}`).toBe(true);
+        expect(hkl[0] ** 2 + hkl[1] ** 2 + hkl[2] ** 2).toBe(N);
+      }
+    }
+  });
+
+  /**
+   * `spread` is printed as a percentage, so it has to be relative — an
+   * absolute spread in nanometres would read as a wildly different number
+   * under the same label. Chained to the lines it summarises rather than
+   * compared between patterns, since two patterns do not have the same lines.
+   */
+  it.each(['sc', 'bcc', 'fcc', 'diamond'] as const)('spread is relative, under %s', (lattice) => {
+    const cu = XRD_SAMPLES.find((x) => x.id === 'cu')!;
+    const r = indexPattern(computePattern(cu.lattice, cu.a, src.lambda), src.lambda, lattice)!;
+    const mean = r.lines.reduce((t, l) => t + l.a, 0) / r.lines.length;
+    const expected = Math.max(...r.lines.map((l) => Math.abs(l.a - mean) / mean));
+    expect(r.spread).toBeCloseTo(expected, 12);
+    expect(r.a).toBeCloseTo(mean, 12);
+  });
+
+  it('counts as unexplained only reflections inside the observed range', () => {
+    const si = XRD_SAMPLES.find((x) => x.id === 'si')!;
+    const asFcc = indexPattern(computePattern(si.lattice, si.a, src.lambda), src.lambda, 'fcc')!;
+    const Ns = asFcc.lines.map((l) => l.N);
+    for (const u of asFcc.unexplained) {
+      expect(u).toBeGreaterThan(Math.min(...Ns));
+      expect(u).toBeLessThan(Math.max(...Ns));
+    }
+  });
+
+  /** The worksheet closes: a derived a puts every line back at its own angle. */
+  it.each(['cu', 'al', 'w', 'si'])('%s: the derived a reproduces every measured angle', (id) => {
+    const s = XRD_SAMPLES.find((x) => x.id === id)!;
+    const peaks = computePattern(s.lattice, s.a, src.lambda);
+    const r = indexPattern(peaks, src.lambda, s.lattice)!;
+    for (const l of r.lines) {
+      expect(twoThetaFor(r.a, l.N, src.lambda)!).toBeCloseTo(l.twoTheta, 6);
+    }
   });
 });

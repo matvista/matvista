@@ -377,3 +377,122 @@ describe('the printed strings agree with the geometry they label', () => {
     expect(s.coa != null).toBe(s.cell === 'hexagonal');
   });
 });
+
+/**
+ * `name`, `examples` and the species `label`s are printed verbatim beside the
+ * scene, and until now nothing read them: all three survived mutation on a
+ * green suite. Restating them as literals here would not fix that — it would
+ * only move the copy into the test file, which is the shape `f4c529d`'s
+ * single-phase oracle already took and which proves nothing.
+ *
+ * So each is anchored to something that is not a copy of it: `examples` to
+ * `metals.ts`, `name` to the `cell` and `id` it labels, and the compound
+ * `label`s to the formula in the structure's own name.
+ */
+describe('the printed prose agrees with the data it labels', () => {
+  /** 'Iron (α)' → 'Iron'; the parenthetical is a phase, not part of the name. */
+  const baseName = (name: string) => name.replace(/\s*\([^)]*\)/g, '').trim();
+
+  /**
+   * Whole-word, Unicode-aware. Plain `includes` would report that the FCC
+   * examples mention tin, because "platinum" contains it; and a `\b` boundary
+   * would not survive the α in "α-iron", which is a letter.
+   */
+  const mentions = (haystack: string, word: string) =>
+    new RegExp(`(^|[^\\p{L}])${word}([^\\p{L}]|$)`, 'iu').test(haystack);
+
+  it('names every structure uniquely, and says something', () => {
+    const names = STRUCTURES.map((s) => s.name);
+    for (const n of names) expect(n.trim().length).toBeGreaterThan(0);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  /**
+   * The compounds are named for their prototype (rock salt, perovskite) and do
+   * not state a cell, so this is the elemental half only — where the name is
+   * the reader's only clue that HCP is not cubic.
+   */
+  it.each(ELEMENTAL.map((s) => s.id))('%s: the name states the cell it is', (id) => {
+    const s = getStructure(id);
+    expect(s.name.toLowerCase()).toContain(s.cell === 'hexagonal' ? 'hexagonal' : 'cubic');
+  });
+
+  it('the parenthesised acronym is the id it is stored under', () => {
+    const withAcronym = ELEMENTAL.filter((s) => /\(([A-Z]+)\)/.test(s.name));
+    // fcc, bcc, hcp — sc and diamond are spelled out and have no acronym.
+    expect(withAcronym).toHaveLength(3);
+    for (const s of withAcronym) {
+      expect(/\(([A-Z]+)\)/.exec(s.name)![1].toLowerCase()).toBe(s.id);
+    }
+  });
+
+  /**
+   * `metals.ts` assigns each of Callister's sixteen metals a structure, and it
+   * is derived from the measured radii used elsewhere in this file rather than
+   * from the examples string. The correspondence is exhaustive in both
+   * directions today, so both directions are asserted: a metal dropped from an
+   * examples list fails, and a metal moved to the wrong list fails twice.
+   */
+  it('lists every metal under the structure metals.ts assigns it, and no other', () => {
+    expect(METALS.length).toBeGreaterThan(10);
+    for (const m of METALS) {
+      const word = baseName(m.name);
+      for (const s of STRUCTURES) {
+        expect({ metal: word, structure: s.id, listed: mentions(s.examples, word) }).toEqual({
+          metal: word,
+          structure: s.id,
+          listed: s.id === m.structure,
+        });
+      }
+    }
+  });
+
+  it('gives every species a distinct label within its structure', () => {
+    for (const s of STRUCTURES) {
+      const labels = Object.values(s.species).map((sp) => sp.label);
+      expect(labels.every((l) => l.trim().length > 0)).toBe(true);
+      expect(new Set(labels).size).toBe(labels.length);
+    }
+  });
+
+  /**
+   * A label that says "cation" beside a negative charge is the one error here a
+   * reader would take at face value, since the legend is the only place the
+   * sign appears.
+   */
+  it('agrees with itself on the sign of every charged species', () => {
+    let checked = 0;
+    for (const s of STRUCTURES) {
+      for (const sp of Object.values(s.species)) {
+        if (/cation/i.test(sp.label)) {
+          expect(sp.label).toContain('⁺');
+          checked++;
+        }
+        if (/anion/i.test(sp.label)) {
+          expect(sp.label).toContain('⁻');
+          checked++;
+        }
+      }
+    }
+    // rock salt and CsCl carry two each, perovskite two more.
+    expect(checked).toBe(6);
+  });
+
+  /**
+   * Chains the labels out of the species map: an ion named in the legend has to
+   * be one the compound is actually made of, as spelled in its name or examples.
+   */
+  it('names only ions the compound’s own formula contains', () => {
+    const found: string[] = [];
+    for (const s of STRUCTURES) {
+      const formulae = `${s.name} ${s.examples}`;
+      for (const sp of Object.values(s.species)) {
+        for (const [, symbol] of sp.label.matchAll(/([A-Z][a-z]?)[⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]/g)) {
+          expect(formulae).toContain(symbol);
+          found.push(symbol);
+        }
+      }
+    }
+    expect(found.sort()).toEqual(['Ba', 'Cl', 'Cl', 'Cs', 'Na', 'Ti']);
+  });
+});

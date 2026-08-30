@@ -160,7 +160,7 @@ export function coordinationShell(s: StructureDef): {
 }
 
 /** 3×3×3 tiling of the cell, so boundary atoms have their full neighbour set. */
-function expandToSupercell(s: StructureDef): [number, number, number][] {
+export function expandToSupercell(s: StructureDef): [number, number, number][] {
   const base = buildAtoms(s);
   const out: [number, number, number][] = [];
   const seen = new Set<string>();

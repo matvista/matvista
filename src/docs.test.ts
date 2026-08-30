@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import landingSource from './components/Landing.tsx?raw';
 import roadmapSource from '../ROADMAP.md?raw';
 import fatiguePlate from './assets/figures/FatigueFigure.tsx?raw';
-import { NAV_GROUPS, findItem, findItemOrNull } from './nav';
+import { MODULE_COUNT, NAV_GROUPS, NUMBER_WORDS, findItem, findItemOrNull } from './nav';
+
 import { STRUCTURES } from './crystal/structures';
 import { SLIP_MODES, slipSystems } from './crystal/miller';
 import { MECH_MATERIALS } from './mechanical/materials';
@@ -28,7 +29,7 @@ import elementsRaw from './data/elements.json';
  */
 describe('documented counts', () => {
   it('118 elements', () => expect((elementsRaw as unknown[]).length).toBe(118));
-  it('twelve modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12));
+  it('fifteen modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(15));
   it('8 crystal structures', () => expect(STRUCTURES).toHaveLength(8));
   it('12 FCC slip systems', () =>
     expect(slipSystems(SLIP_MODES.find((m) => m.id === 'fcc')!)).toHaveLength(12));
@@ -76,14 +77,14 @@ describe('documented counts', () => {
    * which vitest has no access to. This guards the count alone, and says so.
    */
   it('the ROADMAP bundle table counts one per-module chunk per module', () => {
-    const WORDS = [
-      'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
-      'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
-    ];
+    // The word list is `nav.ts`'s, not a second copy of it. This test
+    // used to carry its own, ending at `fifteen` — which would have failed at
+    // the sixteenth module for want of a word rather than for want of a fix,
+    // in a test whose whole subject is counts drifting out of prose.
     const n = NAV_GROUPS.flatMap((g) => g.items).length;
-    expect(WORDS[n]).toBeDefined();
-    expect(roadmapSource).toContain(`| ${WORDS[n]} per-module chunks |`);
-    expect(roadmapSource).toContain(`(${WORDS[n]} of them total`);
+    expect(NUMBER_WORDS[n]).toBeDefined();
+    expect(roadmapSource).toContain(`| ${NUMBER_WORDS[n]} per-module chunks |`);
+    expect(roadmapSource).toContain(`(${NUMBER_WORDS[n]} of them total`);
   });
 
   /**
@@ -156,8 +157,9 @@ describe('navigation model', () => {
  * visible numbers in the product, so they are asserted like any other.
  */
 describe('landing page stats strip', () => {
-  it('12 modules, 118 elements, 54 Ashby materials, 8 crystal structures', () => {
-    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
+  it('15 modules, 118 elements, 54 Ashby materials, 8 crystal structures', () => {
+    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(15);
+    expect(MODULE_COUNT).toBe(15);
     expect((elementsRaw as unknown[]).length).toBe(118);
     expect(SELECTION_MATERIALS).toHaveLength(54);
     expect(STRUCTURES).toHaveLength(8);

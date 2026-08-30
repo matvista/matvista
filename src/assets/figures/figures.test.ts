@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFigures } from '../../../scripts/gen-module-figures.ts';
+import { IDX_H, IDX_W, buildFigures, gridRules } from '../../../scripts/gen-module-figures.ts';
 import phaseCommitted from './PhaseFigure.tsx?raw';
 import fatigueCommitted from './FatigueFigure.tsx?raw';
 import ashbyCommitted from './AshbyFigure.tsx?raw';
@@ -187,8 +187,81 @@ describe('each figure carries the model output it claims to', () => {
         }
       });
 
+      // Deliberate-change gates, not derivations. Everything above reads the
+      // plate against `NAV_GROUPS`, so it would keep passing while the app
+      // quietly grew a thirteenth module — and the plate's own prose, its byte
+      // budget and the ROADMAP's chunk table all still say twelve. These two
+      // move by hand, with the rest.
       expect(NAV_GROUPS).toHaveLength(4);
-      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
+      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(15);
+    });
+
+    /**
+     * The box is as deep as the deepest column, not as deep as three rows.
+     * Computed here from `NAV_GROUPS` by a second route — the plate's viewBox
+     * is read back out of the rendered source — so the two agree or the test
+     * says which. This is what stops a seventeenth panel being drawn outside
+     * the box it is supposed to sit in.
+     */
+    it('sizes its box to the deepest column', () => {
+      const deepest = Math.max(...NAV_GROUPS.map((g) => g.items.length));
+      const columns = NAV_GROUPS.length;
+      expect(IDX_W).toBe(12 * 2 + columns * 300);
+      expect(IDX_H).toBe(46 + deepest * 222 + 12);
+      expect(plate()).toContain(`viewBox="0 0 ${IDX_W} ${IDX_H}"`);
+    });
+
+    /**
+     * The ragged case, which `NAV_GROUPS` cannot exercise while every column
+     * holds three. The five planned modules land 4/4/6/3, and that arrangement
+     * is the reason the grid stopped being `r < 3` — so it is checked directly
+     * rather than waiting for module 13 to be the first thing that runs it.
+     *
+     * Two behaviours matter and neither is visible at 4×3: a seam is only as
+     * deep as the deeper of the columns it separates, and a rule under a row
+     * covers only the columns that *have* a row below it.
+     */
+    describe('the grid holds when the columns stop being equal', () => {
+      it('reproduces the hand-written 4×3 grid exactly', () => {
+        // The shape the plate had for twelve modules, kept as the fixed point
+        // the generalisation had to pass through.
+        expect(gridRules([3, 3, 3, 3]).join('')).toBe(
+          'M12,46H1212M312,46V712M612,46V712M912,46V712M12,268H1212M12,490H1212',
+        );
+      });
+
+      it('sinks each seam to the deeper of its two columns', () => {
+        const rules = gridRules([4, 4, 6, 3]);
+        // 46 + 4×222 between the two four-deep columns; 46 + 6×222 either side
+        // of the six-deep one, which is what makes it a seam and not a stub.
+        expect(rules).toContain('M312,46V934');
+        expect(rules).toContain('M612,46V1378');
+        expect(rules).toContain('M912,46V1378');
+      });
+
+      it('stops a row rule where the row stops', () => {
+        const rules = gridRules([4, 4, 6, 3]);
+        // Rows 1 and 2 exist in every column, so those rules run the full width.
+        expect(rules).toContain('M12,268H1212');
+        expect(rules).toContain('M12,490H1212');
+        // Row 3 exists in the first three columns only: the rule ends at 912,
+        // the right edge of the third, and does not cross the empty cell.
+        expect(rules).toContain('M12,712H912');
+        // Rows 4 and 5 exist in the third column alone.
+        expect(rules).toContain('M612,934H912');
+        expect(rules).toContain('M612,1156H912');
+        expect(rules.filter((d) => d.includes(',712H'))).toHaveLength(1);
+      });
+
+      it('breaks a rule into runs rather than crossing an empty cell', () => {
+        // The case a full-width rule gets silently wrong: a short column
+        // *between* two deep ones. Row 1 belongs to columns 0 and 2, and the
+        // rule must arrive as two segments, not one from 12 to 912.
+        const rules = gridRules([3, 1, 3]);
+        expect(rules).toContain('M12,268H312');
+        expect(rules).toContain('M612,268H912');
+        expect(rules.some((d) => d.startsWith('M12,268H912'))).toBe(false);
+      });
     });
 
     it('plots all 54 Ashby materials', () => {
@@ -256,10 +329,30 @@ describe('each figure carries the model output it claims to', () => {
      * a lazy chunk that doubles without anyone noticing is still a regression,
      * and the periodic-table panel alone was 9.6 kB before it was rewritten
      * from 118 elements into six paths.
+     *
+     * Two budgets, because one number cannot do both jobs once the module
+     * count moves. **Per panel** is the one that scales: it catches a single
+     * panel bloating at any count, and it does not have to be touched when a
+     * module ships. **In total** is a deliberate-change gate — it stops the
+     * plate growing without bound and must be raised by hand, against a
+     * measured build, each time it is.
+     *
+     * Measured: 18,824 B over 12 panels at `9b4abef` (1,569 each); 20,070 B
+     * over 13 when composites landed (1,544 each, marginal 1,246); 21,195 B
+     * over 14 with polymers (1,514 each, marginal 1,125); 22,098 B over 15
+     * with thermal properties (1,473 each, marginal 903).
+     *
+     * The per-panel budget has already earned its place. The polymers panel
+     * first drew its two histograms as fifty-six separate `<path>` elements
+     * and cost **4,116 B** — over this ceiling on its own, and the failure
+     * said so. Two paths of subpaths, the same rewrite the periodic-table
+     * panel took from 118 elements down to six, brought it to 701.
      */
     it('stays inside its byte budget', () => {
       const bytes = new TextEncoder().encode(plate()).length;
-      expect(bytes).toBeLessThan(22_000);
+      const panels = NAV_GROUPS.flatMap((g) => g.items).length;
+      expect(bytes / panels).toBeLessThan(1_700);
+      expect(bytes).toBeLessThan(22_500);
     });
   });
 
@@ -299,9 +392,12 @@ describe('theming and embedding contract', () => {
   };
 
   /* The four single plates share one box; the figure index is drawn wider and
-     taller, because it is twelve panels rather than one. */
+     taller, because it is one panel per module rather than one. Its box is
+     computed from `NAV_GROUPS` — a literal here would have to be re-typed with
+     every module, which is the drift the landing page's reserved slot got
+     caught by. */
   const VIEWBOX: Record<string, string> = {
-    'src/assets/figures/ModuleIndexPlate.tsx': 'viewBox="0 0 1224 724"',
+    'src/assets/figures/ModuleIndexPlate.tsx': `viewBox="0 0 ${IDX_W} ${IDX_H}"`,
   };
 
   for (const [path, prefix] of Object.entries(PREFIXES)) {

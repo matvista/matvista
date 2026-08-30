@@ -46,6 +46,15 @@ const HeatTreatment = lazy(() =>
 const AshbyChart = lazy(() =>
   import('./components/AshbyChart').then((m) => ({ default: m.AshbyChart })),
 );
+const Polymers = lazy(() =>
+  import('./components/Polymers').then((m) => ({ default: m.Polymers })),
+);
+const ThermalProperties = lazy(() =>
+  import('./components/ThermalProperties').then((m) => ({ default: m.ThermalProperties })),
+);
+const Composites = lazy(() =>
+  import('./components/Composites').then((m) => ({ default: m.Composites })),
+);
 const Semiconductors = lazy(() =>
   import('./components/Semiconductors').then((m) => ({ default: m.Semiconductors })),
 );
@@ -92,6 +101,9 @@ export default function App() {
             {tab === 'defects' && <DefectsDiffusion />}
             {tab === 'mechanical' && <StressStrain />}
             {tab === 'failure' && <FailureAnalysis />}
+            {tab === 'polymers' && <Polymers />}
+            {tab === 'composites' && <Composites />}
+            {tab === 'thermal' && <ThermalProperties />}
             {tab === 'semiconductors' && <Semiconductors />}
             {tab === 'phase' && <PhaseDiagrams />}
             {tab === 'heattreat' && <HeatTreatment />}

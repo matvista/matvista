@@ -85,9 +85,13 @@ docs-and-claims truth → repeat.
 
 Last shipped lens: **product gap** (iteration 17). Next lens: **performance**.
 
-**The roadmap is complete.** All five planned modules have shipped; only the deferred
-Materials Project integration remains, and it cannot hold under static hosting. Future
-iterations come from the product/debt backlog below, not from `ROADMAP.md`.
+**The roadmap was complete, and has been reopened.** The original five shipped. Five
+more are planned in `ROADMAP.md` — composites, polymers, thermal properties, free-energy
+curves and magnetic properties — behind one prerequisite that is not a module: the landing
+page's figure index is a 4×3 grid with hard-coded counts and roughly two panels of byte
+budget left, so it does not hold at seventeen. Iterations now come from `ROADMAP.md`
+again *and* from the product/debt backlog below, under the same lens rotation. The
+Materials Project integration stays deferred; it cannot hold under static hosting.
 
 **Performance was skipped at iteration 11 on purpose.** First paint was 67.9 kB gzip
 then, modules were 3.5–8.6 kB each and three.js was already deferred; the only candidate
@@ -125,6 +129,10 @@ do not invent busywork to fill it.
 | 15 | Correctness | Audited `crystal/structures` and `crystal/geometry`, the last unaudited physics. **No defects found** — 45 guards added, including a direct check of the "CN = 12" label |
 | 16 | Roadmap module | **Semiconductors** — band gaps, doping and conductivity, the p–n junction. The last roadmap module; ROADMAP is now complete |
 | 17 | Product gap | Light/dark/auto theme toggle, and a landing stat that read as a metric rather than a feature |
+| 18 | Roadmap prerequisite | Figure index derived from `NAV_GROUPS` — ragged columns draw correctly, the duplicate cell coordinate is gone, and the output is byte-identical at 4×3 |
+| 19 | Roadmap module | **Composites** — rule of mixtures with both bounds, a specified layup ranked on the Ashby chart, and the strength overprediction measured against Appendix B's own composites rather than printed as an answer |
+| 20 | Roadmap module | **Polymers** — chain-length distributions counted by number and by weight, chain dimensions from the degree of polymerisation, and crystallinity with ρc derived from the unit cell. Two second-moment defects found by checking against closed forms |
+| 21 | Roadmap module | **Thermal properties** — Dulong–Petit over the app's own atomic masses with the three elements it fails, thermal stress handed to the failure module as a critical crack size, and Wiedemann–Franz drawn as the line that checks the dataset |
 
 ## Backlog
 
@@ -159,23 +167,38 @@ subject to the lens rotation.
 
 ### Roadmap modules — in scope, to be built
 
-`ROADMAP.md`'s remaining modules are **committed deliverables**, not optional candidates:
+`ROADMAP.md`'s planned modules are **committed deliverables**, not optional candidates —
+with two exceptions marked below, which are committed to a *decision*, not to a shape:
 
 | Module | Value | Effort | V/E | Notes |
 |------|-------|--------|-----|-------|
+| ~~**0. The module index at seventeen**~~ — **shipped at iteration 18**, except the budget | 4 | 3 | 1.3 | Prerequisite, not a module. `figures.test.ts` asserts 4 groups and 12 items and one panel per module; `ModuleIndexPlate.tsx` is 18,824 B against a 22,000 B budget, which is 2.02 panels of headroom at the 1,569 B average; the generator hard-codes a 4×3 grid while these five make the columns uneven (4/4/6/3); and `docs.test.ts`'s `WORDS` array stops at `fifteen`. The grid half shipped: shape derived from `NAV_GROUPS`, `gridRules` handles uneven columns and run-splitting, `NUMBER_WORDS` shared with `docs.test.ts` and extended to twenty, output byte-identical. The 22,000 B budget did not move with it — it needed a measured panel, not an estimate — and moved at iteration 19 when composites supplied one: two budgets now, 1,700 B per panel (scales with the count) and 21,000 B total (a hand-moved ratchet), against a measured 20,070 B over 13. |
+| ~~**6. Composites**~~ — **shipped at iteration 19** | 5 | 2 | 2.5 | Highest V/E of the five and the reason it goes first: a specified composite is a *new point on the Ashby chart*, ranked among the fixed 54 by `indexValue` — the Miller↔XRD agreement test again. Closed form, no 3D. Shipped with no new dataset — constituents resolve out of Appendix B by name — and with a third panel the plan did not have: the strength rule of mixtures overshoots Appendix B's *own* measured composites by 1.59–2.05×, so the module draws the gap and says why. |
+| ~~**7. Polymers**~~ — **shipped at iteration 20** | 5 | 3 | 1.7 | The largest missing audience. The `DOPABLE` departure did repeat, in the other join — three of nine polymers have no Appendix B row. Shipped with chain dimensions in place of the planned modulus–temperature curve, which is a schematic in every source and so is entry 10's trap early. Two defects found, both in the second moment: the tail `X̄w` needs is far longer than `X̄n`'s (Đ read 1.88 for 1.95), and binning before averaging biases it low (1.81). |
+| ~~**8. Thermal properties**~~ — **shipped at iteration 21** | 3 | 2 | 1.5 | Cheapest of the five — one published table carries c_p, α, k and E together. Closed both loops. The α and k entries are cross-checked three ways — Wiedemann–Franz against resistivity, α·T_melt against the element data, and Dulong–Petit computed rather than tabulated — and the ceramics, which have none of those, are labelled as the least-checked entries in the module. Importing `failure/model.ts` gave it a second importer and rollup lifted it into a shared chunk. |
+| **9. Free energy & the common tangent** | 5 | 3 | 1.7 | Deepest teaching win: derives a boundary `phase/systems.ts` currently asserts. **Shape not settled** — may be a fourth panel in Phase rather than module 16. Scope it after 6–8, when the seventeenth panel has a measured cost. Domain is isomorphous systems; a regular solution will not regenerate Fe–Fe₃C and must not appear to. |
+| **10. Magnetic properties** | 3 | 3 | 1.0 | **Conditional on a data gate.** Anchors are tabulated; loop shapes are schematics. Either derive the loop from its anchors by a stated model and assert it passes through them, or drop the loop and ship the soft-vs-hard comparison. Never print a (BH)_max integrated off a drawn loop — that is entry 3's Paris constants in a new unit. |
 
 Materials Project integration stays **deferred** — it cannot hold under static hosting
 without a key-bearing proxy, which the deployment model rules out. See `ROADMAP.md`.
 
-Sequencing note: a product gap that improves all nine existing modules can still take
-precedence over a tenth module in any given iteration, but the three above are to be built,
-not merely considered. Each must clear the same gates — physics verified against published
-values by assertion **before** any UI, and every option in a selector checked to be inside
-its formula's domain.
+Sequencing note: a product gap that improves all twelve existing modules can still take
+precedence over a thirteenth module in any given iteration, but entry 0 and modules 6–8
+are to be built, not merely considered. 9 and 10 are committed to being *decided* — the
+scoping call for 9, the data gate for 10 — and reducing either on the evidence is a valid
+outcome that belongs in **Rejected** with its reason, not a failure to deliver. Each must
+clear the same gates — physics verified against published values by assertion **before**
+any UI, and every option in a selector checked to be inside its formula's domain.
 
 ## Rejected
 
-*(nothing yet)*
+Considered for the five-module pass and deliberately not taken. Recorded so they
+are not rediscovered as gaps.
+
+| Candidate | Why not |
+|------|------|
+| **Weibull strength statistics** | Real content — brittle strength is a distribution, not a number, and the app currently teaches it as a number. But it is one plot and two parameters against `BRITTLE_SOLIDS`, which is a **panel in Mechanical**, not a module. Filed as a product-gap item, not a roadmap entry. |
+| **Optical properties** | Half-shipped already: Semiconductors turns a band gap into λ = 1239.8/E_g and into an emission colour where the gap is direct. What is left — refraction, reflection, absorption — does not carry a module on its own, and would duplicate the panel that exists. |
 
 ## Findings carried forward
 

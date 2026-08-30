@@ -2664,3 +2664,185 @@ input[type='range'] {
   display: block;
   margin: 0.4rem 0;
 }
+
+/* ------------------------------------------------------------ composites -- */
+
+/* The two bounds are the module's whole argument, so they are the two ends of
+   the same visual scale rather than two unrelated colours: the upper bound is
+   the accent, the lower is the muted ink. A reader should be able to tell which
+   is which without the labels, because at panel size in the figure index there
+   are no labels. */
+.cp-upper {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.cp-lower {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+/* Orientation-derated modulus sits between them and is dashed, because it is
+   the same isostrain expression with a fibre-efficiency factor rather than a
+   third independent bound. */
+.cp-oriented {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+.cp-point-upper { fill: var(--accent); }
+.cp-point-lower { fill: var(--muted); }
+.cp-vline {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+.cp-asymptote {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 3;
+  opacity: 0.7;
+}
+
+/* Predicted against measured. The prediction takes the warning colour and the
+   measurement the safe one — the bar that overshoots is the one to distrust,
+   which is the opposite of the usual reading and is why they are coloured at
+   all rather than left as two neutral bars. */
+.cp-bar-bound { fill: #e34948; opacity: 0.75; }
+.cp-bar-real { fill: #1baf7a; opacity: 0.8; }
+
+.cp-agreement th[scope='col'] {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* -------------------------------------------------------------- polymers -- */
+
+/* Two histograms of one sample. They must be told apart at a glance and read
+   as the *same* measurement seen two ways, so it is one hue at two weights
+   rather than two colours — the pale bars count chains, the solid ones weigh
+   them. */
+.py-bar-x { fill: var(--accent); opacity: 0.32; }
+.py-bar-w { fill: var(--accent); opacity: 0.85; }
+
+/* The two averages, matched to the histogram each is the average of. */
+.py-mn {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+  opacity: 0.55;
+}
+.py-mw {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.py-contour {
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.py-coil {
+  stroke: var(--muted);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.py-crystallinity {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+/* What the answer is not: straight-line interpolation between the two
+   densities, drawn faint so the curvature above it is visible as a departure
+   rather than as a shape with nothing to compare against. */
+.py-linear {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.55;
+}
+.py-grade { fill: var(--muted); }
+.py-point { fill: var(--accent); }
+
+/* ------------------------------------------------------ thermal properties -- */
+
+/* A sub-heading inside a detail panel, for the one place a panel carries two
+   results rather than one — the thermal stress, and what that stress does to a
+   flaw. Sized between `.crystal-title` and the body text so it reads as a
+   division of the panel rather than a second panel. */
+.detail-h3 {
+  margin: 1.1rem 0 0.4rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+/* A law, drawn: Dulong–Petit's hyperbola and Wiedemann–Franz's line are
+   predictions the dots are measured against, so they are the muted element and
+   the measurements are the accented one — the reverse of the usual weighting,
+   and deliberate. */
+.tp-rule {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+}
+.tp-measured { fill: var(--accent); }
+
+/* Where the law fails. The stem joins the measurement to what the rule
+   predicted, so the size of the miss is a length rather than two numbers. */
+.tp-stiff { fill: #e34948; }
+.tp-miss {
+  stroke: #e34948;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.tp-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.4;
+}
+.tp-line-on {
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+.tp-point { fill: var(--accent); }
+.tp-bar { fill: var(--accent); opacity: 0.8; }
+
+/* Thermal shock ranking. A list rather than a chart: it lives in the detail
+   column, where an SVG scaled to fit renders its labels at whatever size that
+   column happens to be. */
+.tp-shock {
+  list-style: none;
+  margin: 0.6rem 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.tp-shock li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+}
+.tp-shock-label { color: var(--ink-2); }
+.tp-shock-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tp-shock-track {
+  grid-column: 1 / -1;
+  height: 8px;
+  background: var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tp-shock-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.8;
+}

@@ -12,10 +12,13 @@ export type Tab =
   | 'trends'
   | 'crystals'
   | 'miller'
+  | 'polymers'
   | 'defects'
   | 'phase'
   | 'heattreat'
   | 'mechanical'
+  | 'composites'
+  | 'thermal'
   | 'failure'
   | 'semiconductors'
   | 'selection'
@@ -55,6 +58,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Miller indices',
         blurb: 'Planes, directions and slip systems',
       },
+      {
+        id: 'polymers',
+        label: 'Polymers',
+        blurb: 'Chain length, coil size, crystallinity',
+      },
     ],
   },
   {
@@ -91,6 +99,16 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'failure',
         label: 'Failure analysis',
         blurb: 'Fracture, fatigue, crack growth, creep',
+      },
+      {
+        id: 'composites',
+        label: 'Composites',
+        blurb: 'Rule of mixtures, bounds, short fibres',
+      },
+      {
+        id: 'thermal',
+        label: 'Thermal properties',
+        blurb: 'Heat capacity, expansion, thermal shock',
       },
       {
         id: 'semiconductors',
@@ -136,4 +154,37 @@ export function findItem(tab: Tab): NavItem & { group: NavGroup } {
  */
 export function findItemOrNull(tab: string): (NavItem & { group: NavGroup }) | null {
   return ITEMS.find((i) => i.id === tab) ?? null;
+}
+
+/** How many modules there are. One source for every count that says so. */
+export const MODULE_COUNT = NAV_GROUPS.flatMap((g) => g.items).length;
+
+/**
+ * Counts written into prose are spelled, not printed — "Twelve modules", not
+ * "12 modules" — so the spelling has to come from the count or the two drift.
+ * They have: the ROADMAP's chunk table said "eleven" with twelve modules
+ * shipped, and `docs.test.ts` was written to catch exactly that.
+ *
+ * Lives here because three surfaces need it and none of them should own it:
+ * the landing page's copy, the figure generator's plate comment, and the test
+ * that checks the ROADMAP against both. Throws rather than falling back to
+ * digits — a silent "17 modules" in a sentence written for a word is the same
+ * drift one step quieter.
+ */
+export const NUMBER_WORDS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen', 'twenty',
+];
+
+export function numberWord(n: number): string {
+  const word = NUMBER_WORDS[n];
+  if (word === undefined) throw new Error(`no word for ${n}: extend NUMBER_WORDS`);
+  return word;
+}
+
+/** Sentence-initial form of a spelled count. */
+export function capitalisedWord(n: number): string {
+  const w = numberWord(n);
+  return w[0].toUpperCase() + w.slice(1);
 }

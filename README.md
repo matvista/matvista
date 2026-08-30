@@ -12,7 +12,10 @@ MatVista gives students and material scientists visual, interactive views onto m
 | **Crystal Structure Viewer** — 3D unit cells for 8 structures (SC, FCC, BCC, HCP, diamond cubic, rock salt, CsCl, perovskite); ball-and-stick or space-filling, coordination-shell highlighting, a live theoretical-density calculator, and a packing factor and coordination number *derived* from the cell — the sphere count, the a↔R relation and the neighbour list worked through line by line rather than recited | ✅ available |
 | **Miller Indices & Slip Systems** — type any (hkl) or [uvw] and see the plane cut the cell in 3D, with the reciprocal construction, d-spacing, family members, and a Schmid-factor ranking over all 12 FCC / 48 BCC slip systems; the structure-factor rule then says whether that (hkl) is allowed or extinct for the selected metal, applied to the plane **as entered** — so (100) is extinct in FCC where (200) is the second peak — and where it is allowed, the d-spacing already on screen gives the 2θ it appears at, with a link through to the XRD pattern that peak sits in | ✅ available |
 | **Defects & diffusion** — point-defect visualiser, equilibrium-vacancy calculator, a case-hardening simulator solving Fick's second law, and an equal-`Dt` curve giving every other time-and-temperature pair that produces the same profile — the answer to "can I run this hotter for less time?" | ✅ available |
+| **Polymers** — run a polymerisation and watch the distribution it makes: two histograms of one sample, counted by number and weighed, with the two averages they disagree about and the dispersity each route is pinned to (1 + p for step growth, approaching 1 for living chains). The degree of polymerisation then becomes a chain — 252 nm of polyethylene in a coil 6.9 nm across — and a density becomes a per cent crystallinity, with LDPE, UHMWPE and HDPE marked where they fall. Repeat-unit masses are computed from the app's own element data and crystalline density is derived from the unit cell, so one measured number stands in the whole module | ✅ available |
 | **Mechanical properties** — engineering stress–strain curves for 7 metals with the 0.002 offset construction, resilience, true-stress overlay, and a Hall–Petch grain-size panel | ✅ available |
+| **Composites** — specify a laminate from any of three fibres and five matrices at any volume fraction, and get the isostrain and isostress bounds on its modulus, the share of the load the fibres actually carry, an exact rule-of-mixtures density, and a specific stiffness ranked against the 54 materials on the Ashby chart by that module's own index. The strength panel is the honest half: the rule of mixtures overshoots Appendix B's *own* measured composites by 1.6× to 2.1×, every one, and the module draws the gap and says why rather than printing the number as an answer | ✅ available |
+| **Thermal properties** — constrain a bar, change its temperature, and read the stress it cannot relieve, then hand that stress to the failure module and get the flaw size it makes critical through that module's own function. Dulong's rule is drawn over the app's own atomic masses — nine metals on the curve within 7%, and carbon, beryllium and silicon visibly off it, which is the panel's point. Wiedemann–Franz is drawn as the line that checks every conductivity in the dataset against its resistivity, and the five ceramics, which have no such check, are labelled as the least-grounded entries in the module | ✅ available |
 | **Phase Diagram Explorer** — interactive Cu–Ni, Pb–Sn and Fe–Fe₃C diagrams; click any point for phases, tie line and lever-rule fractions, with the Gibbs phase rule P + F = C + N read off the point you are dragging, and the microconstituent split (primary phase against the eutectic or eutectoid mixture) for Pb–Sn as well as for steel | ✅ available |
 | **Heat treatment** — TTT diagrams for 1080/5140/4340 steels with a cooling-rate slider read by Scheil additivity, predicted phase fractions and hardness, a Jominy end-quench comparison, and an austenitising-temperature control shown against a Fe–Fe₃C strip, which marks when the chosen temperature sits below A₃ and part of the section never became austenite at all | ✅ available |
 | **Failure analysis** — plane-strain fracture toughness and critical crack size for five alloys, across five named crack geometries with their closed-form Y (centre crack, edge notch, semicircular surface flaw, Feddersen finite-width secant, thin-walled vessel) plus a free-Y fallback, a leak-before-break wall thickness for the pressure-vessel case, estimated S–N curves that flatten only for alloys with a real fatigue limit, Paris-law crack growth for three steel classes, and Larson–Miller creep rupture | ✅ available |
@@ -30,14 +33,14 @@ the same 2θ, and Miller's reflection readout links back to the pattern the peak
 A test walks every one of those links and fails if the two pages disagree about whether a
 reflection is allowed or about the angle it appears at.
 
-The app opens on a landing page introducing the twelve modules, indexed by the same four
+The app opens on a landing page introducing the fifteen modules, indexed by the same four
 course groups the header uses; each entry links straight into one. `#/trends` is the
 periodic table.
 
 Every figure on that page — the lattice plate, the Fe–Fe₃C diagram, the S–N curves, the
 Ashby chart, the diffraction pattern — is generated by the scripts in `scripts/` from the
 same model code the modules run, and committed. So is the **figure index** that opens the
-modules chapter: twelve panels, one per module, each plotted from that module's own model —
+modules chapter: fifteen panels, one per module, each plotted from that module's own model —
 the periodic table shaded by melting point, 1080's TTT nose, all 54
 Ashby materials, α-iron's diffraction lines, aluminium's Pourbaix map. Regenerate them all
 with:
@@ -49,13 +52,22 @@ npm run figures
 `src/assets/figures/figures.test.ts` fails if a committed figure has drifted from the data
 behind it, so a change to a model cannot quietly leave a stale diagram on the front page.
 It also fails if a module is added to the navigation without a panel in the index, and if
-the index outgrows its byte budget.
+the index outgrows either of its byte budgets — one per panel, which scales with the module
+count, and one for the whole plate, which is a ratchet moved by hand against a real build.
+
+The index's *shape* is derived from the navigation rather than written down beside it, so
+the columns are the course groups and a panel's row is its place within its group. They are
+no longer equal: Structure and Properties run four deep where the others run three, and the
+grid draws a seam only as far as the deeper of the two columns it separates and a row rule
+only across the columns that have a row there.
 
 Four of the plates are fetched only as the reader approaches them — the figure index and
 the three showcase figures, 51 kB of committed SVG between them — each landing in a box
 that already holds its aspect ratio, so nothing on the page moves when one arrives. First
-paint is the index chunk and the stylesheet and nothing else: 92.25 kB gzipped, which is
-*less* than before this page grew a live instrument and twelve more figures.
+paint is the index chunk and the stylesheet and nothing else: **93.94 kB gzipped** — index
+84.86 plus a render-blocking 9.08. A module costs about 0.4 kB of that, which is its landing
+card, its signature mark and its nav entry; the module itself is a 5–6 kB chunk that only a
+reader who opens it ever fetches.
 
 One thing on the page is not a plate. The worked example — Fe–C cooled to just below the
 eutectoid — is **live**: a composition control from 0.05 to 2.14 wt% C, two stacked bars,

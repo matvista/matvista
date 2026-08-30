@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { NAV_GROUPS } from '../nav';
+import { NAV_GROUPS, MODULE_COUNT, capitalisedWord, numberWord } from '../nav';
+import { plateHeight, plateWidth } from '../landing/indexPlateBox';
 import { useReveal } from '../motion';
 import { LeverRule } from './LeverRule';
 import { LatticePlate } from '../assets/figures/LatticePlate';
@@ -119,6 +120,12 @@ const CARDS: ModuleCard[] = [
     detail: 'Put a point defect into a lattice, compute the equilibrium vacancy fraction, and solve Fick’s second law for a carburising profile.',
   },
   {
+    id: 'polymers',
+    title: 'Polymers',
+    href: '#/polymers',
+    detail: 'Run a polymerisation and watch the distribution it produces — two histograms of one sample, counted by number and by weight, with the two averages they disagree about. Then the degree of polymerisation becomes a chain: 252 nm of polyethylene folded into a coil 7 nm across. Repeat-unit masses are computed from the app\u2019s own element data, and crystalline density from the unit cell.',
+  },
+  {
     id: 'phase',
     title: 'Phase diagrams',
     href: '#/phase?T=650&sys=fe-c&x=0.4',
@@ -135,6 +142,18 @@ const CARDS: ModuleCard[] = [
     title: 'Mechanical properties',
     href: '#/mechanical',
     detail: 'Engineering curves for seven metals with the 0.2% offset construction, resilience and toughness areas, a true-stress overlay, and grain-size strengthening.',
+  },
+  {
+    id: 'composites',
+    title: 'Composites',
+    href: '#/composites',
+    detail: 'Specify a laminate — fibre, matrix, volume fraction — and get the two bounds on its modulus, the load the fibres actually carry, and a specific stiffness ranked against the 54 materials on the Ashby chart. Then the ceiling: the strength rule of mixtures overshoots the measured composite by close to a factor of two, and the module shows the gap rather than printing the number.',
+  },
+  {
+    id: 'thermal',
+    title: 'Thermal properties',
+    href: '#/thermal',
+    detail: 'Constrain a bar, change its temperature, and read the stress it cannot relieve — then hand that stress to the failure module and get the flaw size it makes critical. Dulong\u2019s rule is drawn over the app\u2019s own atomic masses, with the three elements it fails and why; Wiedemann\u2013Franz is drawn as the line that checks the conductivities against the resistivities.',
   },
   {
     id: 'failure',
@@ -287,7 +306,7 @@ export function Landing() {
           <p className="ld-kicker">Interactive materials science</p>
           <h1 className="ld-h1">See why materials behave the way they do.</h1>
           <p className="ld-lede">
-            Twelve modules covering the core of an undergraduate materials course, each one
+            {capitalisedWord(MODULE_COUNT)} modules covering the core of an undergraduate materials course, each one
             something you drive rather than read: rotate a unit cell, drag a cooling rate
             across a TTT diagram, move a tie line and watch the phase fractions follow.
           </p>
@@ -299,7 +318,7 @@ export function Landing() {
               </span>
             </a>
             <a className="ld-link" href="#modules">
-              See all twelve modules
+              See all {numberWord(MODULE_COUNT)} modules
               <span className="ld-arrow" aria-hidden="true">
                 ↓
               </span>
@@ -371,7 +390,10 @@ export function Landing() {
 
       <Reveal className="ld-chapter" id="modules">
         <p className="ld-kicker">The modules</p>
-        <h2 className="ld-h2">Twelve modules. Twelve figures. All of them computed.</h2>
+        <h2 className="ld-h2">
+          {capitalisedWord(MODULE_COUNT)} modules. {capitalisedWord(MODULE_COUNT)} figures. All of
+          them computed.
+        </h2>
         <p className="ld-sub">
           Every panel below is that module's own output — the periodic table shaded by
           melting point, with the eleven elements that have no measured one left unshaded;
@@ -381,14 +403,19 @@ export function Landing() {
         </p>
 
         <figure className="ld-plate ld-plate-wide">
-          <PlateArt label="Figure 3. Twelve panels, one for each module, each plotted from that module's own model code, arranged in four columns by course group.">
-            <NearbyPlate ratio="1224 / 724">
+          <PlateArt label={`Figure 3. ${capitalisedWord(MODULE_COUNT)} panels, one for each module, each plotted from that module's own model code, arranged in four columns by course group.`}>
+            {/* The ratio is the plate's own viewBox, and it is not 1224/724 any
+                more: the box grew a row when the thirteenth module landed in a
+                column that already held three. A stale ratio here is a
+                reserved box of the wrong height, which is the layout shift
+                this wrapper exists to prevent. */}
+            <NearbyPlate ratio={`${plateWidth(NAV_GROUPS.length)} / ${plateHeight(NAV_GROUPS.map((g) => g.items.length))}`}>
               <ModuleIndexPlate />
             </NearbyPlate>
           </PlateArt>
           <figcaption>
             <span className="ld-fig-n">Fig. 3</span>
-            The twelve modules, drawn by the twelve modules. Nothing here is an
+            The {numberWord(MODULE_COUNT)} modules, drawn by the {numberWord(MODULE_COUNT)} modules. Nothing here is an
             illustration of the app; it is the app's output at thumbnail size.
           </figcaption>
         </figure>

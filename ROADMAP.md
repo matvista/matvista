@@ -35,7 +35,7 @@ are worth not rediscovering.
 ## 1. Miller indices & slip systems — shipped
 
 Built in `crystal/miller.ts`, `components/MillerScene.tsx` and
-`components/MillerIndices.tsx`; costs 5.5 kB gzipped, plus a 4.2 kB `diffraction` chunk
+`components/MillerIndices.tsx`; costs 5.55 kB gzipped, plus a 4.17 kB `diffraction` chunk
 shared with the XRD module. (It was a 2.3 kB `miller` chunk until `be91ef6` put the
 allowed-reflection readout on this page; `xrd/diffraction.ts` then had two importers,
 rollup lifted it, and `crystal/miller.ts` went into this module instead.) Enter a plane `(1̄11)` or direction `[110]` and watch it cut the unit cell in 3D,
@@ -83,7 +83,7 @@ get a material", which is the actual engineering skill.
 ## 3. Fatigue, creep & fracture — shipped
 
 Built in `failure/model.ts`, `failure/materials.ts` and
-`components/FailureAnalysis.tsx`; costs 8.6 kB gzipped. Four panels: critical
+`components/FailureAnalysis.tsx`; costs 12.06 kB gzipped. Four panels: critical
 crack size from K_IC, estimated S–N curves, Paris-law crack growth, and
 Larson–Miller creep rupture.
 
@@ -113,7 +113,7 @@ steels only), and `BRITTLE_SOLIDS` (for Griffith) — and only the S–N panel r
 ## 4. Semiconductors & band structure — shipped
 
 Built in `electronic/model.ts`, `electronic/materials.ts` and
-`components/Semiconductors.tsx`; costs 6.8 kB gzipped. Three panels: band gaps
+`components/Semiconductors.tsx`; costs 8.32 kB gzipped. Three panels: band gaps
 against the visible spectrum, doping and conductivity across the extrinsic and
 intrinsic regimes, and p–n junction band bending.
 
@@ -155,7 +155,7 @@ module.
 ## 5. Corrosion & the galvanic series — shipped
 
 Built in `corrosion/model.ts`, `corrosion/data.ts` and `components/Corrosion.tsx`;
-costs 6.6 kB gzipped. Three panels: galvanic couple with the area-ratio effect,
+costs 9.96 kB gzipped. Three panels: galvanic couple with the area-ratio effect,
 the EMF series with live Nernst shifts, and Pourbaix diagrams for Fe, Al and Zn.
 
 Departure from the plan below: the galvanic series and the EMF series are kept as
@@ -358,11 +358,11 @@ The 3D chunk is the one to find by size rather than by name: it was `geometry-*.
 `2218d7b` and is `OrbitControls-*.js` now, without any file being renamed.
 
 The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — the stylesheet is render-blocking, so both count — **92.95 kB gzipped**,
+stylesheet — the stylesheet is render-blocking, so both count — **92.96 kB gzipped**,
 measured at **93.6 kB over the wire** with the document and its headers. three.js is
 reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.95–12.04 kB gzipped** (twelve of them total
+A module of the existing kind costs **1.95–12.06 kB gzipped** (twelve of them total
 72.5 kB) — negligible beside the 3D library, and none of it in first paint since each
 arrives in its own chunk.
 

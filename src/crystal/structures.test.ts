@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { STRUCTURES, getStructure, packingFactor } from './structures';
 import { buildAtoms, buildBonds, coordinationShell, distance } from './geometry';
-import { METALS } from './metals';
+import { IDEAL_COA, METALS } from './metals';
+import { latticeParameter, xrdLatticeFor } from '../xrd/diffraction';
 
 /** Structures built from a single species of touching hard sphere. */
 const ELEMENTAL = STRUCTURES.filter((s) => s.aOverR != null);
@@ -375,5 +376,214 @@ describe('the printed strings agree with the geometry they label', () => {
     expect(s.system).toBe(s.cell === 'hexagonal' ? 'Hexagonal' : 'Cubic');
     // and the c/a ratio exists exactly where a hexagonal cell needs one
     expect(s.coa != null).toBe(s.cell === 'hexagonal');
+  });
+});
+
+/**
+ * `name`, `examples` and the species `label`s are printed verbatim beside the
+ * scene, and until now nothing read them: all three survived mutation on a
+ * green suite. Restating them as literals here would not fix that — it would
+ * only move the copy into the test file, which is the shape `f4c529d`'s
+ * single-phase oracle already took and which proves nothing.
+ *
+ * So each is anchored to something that is not a copy of it: `examples` to
+ * `metals.ts`, `name` to the `cell` and `id` it labels, and the compound
+ * `label`s to the formula in the structure's own name.
+ */
+describe('the printed prose agrees with the data it labels', () => {
+  /** 'Iron (α)' → 'Iron'; the parenthetical is a phase, not part of the name. */
+  const baseName = (name: string) => name.replace(/\s*\([^)]*\)/g, '').trim();
+
+  /**
+   * Whole-word, Unicode-aware. Plain `includes` would report that the FCC
+   * examples mention tin, because "platinum" contains it; and a `\b` boundary
+   * would not survive the α in "α-iron", which is a letter.
+   */
+  const mentions = (haystack: string, word: string) =>
+    new RegExp(`(^|[^\\p{L}])${word}([^\\p{L}]|$)`, 'iu').test(haystack);
+
+  it('names every structure uniquely, and says something', () => {
+    const names = STRUCTURES.map((s) => s.name);
+    for (const n of names) expect(n.trim().length).toBeGreaterThan(0);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  /**
+   * The compounds are named for their prototype (rock salt, perovskite) and do
+   * not state a cell, so this is the elemental half only — where the name is
+   * the reader's only clue that HCP is not cubic.
+   */
+  it.each(ELEMENTAL.map((s) => s.id))('%s: the name states the cell it is', (id) => {
+    const s = getStructure(id);
+    expect(s.name.toLowerCase()).toContain(s.cell === 'hexagonal' ? 'hexagonal' : 'cubic');
+  });
+
+  it('the parenthesised acronym is the id it is stored under', () => {
+    const withAcronym = ELEMENTAL.filter((s) => /\(([A-Z]+)\)/.test(s.name));
+    // fcc, bcc, hcp — sc and diamond are spelled out and have no acronym.
+    expect(withAcronym).toHaveLength(3);
+    for (const s of withAcronym) {
+      expect(/\(([A-Z]+)\)/.exec(s.name)![1].toLowerCase()).toBe(s.id);
+    }
+  });
+
+  /**
+   * `metals.ts` assigns each of Callister's sixteen metals a structure, and it
+   * is derived from the measured radii used elsewhere in this file rather than
+   * from the examples string. The correspondence is exhaustive in both
+   * directions today, so both directions are asserted: a metal dropped from an
+   * examples list fails, and a metal moved to the wrong list fails twice.
+   */
+  it('lists every metal under the structure metals.ts assigns it, and no other', () => {
+    expect(METALS.length).toBeGreaterThan(10);
+    for (const m of METALS) {
+      const word = baseName(m.name);
+      for (const s of STRUCTURES) {
+        expect({ metal: word, structure: s.id, listed: mentions(s.examples, word) }).toEqual({
+          metal: word,
+          structure: s.id,
+          listed: s.id === m.structure,
+        });
+      }
+    }
+  });
+
+  it('gives every species a distinct label within its structure', () => {
+    for (const s of STRUCTURES) {
+      const labels = Object.values(s.species).map((sp) => sp.label);
+      expect(labels.every((l) => l.trim().length > 0)).toBe(true);
+      expect(new Set(labels).size).toBe(labels.length);
+    }
+  });
+
+  /**
+   * A label that says "cation" beside a negative charge is the one error here a
+   * reader would take at face value, since the legend is the only place the
+   * sign appears.
+   */
+  it('agrees with itself on the sign of every charged species', () => {
+    let checked = 0;
+    for (const s of STRUCTURES) {
+      for (const sp of Object.values(s.species)) {
+        if (/cation/i.test(sp.label)) {
+          expect(sp.label).toContain('⁺');
+          checked++;
+        }
+        if (/anion/i.test(sp.label)) {
+          expect(sp.label).toContain('⁻');
+          checked++;
+        }
+      }
+    }
+    // rock salt and CsCl carry two each, perovskite two more.
+    expect(checked).toBe(6);
+  });
+
+  /**
+   * Chains the labels out of the species map: an ion named in the legend has to
+   * be one the compound is actually made of, as spelled in its name or examples.
+   */
+  it('names only ions the compound’s own formula contains', () => {
+    const found: string[] = [];
+    for (const s of STRUCTURES) {
+      const formulae = `${s.name} ${s.examples}`;
+      for (const sp of Object.values(s.species)) {
+        for (const [, symbol] of sp.label.matchAll(/([A-Z][a-z]?)[⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]/g)) {
+          expect(formulae).toContain(symbol);
+          found.push(symbol);
+        }
+      }
+    }
+    expect(found.sort()).toEqual(['Ba', 'Cl', 'Cl', 'Cs', 'Na', 'Ti']);
+  });
+});
+
+/**
+ * `aOverR` had one external anchor: `a = (a/R)·R` against Callister's published
+ * lattice parameters, in the packing block above. It covers FCC and BCC only.
+ * SC, HCP and diamond were checked against a literal table in this file, which
+ * says the relation is what it is.
+ *
+ * Everything below anchors those three to something outside this module.
+ */
+describe('the a↔R relation holds outside this module', () => {
+  /**
+   * `xrd/diffraction.ts` carries its own `latticeParameter`, written for the
+   * diffraction module and reached from `MillerIndices.tsx`. It is an
+   * independent statement of the same geometry, so the two must agree — and if
+   * they ever stop, one of the two modules is drawing the wrong cell.
+   *
+   * `xrdLatticeFor` returns null for HCP, which the XRD module does not model;
+   * that is the gap the Zn/Cd/Co/Ti rows below fill.
+   */
+  it.each(ELEMENTAL.map((s) => s.id))('%s: agrees with the XRD module’s own relation', (id) => {
+    const s = getStructure(id);
+    const lattice = xrdLatticeFor(id);
+    if (lattice === null) {
+      expect(id).toBe('hcp');
+      return;
+    }
+    // R = 1 makes latticeParameter return a/R directly.
+    expect(latticeParameter(lattice, 1)).toBeCloseTo(s.aOverR!, 12);
+  });
+
+  it('covers four of the five elemental structures that way', () => {
+    expect(ELEMENTAL.filter((s) => xrdLatticeFor(s.id) !== null)).toHaveLength(4);
+  });
+
+  /**
+   * Silicon's lattice parameter is measured, not derived: `XRD_SAMPLES` carries
+   * 0.5431 nm as a published value, unlike the polonium and iron rows beside it
+   * which are computed from a radius. So this runs the diamond relation onto a
+   * published covalent radius and lands on a number nothing in the chain
+   * derived from it.
+   */
+  it('diamond: reproduces silicon’s measured lattice parameter from its radius', () => {
+    const R_SI = 0.1176; // covalent radius, nm
+    expect(getStructure('diamond').aOverR! * R_SI).toBeCloseTo(0.5431, 3);
+  });
+
+  /**
+   * α-polonium is the only element that adopts simple cubic, and the XRD module
+   * already commits to R = 0.168 nm for it. Published a is 0.3359 nm.
+   */
+  it('sc: reproduces α-polonium’s published lattice parameter', () => {
+    expect(getStructure('sc').aOverR! * 0.168).toBeCloseTo(0.3359, 3);
+  });
+
+  /**
+   * HCP cannot be anchored by `a = 2R` alone, and asserting it flatly would be
+   * false: it holds only when the in-plane neighbours are the closest ones.
+   * Below the ideal c/a the cell is compressed along c, the six out-of-plane
+   * neighbours become the contact pair, and a opens up beyond 2R — titanium at
+   * c/a = 1.587 sits 0.006 nm clear of it, a 2% error that a flat assertion
+   * would have had to launder.
+   *
+   * So the rule is the assertion. Both branches are exercised, and the count of
+   * each is checked so neither can quietly empty.
+   */
+  it('hcp: in-plane contact governs a exactly when c/a is at or above ideal', () => {
+    const published: Record<string, number> = {
+      Zn: 0.2665,
+      Cd: 0.2979,
+      Co: 0.2507,
+      Ti: 0.295,
+    };
+    const hcp = METALS.filter((m) => m.structure === 'hcp');
+    expect(hcp).toHaveLength(4);
+
+    let touching = 0;
+    let open = 0;
+    for (const m of hcp) {
+      const a = getStructure('hcp').aOverR! * m.R;
+      if (m.coa! >= IDEAL_COA) {
+        expect(a).toBeCloseTo(published[m.symbol], 3);
+        touching++;
+      } else {
+        expect(a).toBeLessThan(published[m.symbol]);
+        open++;
+      }
+    }
+    expect([touching, open]).toEqual([2, 2]);
   });
 });

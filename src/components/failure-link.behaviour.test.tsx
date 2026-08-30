@@ -224,3 +224,47 @@ describe('the picker honours the reader’s choice, whatever else is in the hash
     expect(reopened.value, shared).toBe('centre');
   });
 });
+
+/**
+ * The same link, spelled with an empty `geom`. A reader who hand-edits the hash
+ * — or an editor that normalises `?Y=1.2` by writing out every key it knows —
+ * produces `?geom=&Y=1.2`, which is not a hash the app can write: `buildHash`
+ * drops empty values.
+ *
+ * It used to be read as "geom is present", which made the legacy test above
+ * false and opened the link on the default geometry instead of the custom
+ * slider. The first hash write then dropped the empty `geom`, and re-reading
+ * that hash flipped the legacy test back true — so the geometry moved under a
+ * reader who had touched nothing.
+ */
+describe('an empty ?geom= reads as the link it round-trips to', () => {
+  it('opens on the custom slider, exactly as the bare ?Y= form does', async () => {
+    const select = await renderRoute('#/failure?geom=&Y=1.2');
+    expect(select.value).toBe('custom');
+    expect(geomSlidersOnScreen()).toEqual(['Geometry factor Y']);
+  });
+
+  it('settles on a hash the app could have written itself', async () => {
+    await renderRoute('#/failure?geom=&Y=1.2');
+    const hash = await settledHash();
+    expect(hash).toContain('geom=custom');
+    expect(hash).not.toMatch(/[?&]geom=(&|$)/);
+  });
+
+  it('does not move the geometry a second time once settled', async () => {
+    const select = await renderRoute('#/failure?geom=&Y=1.2');
+    await settledHash();
+    await settledHash();
+    expect(select.value).toBe('custom');
+  });
+
+  it('with no Y, opens where the bare route opens', async () => {
+    const withEmpty = await renderRoute('#/failure?geom=');
+    const chosen = withEmpty.value;
+    cleanup();
+    window.location.hash = '';
+    const bare = await renderRoute('#/failure');
+    expect(bare.value).toBe(chosen);
+    expect(CRACK_GEOMETRIES.map((g) => g.id)).toContain(chosen);
+  });
+});

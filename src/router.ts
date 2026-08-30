@@ -54,7 +54,13 @@ export function parseHash(hash: string): Route {
 
   const params: Record<string, string> = {};
   if (queryPart) {
-    for (const [k, v] of new URLSearchParams(queryPart)) params[k] = v;
+    // An empty value is dropped rather than stored. `buildHash` cannot write
+    // one, so keeping it would make a hand-typed `?geom=` parse into a state
+    // the app has no way to reproduce — and `FailureAnalysis` asks whether
+    // `geom` is *absent*, so the two spellings have to answer that alike.
+    for (const [k, v] of new URLSearchParams(queryPart)) {
+      if (v !== '') params[k] = v;
+    }
   }
 
   return { tab: isTab(tab) ? tab : DEFAULT_TAB, params };

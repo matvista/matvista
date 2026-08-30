@@ -8,6 +8,8 @@ import {
   type MaterialClass,
   type PerformanceIndex,
   type SelectionMaterial,
+  screenStages,
+  type AttributeLimits,
 } from '../selection/materials';
 
 const W = 760;
@@ -41,6 +43,19 @@ export function AshbyChart() {
   const [selected, setSelected] = useState<SelectionMaterial | null>(null);
   /** Guide-line position, as a fraction of the index range. */
   const [guide, setGuide] = useRouteNumber('guide', 0.82, 0, 1);
+  /**
+   * A6 — attribute limits. Held as a position in [0,1] along the drawn decade
+   * range rather than as a raw density or modulus, so the bounds handed to
+   * `useRouteNumber` are fixed and do not move when the y-axis property
+   * changes. Defaults sit at the ends, so the screen is inert until moved.
+   */
+  // In the URL, not component state: these links get pasted into worksheets,
+  // and a link carrying limits with the screen switched off would show a
+  // different chart than the tab that wrote it.
+  const [screenMode, setScreenMode] = useRouteEnum<'on' | 'off'>('screen', 'off', ['on', 'off']);
+  const screenOn = screenMode === 'on';
+  const [limDPos, setLimDPos] = useRouteNumber('limD', 1, 0, 1);
+  const [limYPos, setLimYPos] = useRouteNumber('limY', 0, 0, 1);
 
   const applicable = INDICES.filter((i) => i.property === yProp);
   const index = applicable.find((i) => i.id === indexId) ?? applicable[0];
@@ -48,6 +63,7 @@ export function AshbyChart() {
   const visible = SELECTION_MATERIALS.filter((m) => !hidden.has(m.cls));
 
   const yOf = (m: SelectionMaterial) => (yProp === 'modulus' ? m.modulus : m.strength);
+
 
   // Fixed log bounds so toggling classes doesn't rescale the whole chart.
   const xMin = 0.3;
@@ -57,6 +73,18 @@ export function AshbyChart() {
 
   const lx = (v: number) => PAD.l + ((Math.log10(v) - Math.log10(xMin)) / (Math.log10(xMax) - Math.log10(xMin))) * plotW;
   const ly = (v: number) => PAD.t + plotH - ((Math.log10(v) - Math.log10(yMin)) / (Math.log10(yMax) - Math.log10(yMin))) * plotH;
+  const fromPos = (pos: number, lo: number, hi: number) =>
+    10 ** (Math.log10(lo) + pos * (Math.log10(hi) - Math.log10(lo)));
+  const densityMax = fromPos(limDPos, xMin, xMax);
+  const yFloor = fromPos(limYPos, yMin, yMax);
+  const limits: AttributeLimits = screenOn
+    ? yProp === 'modulus'
+      ? { densityMax, modulusMin: yFloor }
+      : { densityMax, strengthMin: yFloor }
+    : {};
+  const stages = screenStages(visible, limits);
+  const survivors = stages[stages.length - 1].survivors;
+  const survivorNames = new Set(survivors.map((m) => m.name));
 
   const decades = (min: number, max: number) => {
     const out: number[] = [];
@@ -126,8 +154,72 @@ export function AshbyChart() {
               </option>
             ))}
           </select>
+          <label className="ab-screen-toggle">
+            <input
+              type="checkbox"
+              checked={screenOn}
+              onChange={(e) => setScreenMode(e.target.checked ? 'on' : 'off')}
+            />
+            Attribute limits
+          </label>
           <span className="drag-hint">Click any point for detail</span>
         </div>
+
+        {screenOn && (
+          <div className="crystal-controls">
+            <label className="fa-slider">
+              <span>
+                Density at most <strong>{densityMax.toFixed(2)}</strong> Mg/m³
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={limDPos}
+                onChange={(e) => setLimDPos(Number(e.target.value))}
+                aria-label="Maximum density, Mg per cubic metre"
+              />
+            </label>
+            <label className="fa-slider">
+              <span>
+                {yProp === 'modulus' ? 'Modulus' : 'Strength'} at least{' '}
+                <strong>{yFloor < 1 ? yFloor.toFixed(3) : yFloor.toFixed(0)}</strong>{' '}
+                {yProp === 'modulus' ? 'GPa' : 'MPa'}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={limYPos}
+                onChange={(e) => setLimYPos(Number(e.target.value))}
+                aria-label={`Minimum ${yProp}`}
+              />
+            </label>
+          </div>
+        )}
+
+        {screenOn && (
+          <p className="ab-funnel">
+            <strong>Screen, then rank.</strong>{' '}
+            {stages.map((st, i) => (
+              <span key={st.label}>
+                {i > 0 && ' → '}
+                {st.survivors.length}
+                {i > 0 && <span className="ab-funnel-lim"> after {st.label}</span>}
+              </span>
+            ))}
+            {' → '}
+            {survivors.filter((m) => passing.some((p) => p.name === m.name)).length} after the{' '}
+            {index.label} guide line.{' '}
+            <span className="ab-funnel-note">
+              A limit says <em>allowed</em>; an index says <em>better</em>. Only the last step
+              ranks — the ones before it eliminate, and no index can rescue a material that
+              fails a hard constraint.
+            </span>
+          </p>
+        )}
 
         <svg className="ss-plot" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Ashby chart: ${yProp} versus density`}>
           {decades(yMin, yMax).map((v) => (
@@ -162,11 +254,29 @@ export function AshbyChart() {
             </>
           )}
 
+          {/* A6 — the allowed box. Screening is a hard constraint, so it is
+              drawn as a region rather than a line: everything outside is out,
+              however good its index. */}
+          {screenOn && (
+            <rect
+              className="ab-limit-box"
+              x={PAD.l}
+              y={ly(yMax)}
+              width={Math.max(0, lx(densityMax) - PAD.l)}
+              height={Math.max(0, ly(yFloor) - ly(yMax))}
+              fill="rgba(27,175,122,0.10)"
+              stroke="#1baf7a"
+              strokeDasharray="4 3"
+              strokeWidth={1.2}
+            />
+          )}
+
           {visible.map((m) => {
             const style = CLASS_STYLE[m.cls];
             const x = lx(m.density);
             const y = ly(yOf(m));
             const isSel = selected?.name === m.name;
+            const screenedOut = screenOn && !survivorNames.has(m.name);
             return (
               <g
                 key={m.name}
@@ -174,6 +284,7 @@ export function AshbyChart() {
                 onClick={() => setSelected(m)}
                 role="button"
                 aria-label={m.name}
+                opacity={screenedOut ? 0.18 : 1}
               >
                 <Marker shape={style.shape} x={x} y={y} r={isSel ? 8 : 5.5} color={style.color} selected={isSel} />
               </g>

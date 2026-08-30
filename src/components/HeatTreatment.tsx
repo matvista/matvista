@@ -20,6 +20,8 @@ import {
   TRACE_FRACTION,
   type CurvePoint,
   type Product,
+  isothermalHold,
+  type TttModel,
 } from '../heattreat/model';
 import { EUTECTOID_T, FE_C, boundaryTemperature } from '../phase/systems';
 
@@ -453,6 +455,8 @@ export function HeatTreatment() {
 
         <p className="detail-summary">{outcome.summary}</p>
 
+        <IsothermalPanel steel={steel} ttt={ttt} />
+
         <table className="detail-props">
           <tbody>
             <tr>
@@ -857,4 +861,168 @@ function fmtRate(r: number): string {
   if (r >= 10) return r.toFixed(0);
   if (r >= 1) return r.toFixed(1);
   return r.toFixed(2);
+}
+
+/* ========================================== M10 — the isothermal hold == */
+
+const HOLD_TIME_MIN = 0.1;
+const HOLD_TIME_MAX = 1e6;
+
+/**
+ * Quench to a temperature, hold, quench again.
+ *
+ * Drawn as its own panel below the cooling one rather than as a second mode of
+ * it. The plan called for a mode switch; two diagrams one above the other put
+ * the continuous-cooling path and the isothermal one side by side, which is
+ * the comparison the module's own caveat is about — and it leaves the shipped
+ * cooling panel, which carries most of this module's tested behaviour,
+ * untouched.
+ */
+function IsothermalPanel({ steel, ttt }: { steel: Steel; ttt: TttModel }) {
+  /**
+   * The slider reaches *below* Mˢ deliberately. Clamping it to just above
+   * would make the model's refusal unreachable, and the refusal is the lesson:
+   * a reader who drags down there and is told the quench already passed Mˢ has
+   * met martempering, which is the answer to the misconception that quench
+   * cracking comes from the cooling rate rather than the thermal gradient.
+   */
+  const holdMin = Math.round(TEMP_MIN + 20);
+  const holdMax = Math.round(ttt.a1 - 5);
+  const [holdT, setHoldT] = useRouteNumber('holdT', Math.round(ttt.ms + 60), holdMin, holdMax);
+  const [holdTime, setHoldTime] = useRouteNumber('holdS', 100, HOLD_TIME_MIN, HOLD_TIME_MAX);
+
+  const out = isothermalHold(steel, ttt, holdT, holdTime);
+
+  const sx = (t: number) => PAD.l + (Math.log10(t / T_MIN) / Math.log10(T_MAX / T_MIN)) * plotW;
+  const sy = (T: number) => PAD.t + plotH - ((T - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * plotH;
+  const line = (pts: CurvePoint[]) =>
+    pts
+      .filter((p) => p.t >= T_MIN && p.t <= T_MAX && p.T >= TEMP_MIN && p.T <= TEMP_MAX)
+      .map((p) => `${sx(p.t)},${sy(p.T)}`)
+      .join(' ');
+
+  /**
+   * Vertical drop to the hold temperature, horizontal hold, vertical drop to
+   * room temperature. The first leg is drawn at the left edge because an
+   * ideal quench takes no time on a log axis that starts at 0.1 s — the
+   * idealisation the construction rests on, and the reason martempering has
+   * to be a separate idea.
+   */
+  const path = [
+    `${sx(T_MIN)},${sy(Math.min(TEMP_MAX, ttt.a1 + 40))}`,
+    `${sx(T_MIN)},${sy(holdT)}`,
+    `${sx(holdTime)},${sy(holdT)}`,
+    `${sx(holdTime)},${sy(TEMP_MIN + 20)}`,
+  ].join(' ');
+
+  return (
+    <div className="density-box">
+      <h3>Hold at temperature instead: austempering and martempering</h3>
+      <svg
+        className="ht-plot"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label="Isothermal transformation path: quench, hold, quench"
+      >
+        <line x1={PAD.l} x2={W - PAD.r} y1={sy(ttt.a1)} y2={sy(ttt.a1)} className="ht-a1" />
+        <text x={W - PAD.r + 6} y={sy(ttt.a1) + 4} className="ht-edge-label">
+          A₁
+        </text>
+        <line x1={PAD.l} x2={W - PAD.r} y1={sy(ttt.ms)} y2={sy(ttt.ms)} className="ht-ms" />
+        <text x={W - PAD.r + 6} y={sy(ttt.ms) + 4} className="ht-edge-label">
+          Mˢ
+        </text>
+        <polyline points={line(ttt.start)} className="ht-start" />
+        <polyline points={line(ttt.finish)} className="ht-finish" />
+        <polyline points={path} className="ht-path" />
+        {out.tStart != null && (
+          <circle cx={sx(out.tStart)} cy={sy(holdT)} r={5} className="ht-hit" />
+        )}
+        <text x={W / 2} y={H - 10} className="ht-edge-label" textAnchor="middle">
+          time (s), log scale
+        </text>
+      </svg>
+
+      <div className="crystal-controls">
+        <label className="ht-rate">
+          <span>
+            Hold at <strong>{holdT}</strong> °C
+          </span>
+          <input
+            type="range"
+            min={holdMin}
+            max={holdMax}
+            step={5}
+            value={holdT}
+            onChange={(e) => setHoldT(Number(e.target.value))}
+            aria-label="Hold temperature, °C"
+          />
+        </label>
+        <label className="ht-rate">
+          <span>
+            for <strong>{holdTime < 60 ? `${holdTime.toFixed(1)} s` : `${(holdTime / 60).toFixed(0)} min`}</strong>
+          </span>
+          <input
+            type="range"
+            min={Math.log10(HOLD_TIME_MIN)}
+            max={Math.log10(HOLD_TIME_MAX)}
+            step={0.01}
+            value={Math.log10(holdTime)}
+            onChange={(e) => setHoldTime(10 ** Number(e.target.value))}
+            aria-label="Hold time, seconds"
+          />
+        </label>
+      </div>
+
+      <div className="ht-bar" role="img" aria-label="Phase fractions after the hold and final quench">
+        {out.fractions
+          .filter((f) => f.fraction >= TRACE_FRACTION)
+          .map((f) => (
+            <div
+              key={f.product}
+              className="ht-bar-seg"
+              style={{ width: `${f.fraction * 100}%`, background: PRODUCT_COLOR[f.product] }}
+              title={`${f.product} ${(f.fraction * 100).toFixed(0)}%`}
+            />
+          ))}
+      </div>
+      {/* The filter mirrors the cooling panel above, where `predict` does not
+          drop sub-trace parts. `isothermalHold` already does, so removing it
+          here changes nothing — it is kept so the two bars are read the same
+          way, not because it guards a reachable case. */}
+      <ul className="ht-frac-list">
+        {out.fractions
+          .filter((f) => f.fraction >= TRACE_FRACTION)
+          .map((f) => (
+            <li key={f.product}>
+              <i style={{ background: PRODUCT_COLOR[f.product] }} />
+              {f.product} <strong>{(f.fraction * 100).toFixed(0)}%</strong>
+            </li>
+          ))}
+      </ul>
+
+      <table className="detail-props dd-results">
+        <tbody>
+          <tr>
+            <th scope="row">Transformed during the hold</th>
+            <td>{(out.transformed * 100).toFixed(0)}%</td>
+          </tr>
+          <tr>
+            <th scope="row">Start / finish at {holdT} °C</th>
+            <td>
+              {out.tStart != null && out.tFinish != null
+                ? `${out.tStart.toFixed(1)} s / ${out.tFinish.toFixed(0)} s`
+                : 'off the diagram'}
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Hardness</th>
+            <td>{out.hardness.toFixed(0)} HRC</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="detail-summary">{out.summary}</p>
+    </div>
+  );
 }

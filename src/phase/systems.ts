@@ -688,3 +688,68 @@ export function steelMicrostructure(C0: number): SteelResult | null {
     totalCementite: m.right.fraction,
   };
 }
+
+/* ================================== M5 — microstructure development == */
+
+export interface CoolingStage {
+  /** Temperature at which this region is entered on the way down, °C. */
+  T: number;
+  region: string;
+  /** The phase point just inside the region. */
+  point: PhasePoint;
+}
+
+/**
+ * The regions an alloy passes through as it cools at fixed composition, and
+ * the temperature it enters each.
+ *
+ * The module answers "what phases are present here", which is one step of what
+ * Callister spends four sections on. The misconception it leaves standing is
+ * that phase fractions and microstructure are the same thing: a 40 wt% Sn
+ * alloy and a 61.9 wt% Sn alloy are both α + β with different fractions and
+ * look nothing alike down a microscope, and only one of them is solder.
+ *
+ * Crossings are found by bisection rather than reported at the sampling step,
+ * so a breadcrumb reads 183.0 °C rather than "somewhere near 183" — and can be
+ * checked against `boundaryTemperature`, which derives the same number from
+ * the boundary polyline instead of from `evaluate`.
+ */
+export function coolingSequence(
+  system: PhaseSystem,
+  x: number,
+  tFrom: number,
+  tTo: number,
+  samples = 600,
+): CoolingStage[] {
+  const hi = Math.min(tFrom, system.tMax);
+  const lo = Math.max(tTo, system.tMin);
+  if (!(hi > lo)) return [];
+
+  const regionAt = (T: number) => system.evaluate(x, T).region;
+  const stages: CoolingStage[] = [
+    { T: hi, region: regionAt(hi), point: system.evaluate(x, hi) },
+  ];
+
+  let prevT = hi;
+  let prevRegion = stages[0].region;
+  for (let i = 1; i <= samples; i++) {
+    const T = hi - ((hi - lo) * i) / samples;
+    const region = regionAt(T);
+    if (region === prevRegion) {
+      prevT = T;
+      continue;
+    }
+    // Bisect between the last temperature still in the old region and this one.
+    let a = prevT;
+    let b = T;
+    for (let k = 0; k < 60; k++) {
+      const mid = (a + b) / 2;
+      if (regionAt(mid) === prevRegion) a = mid;
+      else b = mid;
+    }
+    stages.push({ T: b, region, point: system.evaluate(x, b) });
+    prevRegion = region;
+    prevT = T;
+  }
+  return stages;
+}

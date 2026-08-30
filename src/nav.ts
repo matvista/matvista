@@ -18,6 +18,7 @@ export type Tab =
   | 'heattreat'
   | 'mechanical'
   | 'composites'
+  | 'thermal'
   | 'failure'
   | 'semiconductors'
   | 'selection'
@@ -103,6 +104,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'composites',
         label: 'Composites',
         blurb: 'Rule of mixtures, bounds, short fibres',
+      },
+      {
+        id: 'thermal',
+        label: 'Thermal properties',
+        blurb: 'Heat capacity, expansion, thermal shock',
       },
       {
         id: 'semiconductors',

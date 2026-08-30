@@ -1646,6 +1646,47 @@ function renderCompositePanel(mod: CompositeModule): string[] {
   ];
 }
 
+/* ----------------------------------------------------- panel 8c: thermal --- */
+
+interface ThermalModule {
+  METALS: { element?: string; conductivity: number; resistivity?: number }[];
+  lorenzNumber: (k: number, rho: number, T: number) => number;
+  LORENZ_SOMMERFELD: number;
+}
+
+/**
+ * Wiedemann–Franz: nine metals on a line whose slope is a constant of nature.
+ *
+ * The panel that most nearly *is* the module — the same plot is what checks
+ * every conductivity in the dataset against its resistivity, so a figure that
+ * drifted from the model would be a figure that had stopped checking anything.
+ */
+function renderThermalPanel(mod: ThermalModule): string[] {
+  const box = panelBox('thermal');
+  const sMax = 7e7;
+  const kMax = 450;
+  const T = 300;
+  const sx = linearScale(0, sMax, box.left, box.right);
+  const sy = linearScale(0, kMax, box.bottom, box.top);
+
+  const dots = mod.METALS.map((m) => {
+    const sigma = 1 / (m.resistivity! * 1e-9);
+    return `M${f(sx(sigma), 0)},${f(sy(m.conductivity), 0)}m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0`;
+  }).join('');
+
+  return [
+    comment('thermal against electrical conductivity, with k = LσT from thermal/model.ts'),
+    node('path', {
+      d: `M${f(sx(0), 0)},${f(sy(0), 0)}L${f(sx(sMax), 0)},${f(sy(mod.LORENZ_SOMMERFELD * sMax * T), 0)}`,
+      fill: 'none',
+      stroke: GRID,
+      strokeWidth: 1.4,
+      strokeDasharray: '6 4',
+    }),
+    node('path', { d: dots, fill: SERIES_A }),
+  ];
+}
+
 /* -------------------------------------------- panel 9: semiconductors --- */
 
 interface SemiModule {
@@ -1927,6 +1968,7 @@ interface IndexPlateModules {
   mech: MechModule;
   failure: FailureModule;
   composite: CompositeModule;
+  thermal: ThermalModule;
   semi: SemiModule;
   xrd: XrdPanelModule;
   selection: SelectionPanelModule;
@@ -1955,6 +1997,7 @@ const IDX_PANELS: { id: string; title: string; caption: string }[] = [
   { id: 'mechanical', title: 'Mechanical properties', caption: 'three metals, to fracture' },
   { id: 'composites', title: 'Composites', caption: 'the two bounds, carbon in epoxy' },
   { id: 'failure', title: 'Failure analysis', caption: 'critical crack size vs stress' },
+  { id: 'thermal', title: 'Thermal properties', caption: 'the electrons that carry charge carry heat' },
   { id: 'semiconductors', title: 'Semiconductors', caption: 'band gaps; visible light begins at the rule' },
   { id: 'xrd', title: 'XRD simulator', caption: 'α-iron on a copper anode' },
   { id: 'selection', title: 'Material selection', caption: '54 materials, E against ρ' },
@@ -2044,6 +2087,7 @@ function renderIndexPlate(mods: IndexPlateModules): string {
     ...renderStressPanel(mods.mech),
     ...renderFracturePanel(mods.failure),
     ...renderCompositePanel(mods.composite),
+    ...renderThermalPanel(mods.thermal),
     ...renderBandGapPanel(mods.semi),
     ...renderXrdPanel(mods.xrd),
     ...renderSelectionPanel(mods.selection),
@@ -2110,6 +2154,8 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
   const failureAlloys = failureData as unknown as { FRACTURE_ALLOYS: FailureModule['FRACTURE_ALLOYS'] };
   const semi = (await import('../src/electronic/materials.ts')) as unknown as SemiModule;
   const polymerModel = await import('../src/polymer/model.ts');
+  const thermalData = await import('../src/thermal/materials.ts');
+  const thermalModel = await import('../src/thermal/model.ts');
   const compositeData = await import('../src/composite/materials.ts');
   const compositeModel = await import('../src/composite/model.ts');
   const corrosion = (await import('../src/corrosion/data.ts')) as unknown as CorrosionPanelModule;
@@ -2143,6 +2189,11 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
       MATRICES: compositeData.MATRICES,
       longitudinalModulus: compositeModel.longitudinalModulus,
       transverseModulus: compositeModel.transverseModulus,
+    },
+    thermal: {
+      METALS: thermalData.METALS,
+      lorenzNumber: thermalModel.lorenzNumber,
+      LORENZ_SOMMERFELD: thermalModel.LORENZ_SOMMERFELD,
     },
     xrd: xrd as unknown as XrdPanelModule,
     selection: selection as unknown as SelectionPanelModule,

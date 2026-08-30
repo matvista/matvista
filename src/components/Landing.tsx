@@ -150,6 +150,12 @@ const CARDS: ModuleCard[] = [
     detail: 'Specify a laminate — fibre, matrix, volume fraction — and get the two bounds on its modulus, the load the fibres actually carry, and a specific stiffness ranked against the 54 materials on the Ashby chart. Then the ceiling: the strength rule of mixtures overshoots the measured composite by close to a factor of two, and the module shows the gap rather than printing the number.',
   },
   {
+    id: 'thermal',
+    title: 'Thermal properties',
+    href: '#/thermal',
+    detail: 'Constrain a bar, change its temperature, and read the stress it cannot relieve — then hand that stress to the failure module and get the flaw size it makes critical. Dulong\u2019s rule is drawn over the app\u2019s own atomic masses, with the three elements it fails and why; Wiedemann\u2013Franz is drawn as the line that checks the conductivities against the resistivities.',
+  },
+  {
     id: 'failure',
     title: 'Failure analysis',
     href: '#/failure',

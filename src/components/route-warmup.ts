@@ -46,6 +46,7 @@ export const LAZY_ROUTES = {
   mechanical: () => import('./StressStrain'),
   composites: () => import('./Composites'),
   polymers: () => import('./Polymers'),
+  thermal: () => import('./ThermalProperties'),
   failure: () => import('./FailureAnalysis'),
   phase: () => import('./PhaseDiagrams'),
   heattreat: () => import('./HeatTreatment'),

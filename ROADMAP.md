@@ -20,7 +20,7 @@ lists what exists from a reader's point of view; this file is the build record.
 | ~~0~~ | ~~**The module index at seventeen**~~ — grid shipped; budget waits for a real panel | — | medium | ✅ |
 | ~~6~~ | ~~**Composites**~~ — shipped; the strength ceiling was not in the plan | high | low | ✅ |
 | ~~7~~ | ~~**Polymers**~~ — shipped; chain dimensions in place of the modulus curve | high | medium | ✅ |
-| 8 | **Thermal properties** — expansion, conductivity, thermal stress | medium | low | ✅ |
+| ~~8~~ | ~~**Thermal properties**~~ — shipped; the data checks itself three ways | medium | low | ✅ |
 | 9 | **Free energy & the common tangent** — shape not settled | high | medium | ✅ |
 | 10 | **Magnetic properties** — conditional on a data gate | medium | medium | ✅ |
 | — | Materials Project integration | high | high | ⚠️ see below |
@@ -769,37 +769,105 @@ distribution was.
   crystallinity in [0, 100].
 - **Static-safe:** yes.
 
-## 8. Thermal properties — planned
+## 8. Thermal properties — shipped
 
-Heat capacity against temperature (Dulong–Petit at high T, the Debye T³ region
-below), linear expansion, thermal conductivity, and the two results that make
-this a module rather than a table: **thermal stress** `σ = E α ΔT` in a fully
-constrained member, and **thermal shock resistance** `TSR = σ_f k / (E α)`.
+Built in `thermal/model.ts`, `thermal/materials.ts`, `thermal/elements.ts` and
+`components/ThermalProperties.tsx`; costs 5.57 kB gzipped. Three panels: heat
+capacity against atomic mass, thermal stress with a hand-off into the failure
+module, and conduction with thermal shock.
 
-Two loops close here, and both are into modules that already exist:
+**The module needed two measured numbers per material, and the design is about
+what checks them.** Expansion coefficient and thermal conductivity are
+tabulated values, and a tabulated value entered from a source that is not to
+hand is the exposure this file spends most of its length on. So the entries do
+not stand alone:
 
-- A thermal stress is a stress. `σ = E α ΔT` for a chosen ΔT is an input to
-  `failure/model.ts`'s critical crack size, so "how cold can I quench this before
-  a flaw of size *a* runs" is answerable across two modules that share the
-  formula, not a new one.
-- Wiedemann–Franz `L = k / σT` ties thermal conductivity to the electrical
-  conductivity `corrosion/` and `electronic/` already carry for metals, and the
-  Lorenz number is near-constant across them — which is a real result, checkable,
-  and the reason both conductivities are the same electrons.
+- **Wiedemann–Franz checks conductivity against resistivity.** Each metal
+  carries both, and `k/(σT)` has to land in the band real metals occupy — the
+  nine here run 2.08–3.13 × 10⁻⁸ against Sommerfeld's 2.44. A conductivity
+  wrong by a factor of two leaves the band, and *that* is asserted too, so the
+  band cannot quietly be widened until nothing can fail it.
+- **α·T_melt checks every expansion coefficient**, against melting points taken
+  from `data/elements.json`. The product sits between 0.012 and 0.030 for all
+  nine while α itself ranges five-fold, because both quantities read the same
+  thing: how deep the interatomic potential well is. A misplaced decimal cannot
+  survive it, which is also asserted.
+- **The heat-capacity panel is not tabulated at all.** Dulong–Petit fixes molar
+  heat capacity at 3R, so a specific heat is `3R/A` over the atomic masses the
+  periodic table already carries. Nine measured values are held beside it as a
+  check on the rule, never as an input to it.
+
+**The failure of that rule is the panel's subject.** Carbon, beryllium and
+silicon are light atoms held by stiff bonds, so their Debye temperatures are
+above 300 K, their vibrational modes are not all excited, and 3R overshoots —
+by 26% for silicon, 52% for beryllium, threefold for diamond. Every other
+element lands within 7%. The panel draws the miss as a stem between the rule
+and the measurement rather than describing it.
+
+**The ceramics are the least-checked entries and the module says so.** A
+ceramic has no free electrons, so Wiedemann–Franz is silent about it, and it is
+a compound with no element row to take a melting point from. What the five
+carry is an *ordering* — fused silica above borosilicate above soda-lime, by
+wide margins — and that ordering is asserted. It is weaker than what the metals
+have, and both the code comment and the panel itself say which entries rest on
+which.
+
+### Two departures worth recording
+
+**1. The thermal-shock ranking is not the one the caption first implied.** With
+the σ_f·k/(E·α) figure of merit, **alumina beats fused silica** — its
+conductivity is twenty times a glass's and wins on the k in the numerator
+despite an α seven times larger. That is the formula talking, not an error:
+drop the k, which is the form that applies to a quench too severe for
+conduction to keep up, and fused silica leads by an order of magnitude. Two
+figures of merit, two orderings, and which applies is a question about the
+transient rather than the material. The panel says this rather than presenting
+one ranking as the answer.
+
+**2. `thermal/elements.ts` exists because the generator cannot import JSON.**
+`scripts/gen-module-figures.ts` statically imports `thermal/materials.ts` to lay
+out the figure panel, and it runs under plain Node — which refuses a JSON import
+without a `with { type: 'json' }` attribute that app code cannot carry. So the
+element join moved to its own module, out of the dataset's import graph. The
+alternative was a load hook in the generator; this is smaller, and it is the
+better separation anyway.
+
+- **Data:** as built — nine metals and five ceramics, each with α and k, plus
+  electrical resistivity for the metals because it is what checks k. Modulus,
+  strength and density are joined from Appendix B; atomic mass and melting point
+  from `data/elements.json`.
+- **Reuses:** `selection/materials.ts`, `data/elements.json`, and
+  `failure/model.ts` for the critical crack size — which is what gave that
+  module a second importer, so rollup lifted it into a shared chunk. See the
+  bundle section: `FailureAnalysis` looks 3.09 kB smaller and has not shrunk.
+- **New:** `src/thermal/`.
+- **Verified:** 3R = 24.94 J/mol·K, and `c·A = 3R` exactly for every element;
+  Dulong–Petit within 7% of the measured specific heat for all nine metals and
+  more than 2.5× out for diamond; the Lorenz number in band for all nine and
+  its mean within 15% of Sommerfeld's value; α·T_melt in [0.012, 0.030] for all
+  nine; `thermalStress` inverting exactly, and a quadrupled stress dividing the
+  critical crack size by sixteen through `failure/model.ts`'s own function;
+  the three glasses ranked with margins.
+
+## 8b. Original plan
+
+Heat capacity against temperature, linear expansion, thermal conductivity, and
+the two results that make this a module rather than a table: thermal stress
+`σ = E·α·ΔT` in a fully constrained member, and thermal shock resistance
+`TSR = σ_f·k/(E·α)`.
+
+Two loops close here, both into modules that already exist: a thermal stress is
+an input to `failure/model.ts`'s critical crack size, and Wiedemann–Franz ties
+thermal conductivity to the electrical conductivity `corrosion/` and
+`electronic/` already carry.
 
 - **Data:** ~12 materials with specific heat, linear expansion coefficient,
-  thermal conductivity and modulus, from Callister & Rethwisch ch. 19, whose
-  thermal-properties table carries all four columns for metals, ceramics and
-  polymers together. That is what makes this the cheapest of the five.
-- **Reuses:** `MECH_MATERIALS` for E where the metal is one of the seven;
-  `failure/model.ts` for the crack-size hand-off; the Arrhenius-style log plot in
-  `components/DefectsDiffusion.tsx`.
+  thermal conductivity and modulus, from Callister & Rethwisch ch. 19.
+- **Reuses:** `MECH_MATERIALS` for E; `failure/model.ts` for the hand-off.
 - **New:** `src/thermal/`.
-- **Verify against:** Dulong–Petit converging on 3R ≈ 24.9 J/mol·K at high T;
-  the Lorenz number computed from tabulated k and σ for copper, silver and
-  aluminium agreeing with 2.44 × 10⁻⁸ W·Ω/K² to the tolerance the tabulated data
-  supports; and Callister & Rethwisch ch. 19's worked example on the temperature
-  drop that brings a constrained bar to yield.
+- **Verify against:** Dulong–Petit converging on 3R ≈ 24.9 J/mol·K; the Lorenz
+  number from tabulated k and σ agreeing with 2.44 × 10⁻⁸; a worked example on
+  the temperature drop that brings a constrained bar to yield.
 - **Static-safe:** yes.
 
 ## 9. Free energy and the common tangent — planned, shape not settled
@@ -911,26 +979,41 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 285.8 kB | 84.5 kB | always |
-| stylesheet | 43.8 kB | 8.9 kB | always |
+| `index` — React, shell, landing page | 287.1 kB | 84.86 kB | always |
+| stylesheet | 44.8 kB | 9.08 kB | always |
 | the landing page's four deferred plates (`ModuleIndexPlate`, `XrdFigure`, `FatigueFigure`, `AshbyFigure`) | 51.3 kB | 11.4 kB total | as the reader approaches each |
 | `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| fourteen per-module chunks | — | 98.88 kB total | one per module opened |
-| shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
+| fifteen per-module chunks | — | 101.36 kB total | one per module opened |
+| nine shared helpers (`diffraction`, `systems`, `CrystalScene`, two `materials`, two `model`, `metals`, `color`) | — | 20.91 kB total | with whichever module needs them |
 
 The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
 `2218d7b` and is `OrbitControls-*.js` now, without any file being renamed.
 
-The app is code-split by route, so first paint is the `index` chunk plus the
-stylesheet — the stylesheet is render-blocking, so both count — **92.25 kB gzipped**,
-measured at **92.93 kB over the wire** with the document and its headers. The landing
-page's four plates below the fold are deliberately *not* in that number: each is a lazy
-chunk fetched when the reader approaches it. three.js is
-reachable from only three modules and is no part of first paint.
+**A module's chunk is not what its route costs, and the shared row is where the difference
+goes.** Entry 8 gave `failure/model.ts` a second importer, so rollup lifted it out of
+`FailureAnalysis` into a shared `model-*.js` chunk: that route's own chunk fell from
+14.88 to 11.79 kB gzipped and it now fetches the 3.82 kB helper alongside, for no change
+in what a reader downloads. The shared row grew from 11.9 kB across six chunks to 20.91
+across nine for the same reason, which is why it is quoted with a count now. This is the
+second time it has happened — the first was `xrd/diffraction.ts` at entry 1 — and both
+times the module that *looked* smaller had not shrunk.
 
-A module of the existing kind costs **1.95–14.88 kB gzipped** (fourteen of them total
-98.88 kB — this row said 72.5 kB for twelve and did not survive re-measurement; the
+The app is code-split by route, so first paint is the `index` chunk plus the
+stylesheet — the stylesheet is render-blocking, so both count — **93.94 kB gzipped**
+(84.86 + 9.08). It was 92.25 kB at twelve modules; the three added since cost 1.69 kB
+between them, which is three landing cards, three signature marks and three nav entries,
+and none of their model code. The landing page's four plates below the fold are
+deliberately *not* in that number: each is a lazy chunk fetched when the reader
+approaches it. three.js is reachable from only three modules and is no part of first
+paint.
+
+The over-the-wire figure quoted here for years — 92.93 kB — was measured against
+`npm run preview` at twelve modules and is **not** re-measured at every module, so it is
+not restated. The build figure above is.
+
+A module of the existing kind costs **1.95–12.06 kB gzipped** (fifteen of them total
+101.36 kB — this row said 72.5 kB for twelve and did not survive re-measurement; the
 sum is off `npm run build` at this commit, added up rather than carried forward) — negligible beside the 3D library, and none of it in first paint since each
 arrives in its own chunk.
 

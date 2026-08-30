@@ -49,6 +49,9 @@ const AshbyChart = lazy(() =>
 const Polymers = lazy(() =>
   import('./components/Polymers').then((m) => ({ default: m.Polymers })),
 );
+const ThermalProperties = lazy(() =>
+  import('./components/ThermalProperties').then((m) => ({ default: m.ThermalProperties })),
+);
 const Composites = lazy(() =>
   import('./components/Composites').then((m) => ({ default: m.Composites })),
 );
@@ -100,6 +103,7 @@ export default function App() {
             {tab === 'failure' && <FailureAnalysis />}
             {tab === 'polymers' && <Polymers />}
             {tab === 'composites' && <Composites />}
+            {tab === 'thermal' && <ThermalProperties />}
             {tab === 'semiconductors' && <Semiconductors />}
             {tab === 'phase' && <PhaseDiagrams />}
             {tab === 'heattreat' && <HeatTreatment />}

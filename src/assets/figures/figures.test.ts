@@ -193,7 +193,7 @@ describe('each figure carries the model output it claims to', () => {
       // budget and the ROADMAP's chunk table all still say twelve. These two
       // move by hand, with the rest.
       expect(NAV_GROUPS).toHaveLength(4);
-      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(14);
+      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(15);
     });
 
     /**
@@ -339,7 +339,8 @@ describe('each figure carries the model output it claims to', () => {
      *
      * Measured: 18,824 B over 12 panels at `9b4abef` (1,569 each); 20,070 B
      * over 13 when composites landed (1,544 each, marginal 1,246); 21,195 B
-     * over 14 with polymers (1,514 each, marginal 1,125).
+     * over 14 with polymers (1,514 each, marginal 1,125); 22,098 B over 15
+     * with thermal properties (1,473 each, marginal 903).
      *
      * The per-panel budget has already earned its place. The polymers panel
      * first drew its two histograms as fifty-six separate `<path>` elements
@@ -351,7 +352,7 @@ describe('each figure carries the model output it claims to', () => {
       const bytes = new TextEncoder().encode(plate()).length;
       const panels = NAV_GROUPS.flatMap((g) => g.items).length;
       expect(bytes / panels).toBeLessThan(1_700);
-      expect(bytes).toBeLessThan(21_500);
+      expect(bytes).toBeLessThan(22_500);
     });
   });
 

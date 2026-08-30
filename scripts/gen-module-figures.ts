@@ -64,7 +64,10 @@ interface NodeUrlApi {
  * lets the plate's *shape* be a module-scope constant derived from the app's
  * navigation rather than a second copy of it.
  */
-import { NAV_GROUPS } from '../src/nav.ts';
+import { NAV_GROUPS, capitalisedWord, numberWord } from '../src/nav.ts';
+import {
+  PLATE_CELL_H, PLATE_CELL_W, PLATE_HEADER, PLATE_MARGIN, plateHeight, plateWidth,
+} from '../src/landing/indexPlateBox.ts';
 
 /* ------------------------------------------------------------------ theme */
 
@@ -137,31 +140,6 @@ function comment(s: string): string {
   return `${INDENT}{/* ${s} */}`;
 }
 
-/**
- * Counts written into the plate's own prose are spelled, not printed, because
- * they are read as English — "Twelve panels", not "12 panels". Spelling them
- * from the count is what stops the prose and the plate disagreeing: this file
- * said "twelve" beside a hand-written twelve-entry list, and `docs.test.ts`
- * records the ROADMAP making exactly that mistake at eleven.
- *
- * It throws rather than falling back to digits. A silent "17 panels" in a
- * sentence written for a word is the drift, one step quieter.
- */
-export const NUMBER_WORDS = [
-  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
-  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
-  'seventeen', 'eighteen', 'nineteen', 'twenty',
-];
-
-function numberWord(n: number): string {
-  const word = NUMBER_WORDS[n];
-  if (word === undefined) throw new Error(`no word for ${n}: extend NUMBER_WORDS`);
-  return word;
-}
-
-function capitalised(s: string): string {
-  return s[0].toUpperCase() + s.slice(1);
-}
 
 /** A `<text>` for a tick or axis label: same size and colour everywhere. */
 function tickLabel(content: string, x: number, y: number, anchor: string): string {
@@ -1104,20 +1082,19 @@ function renderXrdFigure(mod: XrdModule): string {
  * numbers live in the module the panel links to.
  */
 
-const IDX_MARGIN = 12;
-const IDX_HEADER = 46;
-const CELL_W = 300;
-const CELL_H = 222;
+const IDX_MARGIN = PLATE_MARGIN;
+const IDX_HEADER = PLATE_HEADER;
+const CELL_W = PLATE_CELL_W;
+const CELL_H = PLATE_CELL_H;
 
 /** Column headings, one per course group, left to right. */
 const IDX_GROUPS = NAV_GROUPS.map((g) => g.label);
 
 /** Panels in each column. Not necessarily equal — see the note above. */
 export const IDX_ROWS = NAV_GROUPS.map((g) => g.items.length);
-const IDX_DEEPEST = Math.max(...IDX_ROWS);
 
-export const IDX_W = IDX_MARGIN * 2 + IDX_GROUPS.length * CELL_W;
-export const IDX_H = IDX_HEADER + IDX_DEEPEST * CELL_H + IDX_MARGIN;
+export const IDX_W = plateWidth(IDX_GROUPS.length);
+export const IDX_H = plateHeight(IDX_ROWS);
 
 /**
  * Where a module's panel sits: its group is the column, its place within that
@@ -1569,6 +1546,50 @@ function renderFracturePanel(mod: FailureModule): string[] {
   return out;
 }
 
+/* ------------------------------------------------ panel 8b: composites --- */
+
+interface CompositeConstituent {
+  id: string;
+  name: string;
+  modulus: number;
+  density: number;
+  strength: number;
+}
+
+interface CompositeModule {
+  FIBRES: CompositeConstituent[];
+  MATRICES: CompositeConstituent[];
+  longitudinalModulus: (f: CompositeConstituent, m: CompositeConstituent, vf: number) => number;
+  transverseModulus: (f: CompositeConstituent, m: CompositeConstituent, vf: number) => number;
+}
+
+/**
+ * The two bounds, which is the module's whole argument in one shape: the same
+ * two materials, the same volume fraction, and an order of magnitude between
+ * them depending only on which way the load goes.
+ *
+ * Carbon in epoxy because it has the widest spread of the three fibres, so the
+ * gap survives being drawn 266 units wide.
+ */
+function renderCompositePanel(mod: CompositeModule): string[] {
+  const box = panelBox('composites');
+  const f = mod.FIBRES.find((x) => x.id === 'carbon');
+  const m = mod.MATRICES.find((x) => x.id === 'epoxy');
+  if (!f || !m) throw new Error('composite panel wants carbon and epoxy');
+
+  const sx = linearScale(0, 1, box.left, box.right);
+  const sy = linearScale(0, f.modulus, box.bottom, box.top);
+
+  const sample = (fn: (vf: number) => number): [number, number][] =>
+    Array.from({ length: 41 }, (_, i) => [i / 40, fn(i / 40)] as [number, number]);
+
+  return [
+    comment('the isostrain and isostress bounds from composite/model.ts, carbon in epoxy'),
+    idxCurve(idxPath(sample((vf) => mod.longitudinalModulus(f, m, vf)), sx, sy), SERIES_A),
+    idxCurve(idxPath(sample((vf) => mod.transverseModulus(f, m, vf)), sx, sy), SERIES_B),
+  ];
+}
+
 /* -------------------------------------------- panel 9: semiconductors --- */
 
 interface SemiModule {
@@ -1848,6 +1869,7 @@ interface IndexPlateModules {
   heat: HeatModule;
   mech: MechModule;
   failure: FailureModule;
+  composite: CompositeModule;
   semi: SemiModule;
   xrd: XrdPanelModule;
   selection: SelectionPanelModule;
@@ -1873,6 +1895,7 @@ const IDX_PANELS: { id: string; title: string; caption: string }[] = [
   { id: 'phase', title: 'Phase diagrams', caption: 'the Pb–Sn eutectic' },
   { id: 'heattreat', title: 'Heat treatment', caption: '1080 steel, TTT nose and Mₛ' },
   { id: 'mechanical', title: 'Mechanical properties', caption: 'three metals, to fracture' },
+  { id: 'composites', title: 'Composites', caption: 'the two bounds, carbon in epoxy' },
   { id: 'failure', title: 'Failure analysis', caption: 'critical crack size vs stress' },
   { id: 'semiconductors', title: 'Semiconductors', caption: 'band gaps; visible light begins at the rule' },
   { id: 'xrd', title: 'XRD simulator', caption: 'α-iron on a copper anode' },
@@ -1961,6 +1984,7 @@ function renderIndexPlate(mods: IndexPlateModules): string {
     ...renderTttPanel(mods.heat),
     ...renderStressPanel(mods.mech),
     ...renderFracturePanel(mods.failure),
+    ...renderCompositePanel(mods.composite),
     ...renderBandGapPanel(mods.semi),
     ...renderXrdPanel(mods.xrd),
     ...renderSelectionPanel(mods.selection),
@@ -1970,12 +1994,12 @@ function renderIndexPlate(mods: IndexPlateModules): string {
   return figureFile(
     'ModuleIndexPlate',
     [
-      `${capitalised(numberWord(IDX_PANELS.length))} panels, one per module, each plotted from that module’s own model`,
+      `${capitalisedWord(IDX_PANELS.length)} panels, one per module, each plotted from that module’s own model`,
       'code — the periodic table from `data/elements.json`, the TTT nose from',
       '`heattreat/model.ts`, the Ashby cloud from `selection/materials.ts`, the',
       `diffraction sticks from \`xrd/diffraction.ts\`, and so on for all ${numberWord(IDX_PANELS.length)}.`,
       '',
-      `${capitalised(numberWord(IDX_GROUPS.length))} columns, one per course group, in \`NAV_GROUPS\` order.`,
+      `${capitalisedWord(IDX_GROUPS.length)} columns, one per course group, in \`NAV_GROUPS\` order.`,
       '',
       'Larger than the four single plates, and lazily imported by the landing',
       'page for that reason: it heads the modules chapter, far below the fold,',
@@ -2026,6 +2050,8 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
   const steels = (await import('../src/heattreat/steels.ts')) as unknown as { STEELS: { id: string }[] };
   const failureAlloys = failureData as unknown as { FRACTURE_ALLOYS: FailureModule['FRACTURE_ALLOYS'] };
   const semi = (await import('../src/electronic/materials.ts')) as unknown as SemiModule;
+  const compositeData = await import('../src/composite/materials.ts');
+  const compositeModel = await import('../src/composite/model.ts');
   const corrosion = (await import('../src/corrosion/data.ts')) as unknown as CorrosionPanelModule;
 
   const indexPlate = renderIndexPlate({
@@ -2047,6 +2073,12 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
       criticalCrackSize: failureModel.criticalCrackSize,
     },
     semi,
+    composite: {
+      FIBRES: compositeData.FIBRES,
+      MATRICES: compositeData.MATRICES,
+      longitudinalModulus: compositeModel.longitudinalModulus,
+      transverseModulus: compositeModel.transverseModulus,
+    },
     xrd: xrd as unknown as XrdPanelModule,
     selection: selection as unknown as SelectionPanelModule,
     corrosion,

@@ -46,6 +46,9 @@ const HeatTreatment = lazy(() =>
 const AshbyChart = lazy(() =>
   import('./components/AshbyChart').then((m) => ({ default: m.AshbyChart })),
 );
+const Composites = lazy(() =>
+  import('./components/Composites').then((m) => ({ default: m.Composites })),
+);
 const Semiconductors = lazy(() =>
   import('./components/Semiconductors').then((m) => ({ default: m.Semiconductors })),
 );
@@ -92,6 +95,7 @@ export default function App() {
             {tab === 'defects' && <DefectsDiffusion />}
             {tab === 'mechanical' && <StressStrain />}
             {tab === 'failure' && <FailureAnalysis />}
+            {tab === 'composites' && <Composites />}
             {tab === 'semiconductors' && <Semiconductors />}
             {tab === 'phase' && <PhaseDiagrams />}
             {tab === 'heattreat' && <HeatTreatment />}

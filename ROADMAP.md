@@ -18,7 +18,7 @@ lists what exists from a reader's point of view; this file is the build record.
 | ~~4~~ | ~~**Semiconductors & band structure**~~ — shipped | high | medium | ✅ |
 | ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
 | ~~0~~ | ~~**The module index at seventeen**~~ — grid shipped; budget waits for a real panel | — | medium | ✅ |
-| 6 | **Composites** — rule of mixtures, and a point on the Ashby chart | high | low | ✅ |
+| ~~6~~ | ~~**Composites**~~ — shipped; the strength ceiling was not in the plan | high | low | ✅ |
 | 7 | **Polymers** — molecular weight, crystallinity, modulus against T | high | medium | ✅ |
 | 8 | **Thermal properties** — expansion, conductivity, thermal stress | medium | low | ✅ |
 | 9 | **Free energy & the common tangent** — shape not settled | high | medium | ✅ |
@@ -570,41 +570,100 @@ on a page whose whole performance story is that four plates are deferred behind
 a reveal gate — so the default is one plate with a raised, measured budget, and
 the split only if the ragged grid cannot be made to read at that depth.
 
-## 6. Composites — planned
+## 6. Composites — shipped
 
-Rule of mixtures for a fibre-reinforced composite you specify: pick a fibre, a
-matrix and a volume fraction, and get the isostrain upper bound
-`E_cl = E_f V_f + E_m V_m`, the isostress lower bound
-`E_ct = E_f E_m / (V_m E_f + V_f E_m)`, the load carried by the fibres
-`F_f/F_m = E_f V_f / E_m V_m`, and the longitudinal strength. Then the
-discontinuous case: critical fibre length `l_c = σ*_f d / 2τ_c`, and the length
-above which the continuous expression is a fair approximation.
+Built in `composite/model.ts`, `composite/materials.ts` and
+`components/Composites.tsx`; costs 5.86 kB gzipped. Three panels: the two
+bounds against volume fraction with the load split and an Ashby hand-off, the
+strength rule of mixtures against the composites Appendix B actually measured,
+and the critical fibre length with both discontinuous regimes.
 
-**Built first, and the reason is the loop.** A composite is the one material in
-this app the reader *specifies* rather than selects, and `E_c` with `ρ_c` is a
-point that can be plotted on the Ashby chart against the fixed 54 — with its
-`E^½/ρ` index ranked among them by `selection/materials.ts`'s own `indexValue`.
-That is the Miller↔XRD trick again: two modules that must agree about a number,
-with a test that fails if they stop agreeing. It is also why composites beat
-polymers to the front of the queue despite polymers being the larger gap.
+**Three departures, and the second one reshaped the module.**
 
-- **Data:** ~8 fibres (E-glass, carbon at high-modulus and high-strength grades,
-  aramid, boron, SiC) and ~5 matrices (epoxy, polyester, nylon 6,6, aluminium,
-  titanium), each with E, tensile strength and density, from Callister &
-  Rethwisch ch. 16. Interfacial shear strength τ_c for the discontinuous panel is
-  per fibre–matrix *pair*, not per fibre — the same trap as entry 3's Paris
-  constants, so it is a table of pairs or it is a stated input, never a fibre
-  property.
-- **Reuses:** `selection/materials.ts` and `AshbyChart.tsx` for the plotted
-  point and the index ranking; the two-bar and detail-panel patterns from
-  `components/PhaseDiagrams.tsx`.
-- **New:** `src/composite/` for the datasets and the mixture maths.
-- **Verify against:** Callister & Rethwisch ch. 16's worked example on a
-  glass-fibre/epoxy composite — the longitudinal and transverse moduli at a given
-  V_f and the fibre/matrix load ratio that follows — and its critical-fibre-length
-  example. Also that the two bounds bracket every intermediate model at every V_f,
-  and meet at V_f = 0 and V_f = 1.
-- **Static-safe:** yes. Closed form, no 3D, no network.
+**1. There is no new dataset.** The plan called for ~8 fibres and ~5 matrices
+from Callister & Rethwisch ch. 16. What shipped resolves three fibres and five
+matrices out of `selection/materials.ts` — Appendix B, the same 54 materials the
+Ashby chart plots — by name, with `composite/materials.test.ts` walking every
+one so a rename fails the suite rather than emptying a selector. That made the
+loop into Ashby run both ways: the constituents come *from* the chart and the
+composite goes back *onto* it, ranked among the 54 by `indexValue`, with no
+second source to disagree with the first. Three fibres rather than eight is the
+cost, and it is the right cost: a fourth fibre would have to arrive with a
+density, a modulus and a strength from somewhere else.
+
+**2. The strength rule of mixtures overshoots by close to a factor of two, and
+that became a panel.** Appendix B carries the three bare fibres *and* three
+measured composites made from them at Vf = 0.60. Those are independent rows; the
+model links them. Modulus lands within 5% on all three (−1.2%, −4.2%, +4.7%) and
+density within 3%. Strength overshoots every one, in the same direction, by
+1.59× to 2.05×.
+
+That is not a defect in the expression. The `σ*_f` the rule of mixtures wants is
+the fibre strength *in the composite*; Appendix B's is a pristine single filament
+tested in isolation, and a fibre in a laminate carries handling damage, a flaw
+distribution over its whole length, and a stress concentration beside every
+neighbouring break. Modulus needs no such correction because it is not
+flaw-controlled — which is exactly why the modulus column agrees and this one
+does not.
+
+The plan would have had the module print `σ*_cl` as an answer. It shows the gap
+instead, against all three measured composites, and says why. The ratio is
+**asserted in both directions** — greater than 1.5 and less than 2.2 — because a
+one-sided check keeps passing while the gap grows, and a model that started
+*under*predicting would mean the caveat on screen had gone wrong the other way.
+
+**3. `σ′_m` is not the matrix tensile strength, and for these pairs the matrix
+does not survive the fibre.** The strength expression wants the stress the matrix
+carries at the fibre's failure strain, `E_m·ε*_f`. E-glass fails at 4.76% strain,
+where epoxy would be carrying 115 MPa against its own 59 — it has cracked long
+before. `matrixStressAtFibreFailure` caps at the matrix strength and returns a
+flag saying so, and the panel prints the sentence rather than quietly using a
+number the material cannot reach.
+
+- **Data:** as built — no new dataset. Three fibres and five matrices resolved
+  from Appendix B, plus a nominal filament diameter per fibre (5–15 µm, asserted
+  in range) and an `isotropic` flag that decides whether the transverse bound is
+  presented as an estimate or as a floor. **τ_c is not data at all**: interfacial
+  shear strength belongs to a fibre–matrix *pair*, its sizing and its cure, so it
+  is a control the reader supplies — the same call entry 3 made about Paris
+  constants.
+- **Reuses:** `selection/materials.ts` for every constituent and for
+  `indexValue`; the tab, slider and detail-panel patterns from
+  `components/Corrosion.tsx`.
+- **New:** `src/composite/` for the mixtures and the constituent join.
+- **Verified:** Callister & Rethwisch's glass/polyester worked example
+  reproduces exactly — E_cl = 29.64 GPa, the load ratio 13.53, 11 640 N on the
+  fibres against 860 N on the matrix, strain 1.69 × 10⁻³, transverse modulus
+  5.486 GPa — and the critical-length example at 0.23 mm. Beyond the book: the
+  two bounds bracket each other at every volume fraction for all fifteen
+  constituent pairs and meet at both ends; both are monotone; the two
+  discontinuous regimes meet at `l_c` (probed at two step sizes, so a step is
+  told apart from a slope rather than hidden by a tolerance); and the
+  discontinuous strength approaches the continuous ceiling from below without
+  reaching it.
+
+## 6b. Original plan
+
+Rule of mixtures for a fibre-reinforced composite you specify: the isostrain
+upper bound, the isostress lower bound, the load carried by the fibres, and the
+longitudinal strength. Then the discontinuous case: critical fibre length, and
+the length above which the continuous expression is a fair approximation.
+
+Built first because it is the only one of the five that closes a loop. A
+composite is the one material in this app the reader *specifies* rather than
+selects, and `E_c` with `ρ_c` is a point that can be plotted on the Ashby chart
+against the fixed 54 — two modules that must agree about a number, with a test
+that fails if they stop agreeing.
+
+- **Data:** ~8 fibres and ~5 matrices from Callister & Rethwisch ch. 16, each
+  with E, tensile strength and density. Interfacial shear strength is per
+  fibre–matrix *pair*, so it is a table of pairs or a stated input, never a
+  fibre property.
+- **Reuses:** `selection/materials.ts` and `AshbyChart.tsx`.
+- **New:** `src/composite/`.
+- **Verify against:** the glass-fibre/epoxy worked example and the
+  critical-fibre-length example in ch. 16.
+- **Static-safe:** yes.
 
 ## 7. Polymers — planned
 
@@ -781,12 +840,12 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 282.8 kB | 83.6 kB | always |
-| stylesheet | 42.7 kB | 8.7 kB | always |
+| `index` — React, shell, landing page | 284.6 kB | 84.2 kB | always |
+| stylesheet | 43.3 kB | 8.8 kB | always |
 | the landing page's four deferred plates (`ModuleIndexPlate`, `XrdFigure`, `FatigueFigure`, `AshbyFigure`) | 51.3 kB | 11.4 kB total | as the reader approaches each |
 | `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| twelve per-module chunks | — | 72.5 kB total | one per module opened |
+| thirteen per-module chunks | — | 92.97 kB total | one per module opened |
 | shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
 
 The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
@@ -799,8 +858,9 @@ page's four plates below the fold are deliberately *not* in that number: each is
 chunk fetched when the reader approaches it. three.js is
 reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.95–12.06 kB gzipped** (twelve of them total
-72.5 kB) — negligible beside the 3D library, and none of it in first paint since each
+A module of the existing kind costs **1.95–14.88 kB gzipped** (thirteen of them total
+92.97 kB — this row said 72.5 kB for twelve and did not survive re-measurement; the
+sum below is off `npm run build` at this commit, added up rather than carried forward) — negligible beside the 3D library, and none of it in first paint since each
 arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the

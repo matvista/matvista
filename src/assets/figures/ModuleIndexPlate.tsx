@@ -1,10 +1,10 @@
 /**
  * ModuleIndexPlate — generated, do not edit by hand.
  *
- * Twelve panels, one per module, each plotted from that module’s own model
+ * Thirteen panels, one per module, each plotted from that module’s own model
  * code — the periodic table from `data/elements.json`, the TTT nose from
  * `heattreat/model.ts`, the Ashby cloud from `selection/materials.ts`, the
- * diffraction sticks from `xrd/diffraction.ts`, and so on for all twelve.
+ * diffraction sticks from `xrd/diffraction.ts`, and so on for all thirteen.
  *
  * Four columns, one per course group, in `NAV_GROUPS` order.
  *
@@ -17,13 +17,13 @@
  */
 export function ModuleIndexPlate() {
   return (
-    <svg viewBox="0 0 1224 724" aria-hidden="true" style={{ display: 'block', width: '100%', height: 'auto' }}>
-      {/* four columns, one per course group; three modules in each */}
+    <svg viewBox="0 0 1224 946" aria-hidden="true" style={{ display: 'block', width: '100%', height: 'auto' }}>
+      {/* four columns, one per course group; 3, 3, 4 and 3 modules in them */}
       <text x="30" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">STRUCTURE</text>
       <text x="330" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">MICROSTRUCTURE</text>
       <text x="630" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">PROPERTIES</text>
       <text x="930" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">ANALYSIS</text>
-      <path d="M12,46H1212M312,46V712M612,46V712M912,46V712M12,268H1212M12,490H1212" fill="none" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1" />
+      <path d="M12,46H1212M312,46V712M612,46V934M912,46V934M12,268H1212M12,490H1212M612,712H912" fill="none" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1" />
       <text x="30" y="67" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Periodic trends</text>
       <text x="30" y="82" fontSize="10.5" fill="var(--fig-label, #52514e)">118 elements, by melting point where measured</text>
       <text x="30" y="289" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Crystal structures</text>
@@ -38,10 +38,12 @@ export function ModuleIndexPlate() {
       <text x="330" y="526" fontSize="10.5" fill="var(--fig-label, #52514e)">1080 steel, TTT nose and Mₛ</text>
       <text x="630" y="67" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Mechanical properties</text>
       <text x="630" y="82" fontSize="10.5" fill="var(--fig-label, #52514e)">three metals, to fracture</text>
+      <text x="630" y="511" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Composites</text>
+      <text x="630" y="526" fontSize="10.5" fill="var(--fig-label, #52514e)">the two bounds, carbon in epoxy</text>
       <text x="630" y="289" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Failure analysis</text>
       <text x="630" y="304" fontSize="10.5" fill="var(--fig-label, #52514e)">critical crack size vs stress</text>
-      <text x="630" y="511" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Semiconductors</text>
-      <text x="630" y="526" fontSize="10.5" fill="var(--fig-label, #52514e)">band gaps; visible light begins at the rule</text>
+      <text x="630" y="733" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Semiconductors</text>
+      <text x="630" y="748" fontSize="10.5" fill="var(--fig-label, #52514e)">band gaps; visible light begins at the rule</text>
       <text x="930" y="67" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">XRD simulator</text>
       <text x="930" y="82" fontSize="10.5" fill="var(--fig-label, #52514e)">α-iron on a copper anode</text>
       <text x="930" y="289" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Material selection</text>
@@ -101,15 +103,18 @@ export function ModuleIndexPlate() {
       <path d="M630,372L634,379L638,385L642,389L646,394L650,398L654,401L658,405L662,408L666,410L670,413L674,415L678,418L683,420L687,422L691,424L695,426L699,427L703,429L707,431L711,432" fill="none" stroke="var(--fig-b, #a8511f)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
       <path d="M630,341L638,354L647,363L655,371L663,377L671,382L680,387L688,391L696,395L705,399L713,402L721,405L729,407L738,410L746,412L754,414L763,416L771,418L779,420L787,422L796,424" fill="none" stroke="var(--fig-c, #0f766e)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
       <path d="M630,323L643,342L657,355L670,364L683,372L697,378L710,383L723,388L736,392L750,396L763,399L776,402L790,405L803,408L816,410L830,413L843,415L856,417L869,419L883,421L896,423" fill="none" stroke="var(--fig-a, #256bbd)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      {/* the isostrain and isostress bounds from composite/model.ts, carbon in epoxy */}
+      <path d="M630,690L637,687L643,683L650,679L657,675L663,671L670,667L677,663L683,659L690,656L697,652L703,648L710,644L716,640L723,636L730,632L736,629L743,625L750,621L756,617L763,613L770,609L776,605L783,602L790,598L796,594L803,590L810,586L816,582L823,578L830,575L836,571L843,567L849,563L856,559L863,555L869,551L876,548L883,544L889,540L896,536" fill="none" stroke="var(--fig-a, #256bbd)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M630,690L637,690L643,690L650,690L657,690L663,690L670,690L677,690L683,690L690,690L697,690L703,690L710,690L716,690L723,689L730,689L736,689L743,689L750,689L756,689L763,689L770,689L776,688L783,688L790,688L796,688L803,687L810,687L816,687L823,686L830,686L836,685L843,684L849,683L856,682L863,680L869,677L876,673L883,665L889,646L896,536" fill="none" stroke="var(--fig-b, #a8511f)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
       {/* band gaps from SEMICONDUCTORS, against the visible range 1.77–3.10 eV */}
-      <path d="M811,536V692" fill="none" stroke="var(--fig-accent, #b0184a)" strokeWidth="1.2" strokeDasharray="4 3" />
-      <rect x="630" y="539" width="17" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
-      <rect x="630" y="561" width="69" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
-      <rect x="630" y="584" width="114" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
-      <rect x="630" y="606" width="145" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
-      <rect x="630" y="628" width="230" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
-      <rect x="630" y="650" width="231" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
-      <rect x="630" y="673" width="246" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
+      <path d="M811,758V914" fill="none" stroke="var(--fig-accent, #b0184a)" strokeWidth="1.2" strokeDasharray="4 3" />
+      <rect x="630" y="761" width="17" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
+      <rect x="630" y="783" width="69" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
+      <rect x="630" y="806" width="114" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
+      <rect x="630" y="828" width="145" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
+      <rect x="630" y="850" width="230" height="16" fill="var(--fig-d, #8a6d1f)" opacity="0.6" />
+      <rect x="630" y="872" width="231" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
+      <rect x="630" y="895" width="246" height="16" fill="var(--fig-a, #256bbd)" opacity="0.95" />
       {/* α-iron on Cu Kα, from computePattern() — every allowed BCC line */}
       <line x1="930" y1="248" x2="1196" y2="248" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1" />
       <path d="M985,248L985,92M1030,248L1030,226M1068,248L1068,209M1105,248L1105,237M1144,248L1144,230M1190,248L1190,242" fill="none" stroke="var(--fig-a, #256bbd)" strokeWidth="2" />

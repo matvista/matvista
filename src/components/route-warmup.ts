@@ -44,6 +44,7 @@ export const LAZY_ROUTES = {
   miller: () => import('./MillerIndices'),
   defects: () => import('./DefectsDiffusion'),
   mechanical: () => import('./StressStrain'),
+  composites: () => import('./Composites'),
   failure: () => import('./FailureAnalysis'),
   phase: () => import('./PhaseDiagrams'),
   heattreat: () => import('./HeatTreatment'),

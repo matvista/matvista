@@ -1,7 +1,7 @@
 import type { Tab } from '../nav';
 
 /**
- * The twelve module signature marks.
+ * The thirteen module signature marks.
  *
  * Each mark is the module's own visual signature, reduced to its outline: a
  * reader who has used the app should recognise the module before reading. At
@@ -179,6 +179,27 @@ const artSemi = (
   </svg>
 );
 
+const artComposite = (
+  <svg viewBox="0 0 96 60" aria-hidden="true">
+    {/* the two bounds: fibres in a matrix, seen end-on and along */}
+    <rect x="8" y="10" width="80" height="40" rx="2" fill="var(--ld-art)" opacity="0.14" />
+    {Array.from({ length: 7 }, (_, i) => (
+      <line
+        key={i}
+        x1={14 + i * 12}
+        x2={14 + i * 12}
+        y1={10}
+        y2={50}
+        stroke="var(--ld-art)"
+        strokeWidth="2.4"
+        opacity="0.85"
+      />
+    ))}
+    {/* load along the fibres, which is the direction that gets the upper bound */}
+    <path d="M4 30h6M86 30h6" fill="none" stroke="var(--ld-accent)" strokeWidth="1.6" />
+  </svg>
+);
+
 /** Keyed by module id, so a caller can go straight from a nav item to its mark. */
 export const MODULE_MARKS: Record<Tab, React.ReactNode> = {
   trends: artPeriodic,
@@ -188,6 +209,7 @@ export const MODULE_MARKS: Record<Tab, React.ReactNode> = {
   phase: artPhase,
   heattreat: artHeat,
   mechanical: artStress,
+  composites: artComposite,
   failure: artFailure,
   semiconductors: artSemi,
   corrosion: artCorrosion,

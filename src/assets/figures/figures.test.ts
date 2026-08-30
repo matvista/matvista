@@ -193,7 +193,7 @@ describe('each figure carries the model output it claims to', () => {
       // budget and the ROADMAP's chunk table all still say twelve. These two
       // move by hand, with the rest.
       expect(NAV_GROUPS).toHaveLength(4);
-      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(12);
+      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(13);
     });
 
     /**
@@ -223,6 +223,8 @@ describe('each figure carries the model output it claims to', () => {
      */
     describe('the grid holds when the columns stop being equal', () => {
       it('reproduces the hand-written 4×3 grid exactly', () => {
+        // The shape the plate had for twelve modules, kept as the fixed point
+        // the generalisation had to pass through.
         expect(gridRules([3, 3, 3, 3]).join('')).toBe(
           'M12,46H1212M312,46V712M612,46V712M912,46V712M12,268H1212M12,490H1212',
         );
@@ -327,10 +329,25 @@ describe('each figure carries the model output it claims to', () => {
      * a lazy chunk that doubles without anyone noticing is still a regression,
      * and the periodic-table panel alone was 9.6 kB before it was rewritten
      * from 118 elements into six paths.
+     *
+     * Two budgets, because one number cannot do both jobs once the module
+     * count moves. **Per panel** is the one that scales: it catches a single
+     * panel bloating at any count, and it does not have to be touched when a
+     * module ships. **In total** is a deliberate-change gate — it stops the
+     * plate growing without bound and must be raised by hand, against a
+     * measured build, each time it is.
+     *
+     * Measured: 18,824 B over 12 panels at `9b4abef` (1,569 each); 20,070 B
+     * over 13 when composites landed, which is 1,544 each and a marginal panel
+     * of 1,246 B. The four roadmap modules still to come project to about
+     * 25 kB, so the total below will move again — with a number off the disk,
+     * not this projection.
      */
     it('stays inside its byte budget', () => {
       const bytes = new TextEncoder().encode(plate()).length;
-      expect(bytes).toBeLessThan(22_000);
+      const panels = NAV_GROUPS.flatMap((g) => g.items).length;
+      expect(bytes / panels).toBeLessThan(1_700);
+      expect(bytes).toBeLessThan(21_000);
     });
   });
 
@@ -370,9 +387,12 @@ describe('theming and embedding contract', () => {
   };
 
   /* The four single plates share one box; the figure index is drawn wider and
-     taller, because it is twelve panels rather than one. */
+     taller, because it is one panel per module rather than one. Its box is
+     computed from `NAV_GROUPS` — a literal here would have to be re-typed with
+     every module, which is the drift the landing page's reserved slot got
+     caught by. */
   const VIEWBOX: Record<string, string> = {
-    'src/assets/figures/ModuleIndexPlate.tsx': 'viewBox="0 0 1224 724"',
+    'src/assets/figures/ModuleIndexPlate.tsx': `viewBox="0 0 ${IDX_W} ${IDX_H}"`,
   };
 
   for (const [path, prefix] of Object.entries(PREFIXES)) {

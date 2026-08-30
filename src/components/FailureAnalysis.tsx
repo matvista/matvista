@@ -5,6 +5,7 @@ import {
   BRITTLE_SOLIDS, FRACTURE_ALLOYS, GROWTH_CLASSES, S590_CURVE,
   S590_P_MAX, S590_P_MIN, getFatigueBehaviour, getFractureAlloy, getGrowthClass,
   s590Parameter, s590Stress, type FractureAlloy,
+  type GrowthClass,
 } from '../failure/materials';
 import {
   CRACK_GEOMETRIES, SECANT_MAX_RATIO, criticalCrackSize, criticalStress, cyclesToFailure,
@@ -17,6 +18,9 @@ import {
   factorOfSafety,
   fromStressRatio,
   type MeanStressCriterion,
+  DKTH_RANGE,
+  crackLife,
+  thresholdCrackSize,
 } from '../failure/model';
 
 const W = 660;
@@ -787,10 +791,19 @@ function GrowthPanel() {
   const g = useCrackGeometry();
   const Y = g.Y;
 
+  const [dKth, setDKth] = useRouteNumber('dkth', DKTH_RANGE.typical, DKTH_RANGE.min, DKTH_RANGE.max);
+
   const cls = getGrowthClass(classId);
   const a0 = a0Mm / 1000;
   const af = Y == null ? null : criticalCrackSize(cls.kic, dSigma, Y);
-  const life = Y == null || af == null ? null : parisLife(cls.C, cls.m, a0, af, dSigma, Y);
+  /**
+   * P5 — the guarded life. `parisLife` answers for a crack below threshold;
+   * `crackLife` refuses, which is what the reader needs to see.
+   */
+  const guarded =
+    Y == null || af == null ? null : crackLife(cls.C, cls.m, a0, af, dSigma, Y, dKth);
+  const life = guarded?.cycles ?? null;
+  const aTh = Y == null ? null : thresholdCrackSize(dKth, dSigma, Y);
 
   // Crack length against cycles.
   const pts = useMemo(() => {
@@ -855,6 +868,51 @@ function GrowthPanel() {
           <text x={16} y={PAD.t + plotH / 2} className="dd-tick" textAnchor="middle"
             transform={`rotate(-90 16 ${PAD.t + plotH / 2})`}>crack length (mm)</text>
         </svg>
+
+        <label className="fa-slider">
+          <span>
+            Threshold ΔK<sub>th</sub> <strong>{dKth.toFixed(1)}</strong> MPa·√m
+          </span>
+          <input
+            type="range"
+            min={DKTH_RANGE.min}
+            max={DKTH_RANGE.max}
+            step={0.1}
+            value={dKth}
+            onChange={(e) => setDKth(Number(e.target.value))}
+            aria-label="Threshold stress-intensity range, MPa root m"
+          />
+        </label>
+
+        {guarded != null && (
+          <GrowthRegions cls={cls} dKth={dKth} dKStart={guarded.dKStart} dKEnd={guarded.dKEnd} />
+        )}
+
+        {guarded?.refusal === 'below threshold' ? (
+          <p className="err-note">
+            <strong>This crack does not grow.</strong> At {a0Mm.toFixed(2)} mm and Δσ ={' '}
+            {dSigma} MPa the range is ΔK = {guarded.dKStart.toFixed(1)} MPa·√m, below the{' '}
+            {dKth.toFixed(1)} threshold — and ΔK only rises with crack length, so the whole
+            history is below it. The Paris law would still return a number here, and that
+            number would be wrong: the answer is not a long life, it is no propagation. A crack
+            has to reach {aTh == null ? '—' : `${(aTh * 1000).toFixed(2)} mm`} before it starts.
+          </p>
+        ) : (
+          <p className="trend-note">
+            The straight line is region II, where the Paris law applies. Its slope is m ={' '}
+            {cls.m} on <em>log–log</em> axes, which is the whole content of the exponent:
+            halving Δσ multiplies the life by 2<sup>{cls.m}</sup> ≈ {(2 ** cls.m).toFixed(0)}.
+            The shaded bands are where the law stops — below ΔK<sub>th</sub> nothing propagates,
+            above K<sub>IC</sub> the crack runs. Neither band is drawn as a curve, because
+            fitting one needs constants this module cannot source honestly.
+          </p>
+        )}
+
+        <p className="trend-note">
+          ΔK<sub>th</sub> is a control rather than a tabulated value because it depends on the
+          stress ratio R — the same class runs from about 6 MPa·√m at R = 0 down towards 3 at
+          high mean stress, and quoting one number per class would be false precision.
+        </p>
 
         <p className="trend-note">{cls.note}</p>
       </section>
@@ -1225,5 +1283,67 @@ function MeanStressPanel() {
         S<sub>e</sub> is not.
       </p>
     </section>
+  );
+}
+
+/**
+ * P5 — where the Paris law applies, and where it does not.
+ *
+ * Region II is the straight line the module already integrates. Regions I and
+ * III are drawn as the boundaries that end it — ΔK_th on the left, K_IC on the
+ * right — and **not** as a fitted sigmoid: the shape of the curve in those
+ * regions needs constants this repo cannot source, and drawing an invented
+ * curve would be the confident-number mistake the module is otherwise careful
+ * about. What is drawn is the line and where it stops being true.
+ */
+function GrowthRegions({
+  cls,
+  dKth,
+  dKStart,
+  dKEnd,
+}: {
+  cls: GrowthClass;
+  dKth: number;
+  dKStart: number;
+  dKEnd: number;
+}) {
+  const W = 520;
+  const H = 260;
+  const P = { l: 62, r: 16, t: 14, b: 44 };
+  const kLo = Math.log10(Math.max(1, dKth * 0.5));
+  const kHi = Math.log10(cls.kic * 1.15);
+  const rateAt = (dK: number) => cls.C * dK ** cls.m;
+  const rLo = Math.log10(rateAt(10 ** kLo));
+  const rHi = Math.log10(rateAt(10 ** kHi));
+  const px = (k: number) => P.l + ((Math.log10(k) - kLo) / (kHi - kLo)) * (W - P.l - P.r);
+  const py = (r: number) => P.t + ((rHi - Math.log10(r)) / (rHi - rLo)) * (H - P.t - P.b);
+
+  // Region II only: the Paris line between the two boundaries.
+  const paris = [dKth, cls.kic]
+    .map((k) => `${px(k)},${py(rateAt(k))}`)
+    .join(' ');
+
+  return (
+    <svg className="fa-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label="Crack growth rate against stress-intensity range, log-log, with the threshold and toughness bounds">
+      <rect x={P.l} y={P.t} width={Math.max(0, px(dKth) - P.l)} height={H - P.t - P.b}
+        fill="rgba(107,114,128,0.16)" />
+      <rect x={px(cls.kic)} y={P.t} width={Math.max(0, W - P.r - px(cls.kic))} height={H - P.t - P.b}
+        fill="rgba(227,73,72,0.14)" />
+      <polyline points={paris} fill="none" stroke="#4a3aa7" strokeWidth={2.4} />
+      <line x1={px(dKth)} x2={px(dKth)} y1={P.t} y2={H - P.b} stroke="#6b7280" strokeDasharray="4 3" />
+      <line x1={px(cls.kic)} x2={px(cls.kic)} y1={P.t} y2={H - P.b} stroke="#e34948" strokeDasharray="4 3" />
+      {[dKStart, dKEnd].map((k, i) =>
+        k >= 10 ** kLo && k <= 10 ** kHi ? (
+          <circle key={i} cx={px(k)} cy={py(rateAt(k))} r={5} fill="#eda100" stroke="#fff"
+            strokeWidth={1.4} />
+        ) : null,
+      )}
+      <text x={px(dKth)} y={H - P.b + 16} className="dd-tick" textAnchor="middle">ΔK_th</text>
+      <text x={px(cls.kic)} y={H - P.b + 16} className="dd-tick" textAnchor="middle">K_IC</text>
+      <text x={W / 2} y={H - 6} className="dd-tick" textAnchor="middle">
+        ΔK (MPa·√m), log scale · slope m = {cls.m}
+      </text>
+    </svg>
   );
 }

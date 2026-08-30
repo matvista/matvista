@@ -12,6 +12,11 @@ import {
   hoopStress, lameHoopStress, larsonMiller, leakBeforeBreakThickness, lefmSizeRequirement,
   parisLife, THIN_WALL_MIN_RATIO,
   plasticZoneRadius, ruptureHours, stressIntensity,
+  MEAN_STRESS_CRITERIA,
+  allowableAmplitude,
+  factorOfSafety,
+  fromStressRatio,
+  type MeanStressCriterion,
 } from '../failure/model';
 
 const W = 660;
@@ -20,11 +25,12 @@ const PAD = { l: 66, r: 24, t: 18, b: 50 };
 const plotW = W - PAD.l - PAD.r;
 const plotH = H - PAD.t - PAD.b;
 
-type Panel = 'fracture' | 'fatigue' | 'growth' | 'creep';
-const PANELS: Panel[] = ['fracture', 'fatigue', 'growth', 'creep'];
+type Panel = 'fracture' | 'fatigue' | 'mean' | 'growth' | 'creep';
+const PANELS: Panel[] = ['fracture', 'fatigue', 'mean', 'growth', 'creep'];
 const PANEL_LABEL: Record<Panel, string> = {
   fracture: 'Fracture toughness',
   fatigue: 'Fatigue (S–N)',
+  mean: 'Mean stress',
   growth: 'Crack growth',
   creep: 'Creep rupture',
 };
@@ -50,6 +56,7 @@ export function FailureAnalysis() {
 
       {panel === 'fracture' && <FracturePanel />}
       {panel === 'fatigue' && <FatiguePanel />}
+      {panel === 'mean' && <MeanStressPanel />}
       {panel === 'growth' && <GrowthPanel />}
       {panel === 'creep' && <CreepPanel />}
     </div>
@@ -1061,4 +1068,144 @@ function fmtHours(h: number): string {
   if (h >= 8760) return `${(h / 8760).toPrecision(3)} years`;
   if (h >= 24) return `${(h / 24).toPrecision(3)} days`;
   return `${h.toPrecision(3)} h`;
+}
+
+/* ============================================================ mean stress == */
+
+const CRITERION_STYLE: Record<MeanStressCriterion, { color: string; label: string }> = {
+  goodman: { color: '#3987e5', label: 'Modified Goodman' },
+  gerber: { color: '#1baf7a', label: 'Gerber' },
+  soderberg: { color: '#eb6834', label: 'Soderberg' },
+  yield: { color: '#e34948', label: 'Yield (Langer)' },
+};
+
+/**
+ * P4 — the Haigh diagram.
+ *
+ * The S–N panel next door assumes R = −1, fully reversed. That is the
+ * laboratory case; almost nothing in service is loaded that way, and a tensile
+ * mean stress consumes fatigue capacity that panel never accounts for.
+ */
+function MeanStressPanel() {
+  const [matId, setMatId] = useRouteString('m', 'steel1020');
+  const [sigmaMax, setSigmaMax] = useRouteNumber('smax', 300, 10, 1200);
+  const [R, setR] = useRouteNumber('R', 0, -1, 0.95);
+
+  const mat = MECH_MATERIALS.find((m) => m.id === matId) ?? MECH_MATERIALS[5];
+  const beh = getFatigueBehaviour(mat.id);
+  const Se = beh.ratio * mat.uts;
+  const Su = mat.uts;
+  const Sy = mat.yield;
+
+  const { m: sigmaM, a: sigmaA } = fromStressRatio(R, sigmaMax);
+
+  const W = 560;
+  const H = 320;
+  const P = { l: 62, r: 18, t: 18, b: 48 };
+  const xMax = Su * 1.05;
+  const yMax = Math.max(Se, Sy) * 1.15;
+  const px = (v: number) => P.l + (v / xMax) * (W - P.l - P.r);
+  const py = (v: number) => H - P.b - (v / yMax) * (H - P.t - P.b);
+
+  const curve = (c: MeanStressCriterion) =>
+    Array.from({ length: 80 }, (_, i) => {
+      const sm = (xMax * i) / 79;
+      return `${px(sm)},${py(allowableAmplitude(c, sm, Se, Su, Sy))}`;
+    }).join(' ');
+
+  const factors = MEAN_STRESS_CRITERIA.map((c) => ({
+    c,
+    n: factorOfSafety(c, sigmaM, sigmaA, Se, Su, Sy),
+  }));
+  const governing = factors.reduce((lo, f) =>
+    f.n != null && (lo.n == null || f.n < lo.n) ? f : lo,
+  );
+
+  return (
+    <section className="fa-panel">
+      <div className="fa-controls">
+        <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
+          {MECH_MATERIALS.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+        <label className="fa-slider">
+          <span>Peak stress <strong>{sigmaMax.toFixed(0)}</strong> MPa</span>
+          <input type="range" min={10} max={1200} step={5} value={sigmaMax}
+            onChange={(e) => setSigmaMax(Number(e.target.value))}
+            aria-label="Peak stress, MPa" />
+        </label>
+        <label className="fa-slider">
+          <span>Stress ratio R <strong>{R.toFixed(2)}</strong></span>
+          <input type="range" min={-1} max={0.95} step={0.05} value={R}
+            onChange={(e) => setR(Number(e.target.value))}
+            aria-label="Stress ratio R" />
+        </label>
+      </div>
+
+      <svg className="fa-plot" viewBox={`0 0 ${W} ${H}`} role="img"
+        aria-label="Haigh diagram: alternating stress against mean stress">
+        <line x1={P.l} x2={W - P.r} y1={py(0)} y2={py(0)} className="dd-axis" />
+        <line x1={P.l} x2={P.l} y1={P.t} y2={py(0)} className="dd-axis" />
+        {MEAN_STRESS_CRITERIA.map((c) => (
+          <polyline key={c} points={curve(c)} fill="none"
+            stroke={CRITERION_STYLE[c].color} strokeWidth={2}
+            strokeDasharray={c === 'yield' ? '5 4' : undefined} />
+        ))}
+        {/* The load line: constant R means the point moves out from the origin. */}
+        <line x1={px(0)} y1={py(0)} x2={px(sigmaM)} y2={py(sigmaA)}
+          stroke="#8a8f98" strokeDasharray="3 3" strokeWidth={1} />
+        <circle cx={px(sigmaM)} cy={py(sigmaA)} r={5.5} fill="#eda100"
+          stroke="#fff" strokeWidth={1.5} />
+        <text x={W / 2} y={H - 12} className="dd-tick" textAnchor="middle">
+          mean stress σ_m (MPa)
+        </text>
+        <text x={16} y={P.t + 10} className="dd-tick">σ_a (MPa)</text>
+      </svg>
+
+      <ul className="ht-frac-list">
+        {MEAN_STRESS_CRITERIA.map((c) => (
+          <li key={c}>
+            <i style={{ background: CRITERION_STYLE[c].color }} />
+            {CRITERION_STYLE[c].label}
+          </li>
+        ))}
+      </ul>
+
+      <table className="detail-props">
+        <tbody>
+          <tr>
+            <th scope="row">σ_m / σ_a</th>
+            <td>{sigmaM.toFixed(0)} / {sigmaA.toFixed(0)} MPa</td>
+          </tr>
+          {factors.map(({ c, n }) => (
+            <tr key={c}>
+              <th scope="row">n against {CRITERION_STYLE[c].label}</th>
+              <td className={n != null && n < 1 ? 'err-off' : ''}>
+                {n == null ? '—' : n.toFixed(2)}
+              </td>
+            </tr>
+          ))}
+          <tr>
+            <th scope="row">Governing</th>
+            <td>{CRITERION_STYLE[governing.c].label}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="trend-note">
+        S<sub>e</sub> here is {Se.toFixed(0)} MPa — {beh.ratio}·S<sub>u</sub> from the same
+        design estimate the S–N panel uses, not measured data. The three fatigue criteria are
+        <strong> Shigley&rsquo;s</strong> and the yield line is Langer&rsquo;s; Callister covers
+        the mean-stress effect but not these constructions.
+      </p>
+      <p className="trend-note">
+        Slide R from −1 towards 1 and watch the point swing towards the σ_m axis while the
+        peak stress stays put: the same maximum stress becomes far more damaging as the mean
+        rises. Soderberg runs to σ_y rather than S<sub>u</sub>, so it guards against yielding
+        and Goodman does not — which is why the two can disagree about whether a part is safe,
+        and why the governing row is worth reading rather than any single number.
+      </p>
+    </section>
+  );
 }

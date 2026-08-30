@@ -22,6 +22,7 @@
  * know which structures are centred.
  */
 import type { StructureDef } from './structures';
+import { reduce } from './miller';
 
 const EPS = 1e-9;
 
@@ -64,13 +65,33 @@ const dot = (a: Triple, b: Triple) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
  * gap between distinct projections is the fraction of it that is actually
  * used. FCC (100) gives ½ and so a/2; FCC (111) gives 1 and so a/√3.
  */
-export function occupiedSpacing(s: StructureDef, hkl: Triple): number | null {
+export function occupiedSpacing(s: StructureDef, indices: Triple): number | null {
   const basis = latticeBasis(s);
   if (basis == null) return null;
+  if (indices[0] === 0 && indices[1] === 0 && indices[2] === 0) return null;
+
+  /**
+   * Lowest terms first. (222) names the same *plane* as (111) — a plane is a
+   * plane, and its atoms per unit area cannot depend on which multiple of the
+   * indices was typed. The unreduced form is meaningful for a *reflection*,
+   * which is why `dSpacing` and the extinction rules deliberately do not
+   * reduce, but planar density is not a reflection.
+   *
+   * Without this the projections below are reduced mod one geometric spacing
+   * while the occupied planes actually repeat every g of them, and the density
+   * comes out a factor of g too small — (222) reported half of (111) beneath a
+   * net drawing that was correctly the (111) net.
+   */
+  const hkl = reduce(indices);
   const H = hkl[0] ** 2 + hkl[1] ** 2 + hkl[2] ** 2;
   if (H === 0) return null;
 
   const values = [...new Set(basis.map((p) => round(mod1(dot(hkl, p)))))].sort((a, b) => a - b);
+  // For sc/fcc/bcc every projection is an exact multiple of ½, so `values` is
+  // {0} or {0, ½} and the wrap-around term equals the interior one — mutating
+  // either leaves the suite green, because within this module's declared scope
+  // they cannot disagree. It is written in full because the general form is
+  // the correct one and a future basis with thirds would need it.
   let gap = 1 - values[values.length - 1] + values[0];
   for (let i = 1; i < values.length; i++) gap = Math.min(gap, values[i] - values[i - 1]);
   return (gap / Math.sqrt(H)) * 1;
@@ -101,10 +122,19 @@ export function linearDensity(s: StructureDef, uvw: Triple): number | null {
   if (len === 0) return null;
 
   let smallest = 1; // t = 1 always works: [uvw] itself is a lattice translation.
+  /**
+   * The box has to reach the whole direction vector. Any sub-multiple q = t·
+   * [uvw] with 0 < t ≤ 1 has |qᵢ| ≤ |uvwᵢ|, so bounding the search by the
+   * largest component covers every candidate exactly. A fixed ±2 box missed
+   * them for any direction with a component above 2 and fell back to t = 1,
+   * silently halving the answer — [116], [136], [431] and [532] among them,
+   * all of which the index input accepts.
+   */
+  const bound = Math.max(2, ...uvw.map((v) => Math.ceil(Math.abs(v))));
   for (const p of basis) {
-    for (let i = -2; i <= 2; i++) {
-      for (let j = -2; j <= 2; j++) {
-        for (let k = -2; k <= 2; k++) {
+    for (let i = -bound; i <= bound; i++) {
+      for (let j = -bound; j <= bound; j++) {
+        for (let k = -bound; k <= bound; k++) {
           const q: Triple = [p[0] + i, p[1] + j, p[2] + k];
           if (norm(q) < EPS) continue;
           // Collinear with [uvw], and in the same sense.
@@ -147,11 +177,13 @@ export interface PlaneMap {
  * see the note at the top of the file — but `atomsPerCell` closes the loop
  * between the two, and is asserted to be a whole number.
  */
-export function planeMap(s: StructureDef, hkl: Triple, extent = 2): PlaneMap | null {
+export function planeMap(s: StructureDef, indices: Triple, extent = 2): PlaneMap | null {
   const basis = latticeBasis(s);
-  const pd = planarDensity(s, hkl);
+  const pd = planarDensity(s, indices);
   if (basis == null || pd == null) return null;
 
+  // Same plane, same net: see `occupiedSpacing`.
+  const hkl = reduce(indices);
   const n: Triple = [hkl[0], hkl[1], hkl[2]];
   const nlen = norm(n);
   const unit: Triple = [n[0] / nlen, n[1] / nlen, n[2] / nlen];
@@ -187,7 +219,15 @@ export function planeMap(s: StructureDef, hkl: Triple, extent = 2): PlaneMap | n
     }
   }
 
-  // Two shortest independent in-plane vectors.
+  /**
+   * Two shortest independent in-plane vectors.
+   *
+   * Which of the equally-short ones is taken first does not matter and cannot
+   * be pinned by a test: on FCC (111) six vectors share the shortest length in
+   * symmetry-equivalent directions, so `sorted[1]` gives the same cell area
+   * and the same single atom per cell as `sorted[0]`. That is an equivalent
+   * mutation rather than a gap — the picture rotates, the physics does not.
+   */
   const sorted = [...inPlane].sort((a, b) => Math.hypot(...a) - Math.hypot(...b));
   const v1 = sorted[0];
   const v2 = sorted.find((v) => Math.abs(v[0] * v1[1] - v[1] * v1[0]) > 1e-9);

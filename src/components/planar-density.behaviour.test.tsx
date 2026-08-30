@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { planarDensity, rankPlanes, type Triple } from '../crystal/density';
+import { linearDensity, planarDensity, rankPlanes, type Triple } from '../crystal/density';
 import { getStructure } from '../crystal/structures';
 import { METALS } from '../crystal/metals';
 
@@ -117,5 +117,43 @@ describe('the panel prints the density of the selected metal’s lattice', () =>
     expect(net).toBeDefined();
     expect(net.querySelectorAll('circle').length).toBeGreaterThan(6);
     expect(net.querySelectorAll('polygon')).toHaveLength(1);
+  });
+
+  /**
+   * The caption says the circles are drawn at the radius the atoms touch at,
+   * so they must be. Net coordinates are in units of a, so that radius is
+   * R/a = 1/aOverR. Drawing half of it turned the densest plane in FCC into a
+   * sparse dot pattern — with the caption underneath still claiming contact —
+   * and nothing failed.
+   */
+  it.each([
+    ['Cu', 'fcc'],
+    ['W', 'bcc'],
+  ])('%s: the net circles are drawn at the touching radius', async (symbol, structureId) => {
+    await renderMiller(`#/miller?metal=${symbol}&plane=111`);
+    const expected = 1 / getStructure(structureId).aOverR!;
+    const rs = [...document.querySelectorAll('svg.mi-net circle')].map((c) =>
+      Number(c.getAttribute('r')),
+    );
+    expect(rs.length).toBeGreaterThan(6);
+    for (const r of rs) expect(r).toBeCloseTo(expected, 12);
+  });
+
+  /**
+   * Two readouts shipped and only one was gated: halving the linear density
+   * left every test green.
+   */
+  it.each([
+    ['Cu', 'fcc', '110'],
+    ['Cu', 'fcc', '100'],
+    ['W', 'bcc', '111'],
+  ])('%s: prints the linear density along [%s]', async (symbol, structureId, dirText) => {
+    const box = await renderMiller(`#/miller?metal=${symbol}&plane=111&dir=${dirText}`);
+    const m = METALS.find((x) => x.symbol === symbol)!;
+    const st = getStructure(structureId);
+    const a = m.R * st.aOverR!;
+    const uvw = dirText.split('').map(Number) as Triple;
+    const expected = linearDensity(st, uvw)! / a;
+    expect(box.textContent).toContain(`${expected.toFixed(2)} atoms/nm`);
   });
 });

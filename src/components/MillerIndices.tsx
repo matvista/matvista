@@ -471,7 +471,11 @@ export function MillerIndices() {
                       key={i}
                       cx={x}
                       cy={y}
-                      r={0.5 / metalStructure.aOverR!}
+                      // R in units of a is 1/(a/R). Drawing 0.5/aOverR was
+                      // half the touching radius, which showed the densest
+                      // plane in FCC as a sparse dot pattern — the opposite of
+                      // what the caption beside it claims.
+                      r={1 / metalStructure.aOverR!}
                       fill="#3987e5"
                       opacity={0.85}
                     />

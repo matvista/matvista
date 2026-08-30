@@ -19,7 +19,7 @@ lists what exists from a reader's point of view; this file is the build record.
 | ~~5~~ | ~~**Corrosion & the galvanic series**~~ — shipped | medium | low | ✅ |
 | ~~0~~ | ~~**The module index at seventeen**~~ — grid shipped; budget waits for a real panel | — | medium | ✅ |
 | ~~6~~ | ~~**Composites**~~ — shipped; the strength ceiling was not in the plan | high | low | ✅ |
-| 7 | **Polymers** — molecular weight, crystallinity, modulus against T | high | medium | ✅ |
+| ~~7~~ | ~~**Polymers**~~ — shipped; chain dimensions in place of the modulus curve | high | medium | ✅ |
 | 8 | **Thermal properties** — expansion, conductivity, thermal stress | medium | low | ✅ |
 | 9 | **Free energy & the common tangent** — shape not settled | high | medium | ✅ |
 | 10 | **Magnetic properties** — conditional on a data gate | medium | medium | ✅ |
@@ -665,37 +665,108 @@ that fails if they stop agreeing.
   critical-fibre-length example in ch. 16.
 - **Static-safe:** yes.
 
-## 7. Polymers — planned
+## 7. Polymers — shipped
 
-The largest missing audience: nothing in the app knows what a molecular weight
-distribution is. Three panels. A distribution over molecular-weight ranges giving
-the number-average `M̄_n = Σ x_i M_i`, the weight-average `M̄_w = Σ w_i M_i`, the
-polydispersity `M̄_w/M̄_n` and the degree of polymerisation `DP = M̄_n / m` — with
-both averages drawn on the same histogram, which is the point: they are different
-numbers from one sample and a table cannot show why. Then per cent crystallinity
-from a measured density. Then a modulus–temperature curve through the glassy,
-leathery, rubbery and flow regions, with T_g and T_m marked, for an amorphous, a
-semicrystalline and a crosslinked polymer.
+Built in `polymer/model.ts`, `polymer/polymers.ts` and
+`components/Polymers.tsx`; costs 5.93 kB gzipped. Three panels: the chain-length
+distribution counted two ways, the chain dimensions that follow from it, and
+crystallinity from density.
 
-- **Data:** repeat-unit molar masses for ~10 polymers (PE, PVC, PP, PS, PTFE,
-  PMMA, nylon 6,6, PC, PET, phenol-formaldehyde) — computable from the repeat
-  unit rather than tabulated, so the arithmetic can be shown; T_g and T_m from
-  Callister & Rethwisch ch. 15; fully-amorphous and fully-crystalline densities
-  for the crystallinity panel.
-- **Anticipated departure, recorded now:** ρ_a and ρ_c are published together for
-  only some of those polymers. **The crystallinity panel offers only the ones
-  that have both**, exactly as `DOPABLE` restricts the doping panel to four of
-  the seven semiconductors, and it says why on screen. Inventing a ρ_c so every
-  polymer could appear in every panel is entry 4's mistake with a different
-  symbol.
-- **Reuses:** the histogram and axis patterns in `components/XrdSimulator.tsx`;
-  `MECH_MATERIALS`' stress–strain drawing for the modulus–temperature plot.
+**The third panel is not the one that was planned.** The plan's third panel was
+a modulus–temperature curve through the glassy, leathery, rubbery and flow
+regions. Published versions of that curve are *schematics* — no source gives
+the shape as anything a model could reproduce — so drawing one and printing
+numbers off it is entry 10's magnetic-hysteresis trap arriving three modules
+early. It was dropped rather than drawn.
+
+What replaced it is better anyway, because it chains: `L = N·d·sin(θ/2)` and
+`r = d·√N` are pure geometry off a C–C bond length and a tetrahedral angle, and
+the `N` they take is the degree of polymerisation the *first* panel computed. A
+1000-mer of polyethylene is 252 nm of chain in a coil 6.9 nm across, and the
+ratio grows as √N — which is why a polymer is not stiff, and why a rubber band
+pulls back on entropy rather than on bond energy.
+
+**Almost nothing here is tabulated, and that is what made it buildable.**
+
+- A repeat unit is a *structure*, not a measurement, so molar masses are
+  **computed** from `data/elements.json` — the same atomic masses the periodic
+  table is coloured by. PVC's 62.50 g/mol is arithmetic, and the test checks
+  the arithmetic against the published masses rather than the file storing them.
+- Crystalline density is **derived** from the polyethylene cell through the same
+  `n·A/(V·N_A)` `crystal/geometry.ts` uses for a metal, and it lands on
+  0.998 g/cm³. The cell parameters are therefore checked by what they produce.
+- Which leaves **one** standing measured number, ρ_a = 0.870, because a glass
+  has no cell to derive it from. It does not stand alone either: with the
+  derived ρ_c it puts Appendix B's three polyethylene grades at 46%, 58% and
+  72% crystalline — each inside its published range, in the right order, and
+  asserted. A ρ_a wrong by much pushes one of the three out.
+
+**The anticipated departure happened, and somewhere else.** The plan expected
+ρ_a and ρ_c to be published for only some polymers, restricting the
+crystallinity panel the way `DOPABLE` restricts the doping panel. What actually
+restricts it is the derivation: one unit cell is carried, so the panel is
+polyethylene. The `DOPABLE` shape turned up in the *other* join — three of the
+nine polymers have no Appendix B row at all and carry a formula and nothing
+else.
+
+### Two defects the verification found, both in the second moment
+
+**1. The tail needed for `X̄w` is far longer than the one needed for `X̄n`.**
+The distribution was first summed to six number-averages, which is ample for
+the mean and not for the second moment: at p = 0.95 the chains past 120 units
+are 0.2% of the molecules and several per cent of the mass. Đ read **1.88
+against a true 1.95** — a plausible number, inside [1, 2], monotone in p, and
+wrong. The bound is on uncounted *weight* now, not on a multiple of the mean.
+
+**2. Binning before averaging biases `X̄w` low, so the two are now separate
+functions.** Collapsing a histogram bar to its mean discards the variance
+inside it. Over twelve bars of the same distribution Đ read **1.81**. The fix
+is that `histogram` is display-only and the averages never see it — and the
+bias is *asserted*, including that it shrinks as the bars narrow, so that the
+next person cannot quietly re-derive the averages from the bars.
+
+Both were caught by checking against closed forms rather than against a
+remembered table, which is the plan's **Verify against** bullet doing the job
+it was added for.
+
+- **Data:** as built — nine repeat-unit formulas, a backbone-bond count each,
+  the polyethylene unit cell, and ρ_a. Everything else is computed or joined.
+- **Reuses:** `data/elements.json` for atomic masses; `selection/materials.ts`
+  for the densities of the six polymers Appendix B carries; the tab, slider and
+  detail-panel patterns from `components/Corrosion.tsx`.
+- **New:** `src/polymer/`.
+- **Verified:** Flory's most-probable distribution — `X̄n = 1/(1−p)`,
+  `X̄w = (1+p)/(1−p)`, `Đ = 1 + p` — and the Poisson living-growth result
+  `X̄n = ν + 1`, `Đ = 1 + ν/(1+ν)²`, both reproduced by the general averaging
+  code across four conversions and three chain lengths. Plus: `X̄w ≥ X̄n` for
+  every distribution with equality only when monodisperse; the averages
+  unchanged by scaling the counts; both histogram series summing to one,
+  narrowed range included; crystallinity in [0, 100] and monotone across the
+  whole density range, exact at both ends, and *above* the straight line
+  between them.
+
+## 7b. Original plan
+
+Three panels: a distribution over molecular-weight ranges giving `M̄n`, `M̄w`,
+the polydispersity and the degree of polymerisation, with both averages drawn
+on the same histogram; per cent crystallinity from a measured density; and a
+modulus–temperature curve through the glassy, leathery, rubbery and flow
+regions with T_g and T_m marked.
+
+The largest missing audience: nothing in the app knew what a molecular weight
+distribution was.
+
+- **Data:** repeat-unit molar masses for ~10 polymers, T_g and T_m from
+  Callister & Rethwisch ch. 15, and fully-amorphous and fully-crystalline
+  densities for the crystallinity panel.
+- **Anticipated departure:** ρ_a and ρ_c are published together for only some
+  polymers, so the crystallinity panel offers only those — the `DOPABLE` shape.
+- **Reuses:** the histogram and axis patterns in `components/XrdSimulator.tsx`.
 - **New:** `src/polymer/`.
 - **Verify against:** Callister & Rethwisch ch. 14's worked example computing
-  M̄_n, M̄_w and DP from a tabulated distribution, and its per-cent-crystallinity
-  example. Plus two invariants: M̄_w ≥ M̄_n for every distribution, with equality
-  only when the sample is monodisperse; and crystallinity landing in [0, 100] for
-  every density between ρ_a and ρ_c.
+  `M̄n`, `M̄w` and DP from a tabulated distribution, and its per-cent-
+  crystallinity example. Plus `M̄w ≥ M̄n` for every distribution, and
+  crystallinity in [0, 100].
 - **Static-safe:** yes.
 
 ## 8. Thermal properties — planned
@@ -840,12 +911,12 @@ Measured budget, from a production build (`npm run build`):
 
 | Chunk | Raw | Gzip | When it loads |
 |---|---|---|---|
-| `index` — React, shell, landing page | 284.6 kB | 84.2 kB | always |
-| stylesheet | 43.3 kB | 8.8 kB | always |
+| `index` — React, shell, landing page | 285.8 kB | 84.5 kB | always |
+| stylesheet | 43.8 kB | 8.9 kB | always |
 | the landing page's four deferred plates (`ModuleIndexPlate`, `XrdFigure`, `FatigueFigure`, `AshbyFigure`) | 51.3 kB | 11.4 kB total | as the reader approaches each |
 | `OrbitControls` — three.js + drei + fiber | 904.5 kB | 241.5 kB | only on a 3D module |
 | `elements` — the element dataset | 76.3 kB | 18.2 kB | periodic trends, crystal structures |
-| thirteen per-module chunks | — | 92.97 kB total | one per module opened |
+| fourteen per-module chunks | — | 98.88 kB total | one per module opened |
 | shared helpers (`diffraction`, `systems`, `CrystalScene`, `materials`, `metals`, `color`) | — | 11.9 kB total | with whichever module needs them |
 
 The 3D chunk is the one to find by size rather than by name: it was `geometry-*.js` until
@@ -858,9 +929,9 @@ page's four plates below the fold are deliberately *not* in that number: each is
 chunk fetched when the reader approaches it. three.js is
 reachable from only three modules and is no part of first paint.
 
-A module of the existing kind costs **1.95–14.88 kB gzipped** (thirteen of them total
-92.97 kB — this row said 72.5 kB for twelve and did not survive re-measurement; the
-sum below is off `npm run build` at this commit, added up rather than carried forward) — negligible beside the 3D library, and none of it in first paint since each
+A module of the existing kind costs **1.95–14.88 kB gzipped** (fourteen of them total
+98.88 kB — this row said 72.5 kB for twelve and did not survive re-measurement; the
+sum is off `npm run build` at this commit, added up rather than carried forward) — negligible beside the 3D library, and none of it in first paint since each
 arrives in its own chunk.
 
 The binding limit is the 25 MiB cap on a single asset. The largest asset is the

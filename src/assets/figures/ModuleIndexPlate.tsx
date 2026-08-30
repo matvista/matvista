@@ -1,10 +1,10 @@
 /**
  * ModuleIndexPlate — generated, do not edit by hand.
  *
- * Thirteen panels, one per module, each plotted from that module’s own model
+ * Fourteen panels, one per module, each plotted from that module’s own model
  * code — the periodic table from `data/elements.json`, the TTT nose from
  * `heattreat/model.ts`, the Ashby cloud from `selection/materials.ts`, the
- * diffraction sticks from `xrd/diffraction.ts`, and so on for all thirteen.
+ * diffraction sticks from `xrd/diffraction.ts`, and so on for all fourteen.
  *
  * Four columns, one per course group, in `NAV_GROUPS` order.
  *
@@ -18,18 +18,20 @@
 export function ModuleIndexPlate() {
   return (
     <svg viewBox="0 0 1224 946" aria-hidden="true" style={{ display: 'block', width: '100%', height: 'auto' }}>
-      {/* four columns, one per course group; 3, 3, 4 and 3 modules in them */}
+      {/* four columns, one per course group; 4, 3, 4 and 3 modules in them */}
       <text x="30" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">STRUCTURE</text>
       <text x="330" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">MICROSTRUCTURE</text>
       <text x="630" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">PROPERTIES</text>
       <text x="930" y="30" fontSize="11" letterSpacing="0.14em" fill="var(--fig-label, #52514e)">ANALYSIS</text>
-      <path d="M12,46H1212M312,46V712M612,46V934M912,46V934M12,268H1212M12,490H1212M612,712H912" fill="none" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1" />
+      <path d="M12,46H1212M312,46V934M612,46V934M912,46V934M12,268H1212M12,490H1212M12,712H312M612,712H912" fill="none" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1" />
       <text x="30" y="67" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Periodic trends</text>
       <text x="30" y="82" fontSize="10.5" fill="var(--fig-label, #52514e)">118 elements, by melting point where measured</text>
       <text x="30" y="289" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Crystal structures</text>
       <text x="30" y="304" fontSize="10.5" fill="var(--fig-label, #52514e)">the face-centred cubic cell</text>
       <text x="30" y="511" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Miller indices</text>
       <text x="30" y="526" fontSize="10.5" fill="var(--fig-label, #52514e)">(111) cutting the cell</text>
+      <text x="30" y="733" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Polymers</text>
+      <text x="30" y="748" fontSize="10.5" fill="var(--fig-label, #52514e)">one sample, counted and weighed</text>
       <text x="330" y="67" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Defects &amp; diffusion</text>
       <text x="330" y="82" fontSize="10.5" fill="var(--fig-label, #52514e)">carburising at 1, 4 and 9 hours</text>
       <text x="330" y="289" fontSize="13" fontWeight="600" fill="var(--fig-ink, #2f2e2b)">Phase diagrams</text>
@@ -78,6 +80,9 @@ export function ModuleIndexPlate() {
       <path d="M81,661L179,635M179,635L179,527M179,527L81,554M81,554L81,661M147,701L245,674M245,674L245,567M245,567L147,593M147,593L147,701M81,661L147,701M179,635L245,674M179,527L245,567M81,554L147,593" fill="none" stroke="var(--fig-grid, #e1e0d9)" strokeWidth="1.2" />
       <path d="M179,635L81,554L147,701Z" fill="var(--fig-accent, #b0184a)" opacity="0.16" />
       <path d="M179,635L81,554L147,701Z" fill="none" stroke="var(--fig-accent, #b0184a)" strokeWidth="1.8" strokeLinejoin="round" />
+      {/* one sample counted by number and by weight, from polymer/model.ts at p = 0.95 */}
+      <path d="M32,914v-156h4v156zM42,914v-96h4v96zM52,914v-80h4v80zM61,914v-49h4v49zM71,914v-41h4v41zM80,914v-25h4v25zM90,914v-19h4v19zM100,914v-16h4v16zM109,914v-10h4v10zM119,914v-8h4v8zM128,914v-5h4v5zM138,914v-4h4v4zM148,914v-3h4v3zM157,914v-2h4v2zM167,914v-2h4v2zM177,914v-1h4v1zM186,914v-1h4v1z" fill="var(--fig-b, #a8511f)" />
+      <path d="M36,914v-30h4v30zM46,914v-50h4v50zM56,914v-67h4v67zM65,914v-57h4v57zM75,914v-61h4v61zM84,914v-46h4v46zM94,914v-39h4v39zM104,914v-38h4v38zM113,914v-26h4v26zM123,914v-25h4v25zM132,914v-17h4v17zM142,914v-15h4v15zM152,914v-10h4v10zM161,914v-8h4v8zM171,914v-7h4v7zM181,914v-5h4v5zM190,914v-4h4v4zM200,914v-3h4v3zM209,914v-2h4v2zM219,914v-2h4v2zM229,914v-1h4v1zM238,914v-1h4v1zM248,914v-1h4v1zM258,914v-1h4v1zM296,914v-1h4v1z" fill="var(--fig-a, #256bbd)" />
       {/* Fick’s second law at 927 °C, from concentrationAt() — 1, 4 and 9 hours */}
       <path d="M330,92L338,125L346,155L353,182L361,203L369,219L377,231L385,238L393,243L400,245L408,247L416,247L424,248L432,248L440,248L447,248L455,248L463,248L471,248L479,248L486,248L494,248L502,248L510,248L518,248L526,248L533,248L541,248L549,248L557,248L565,248L573,248L580,248L588,248L596,248" fill="none" stroke="var(--fig-c, #0f766e)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
       <path d="M330,92L338,108L346,125L353,140L361,155L369,169L377,182L385,193L393,203L400,212L408,219L416,226L424,231L432,235L440,238L447,241L455,243L463,244L471,245L479,246L486,247L494,247L502,247L510,248L518,248L526,248L533,248L541,248L549,248L557,248L565,248L573,248L580,248L588,248L596,248" fill="none" stroke="var(--fig-a, #256bbd)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />

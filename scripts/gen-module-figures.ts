@@ -1546,6 +1546,62 @@ function renderFracturePanel(mod: FailureModule): string[] {
   return out;
 }
 
+/* --------------------------------------------------- panel 3b: polymers --- */
+
+interface PolymerModule {
+  stepGrowth: (p: number) => { dp: number; x: number }[];
+  histogram: (
+    dist: { dp: number; x: number }[],
+    bars: number,
+    upTo?: number,
+  ) => { dp: number; x: number; w: number }[];
+  displayRange: (dist: { dp: number; x: number }[], frac?: number) => number;
+}
+
+/**
+ * One sample counted two ways, which is the module's argument in one shape:
+ * the number histogram decays from the shortest chain, the weight histogram
+ * peaks at the number-average, and they are the same polymer.
+ *
+ * Flory's most-probable distribution at p = 0.95 because it is the one with a
+ * closed form the tests pin — the plate cannot drift from the model without
+ * `figures.test.ts` noticing, and the model cannot drift from `Đ = 1 + p`.
+ */
+function renderPolymerPanel(mod: PolymerModule): string[] {
+  const box = panelBox('polymers');
+  const dist = mod.stepGrowth(0.95);
+  // Drawn to where the weight runs out rather than to where the summation
+  // does — the same call the module's own panel makes, for the same reason:
+  // the full range is four times as wide and adds nothing but blank.
+  const bars = mod.histogram(dist, 28, mod.displayRange(dist));
+  const maxDp = bars[bars.length - 1].dp;
+  const peak = Math.max(...bars.flatMap((b) => [b.x, b.w]));
+  const sx = linearScale(0, maxDp, box.left, box.right);
+  const sy = linearScale(0, peak, box.bottom, box.top);
+  const w = Math.max(1, Math.round(((box.right - box.left) / bars.length) * 0.42));
+  const base = Math.round(sy(0));
+
+  // One path per series, not one per bar. Fifty-six `<path>` elements with
+  // their own `fill` cost 4.1 kB here — twice the budget for a panel — where
+  // two paths of subpaths cost a tenth of that. It is the same rewrite the
+  // periodic-table panel took to get from 118 elements down to six paths, and
+  // the per-panel budget in `figures.test.ts` is what caught it.
+  const series = (value: (b: { x: number; w: number }) => number, offset: number): string =>
+    bars
+      .map((b) => {
+        const h = base - Math.round(sy(value(b)));
+        if (h <= 0) return '';
+        return `M${Math.round(sx(b.dp)) + offset},${base}v${-h}h${w}v${h}z`;
+      })
+      .join('');
+
+  return [
+    comment('one sample counted by number and by weight, from polymer/model.ts at p = 0.95'),
+    node('path', { d: series((b) => b.x, -w), fill: SERIES_B }),
+    node('path', { d: series((b) => b.w, 0), fill: SERIES_A }),
+  ];
+}
+
 /* ------------------------------------------------ panel 8b: composites --- */
 
 interface CompositeConstituent {
@@ -1864,6 +1920,7 @@ interface IndexPlateModules {
   elements: ElementRow[];
   crystal: CrystalModule;
   miller: MillerModule;
+  polymer: PolymerModule;
   diffusion: DiffusionModule;
   pbsn: PbSnModule;
   heat: HeatModule;
@@ -1891,6 +1948,7 @@ const IDX_PANELS: { id: string; title: string; caption: string }[] = [
   { id: 'trends', title: 'Periodic trends', caption: '118 elements, by melting point where measured' },
   { id: 'crystals', title: 'Crystal structures', caption: 'the face-centred cubic cell' },
   { id: 'miller', title: 'Miller indices', caption: '(111) cutting the cell' },
+  { id: 'polymers', title: 'Polymers', caption: 'one sample, counted and weighed' },
   { id: 'defects', title: 'Defects & diffusion', caption: 'carburising at 1, 4 and 9 hours' },
   { id: 'phase', title: 'Phase diagrams', caption: 'the Pb–Sn eutectic' },
   { id: 'heattreat', title: 'Heat treatment', caption: '1080 steel, TTT nose and Mₛ' },
@@ -1979,6 +2037,7 @@ function renderIndexPlate(mods: IndexPlateModules): string {
     ...renderTablePanel(mods.elements),
     ...renderCrystalPanel(mods.crystal),
     ...renderMillerPanel(mods.miller),
+    ...renderPolymerPanel(mods.polymer),
     ...renderDiffusionPanel(mods.diffusion),
     ...renderPbSnPanel(mods.pbsn),
     ...renderTttPanel(mods.heat),
@@ -2050,6 +2109,7 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
   const steels = (await import('../src/heattreat/steels.ts')) as unknown as { STEELS: { id: string }[] };
   const failureAlloys = failureData as unknown as { FRACTURE_ALLOYS: FailureModule['FRACTURE_ALLOYS'] };
   const semi = (await import('../src/electronic/materials.ts')) as unknown as SemiModule;
+  const polymerModel = await import('../src/polymer/model.ts');
   const compositeData = await import('../src/composite/materials.ts');
   const compositeModel = await import('../src/composite/model.ts');
   const corrosion = (await import('../src/corrosion/data.ts')) as unknown as CorrosionPanelModule;
@@ -2061,6 +2121,11 @@ export async function buildFigures(): Promise<GeneratedFigure[]> {
       buildAtoms: geometry.buildAtoms as unknown as CrystalModule['buildAtoms'],
     },
     miller,
+    polymer: {
+      stepGrowth: polymerModel.stepGrowth,
+      histogram: polymerModel.histogram,
+      displayRange: polymerModel.displayRange,
+    },
     diffusion,
     pbsn: phase as unknown as PbSnModule,
     heat: { STEELS: steels.STEELS, buildTtt: heat.buildTtt },

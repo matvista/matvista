@@ -120,6 +120,12 @@ const CARDS: ModuleCard[] = [
     detail: 'Put a point defect into a lattice, compute the equilibrium vacancy fraction, and solve Fick’s second law for a carburising profile.',
   },
   {
+    id: 'polymers',
+    title: 'Polymers',
+    href: '#/polymers',
+    detail: 'Run a polymerisation and watch the distribution it produces — two histograms of one sample, counted by number and by weight, with the two averages they disagree about. Then the degree of polymerisation becomes a chain: 252 nm of polyethylene folded into a coil 7 nm across. Repeat-unit masses are computed from the app\u2019s own element data, and crystalline density from the unit cell.',
+  },
+  {
     id: 'phase',
     title: 'Phase diagrams',
     href: '#/phase?T=650&sys=fe-c&x=0.4',

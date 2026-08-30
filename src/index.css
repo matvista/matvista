@@ -2716,3 +2716,51 @@ input[type='range'] {
   color: var(--muted);
   font-weight: 500;
 }
+
+/* -------------------------------------------------------------- polymers -- */
+
+/* Two histograms of one sample. They must be told apart at a glance and read
+   as the *same* measurement seen two ways, so it is one hue at two weights
+   rather than two colours — the pale bars count chains, the solid ones weigh
+   them. */
+.py-bar-x { fill: var(--accent); opacity: 0.32; }
+.py-bar-w { fill: var(--accent); opacity: 0.85; }
+
+/* The two averages, matched to the histogram each is the average of. */
+.py-mn {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+  opacity: 0.55;
+}
+.py-mw {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.py-contour {
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.py-coil {
+  stroke: var(--muted);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.py-crystallinity {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+/* What the answer is not: straight-line interpolation between the two
+   densities, drawn faint so the curvature above it is visible as a departure
+   rather than as a shape with nothing to compare against. */
+.py-linear {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.55;
+}
+.py-grade { fill: var(--muted); }
+.py-point { fill: var(--accent); }

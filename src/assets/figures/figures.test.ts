@@ -193,7 +193,7 @@ describe('each figure carries the model output it claims to', () => {
       // budget and the ROADMAP's chunk table all still say twelve. These two
       // move by hand, with the rest.
       expect(NAV_GROUPS).toHaveLength(4);
-      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(13);
+      expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(14);
     });
 
     /**
@@ -338,16 +338,20 @@ describe('each figure carries the model output it claims to', () => {
      * measured build, each time it is.
      *
      * Measured: 18,824 B over 12 panels at `9b4abef` (1,569 each); 20,070 B
-     * over 13 when composites landed, which is 1,544 each and a marginal panel
-     * of 1,246 B. The four roadmap modules still to come project to about
-     * 25 kB, so the total below will move again — with a number off the disk,
-     * not this projection.
+     * over 13 when composites landed (1,544 each, marginal 1,246); 21,195 B
+     * over 14 with polymers (1,514 each, marginal 1,125).
+     *
+     * The per-panel budget has already earned its place. The polymers panel
+     * first drew its two histograms as fifty-six separate `<path>` elements
+     * and cost **4,116 B** — over this ceiling on its own, and the failure
+     * said so. Two paths of subpaths, the same rewrite the periodic-table
+     * panel took from 118 elements down to six, brought it to 701.
      */
     it('stays inside its byte budget', () => {
       const bytes = new TextEncoder().encode(plate()).length;
       const panels = NAV_GROUPS.flatMap((g) => g.items).length;
       expect(bytes / panels).toBeLessThan(1_700);
-      expect(bytes).toBeLessThan(21_000);
+      expect(bytes).toBeLessThan(21_500);
     });
   });
 

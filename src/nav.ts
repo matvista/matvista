@@ -12,6 +12,7 @@ export type Tab =
   | 'trends'
   | 'crystals'
   | 'miller'
+  | 'polymers'
   | 'defects'
   | 'phase'
   | 'heattreat'
@@ -55,6 +56,11 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'miller',
         label: 'Miller indices',
         blurb: 'Planes, directions and slip systems',
+      },
+      {
+        id: 'polymers',
+        label: 'Polymers',
+        blurb: 'Chain length, coil size, crystallinity',
       },
     ],
   },

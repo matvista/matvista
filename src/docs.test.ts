@@ -29,7 +29,7 @@ import elementsRaw from './data/elements.json';
  */
 describe('documented counts', () => {
   it('118 elements', () => expect((elementsRaw as unknown[]).length).toBe(118));
-  it('thirteen modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(13));
+  it('fourteen modules', () => expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(14));
   it('8 crystal structures', () => expect(STRUCTURES).toHaveLength(8));
   it('12 FCC slip systems', () =>
     expect(slipSystems(SLIP_MODES.find((m) => m.id === 'fcc')!)).toHaveLength(12));
@@ -157,9 +157,9 @@ describe('navigation model', () => {
  * visible numbers in the product, so they are asserted like any other.
  */
 describe('landing page stats strip', () => {
-  it('13 modules, 118 elements, 54 Ashby materials, 8 crystal structures', () => {
-    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(13);
-    expect(MODULE_COUNT).toBe(13);
+  it('14 modules, 118 elements, 54 Ashby materials, 8 crystal structures', () => {
+    expect(NAV_GROUPS.flatMap((g) => g.items)).toHaveLength(14);
+    expect(MODULE_COUNT).toBe(14);
     expect((elementsRaw as unknown[]).length).toBe(118);
     expect(SELECTION_MATERIALS).toHaveLength(54);
     expect(STRUCTURES).toHaveLength(8);

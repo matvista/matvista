@@ -1,7 +1,7 @@
 import type { Tab } from '../nav';
 
 /**
- * The thirteen module signature marks.
+ * The fourteen module signature marks.
  *
  * Each mark is the module's own visual signature, reduced to its outline: a
  * reader who has used the app should recognise the module before reading. At
@@ -200,11 +200,28 @@ const artComposite = (
   </svg>
 );
 
+const artPolymer = (
+  <svg viewBox="0 0 96 60" aria-hidden="true">
+    {/* a coil and, behind it, the same chain pulled straight */}
+    <path d="M6 14h84" fill="none" stroke="var(--ld-art)" strokeWidth="1.4" opacity="0.35" />
+    <path
+      d="M14 40q6 -14 14 -6t8 12 14 4 10 -16 12 -2 10 8"
+      fill="none"
+      stroke="var(--ld-art)"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+    />
+    <circle cx="14" cy="40" r="2.6" fill="var(--ld-accent)" />
+    <circle cx="82" cy="40" r="2.6" fill="var(--ld-accent)" />
+  </svg>
+);
+
 /** Keyed by module id, so a caller can go straight from a nav item to its mark. */
 export const MODULE_MARKS: Record<Tab, React.ReactNode> = {
   trends: artPeriodic,
   crystals: artCrystal,
   miller: artMiller,
+  polymers: artPolymer,
   defects: artDefects,
   phase: artPhase,
   heattreat: artHeat,

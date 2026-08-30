@@ -120,6 +120,21 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
     const element = ref.current;
     if (!element) return;
 
+    // The threshold is a fraction of the *element*, and an element taller than
+    // the viewport caps its own intersection ratio at viewport/element — on a
+    // phone, the modules chapter runs seven screens tall, its ratio tops out
+    // near 0.13, and a 0.15 threshold means the observer never fires and the
+    // chapter rests invisible. So for tall elements the bar becomes a fraction
+    // of the viewport instead: "a third of a screen of it is showing" is
+    // reachable at any height, and 0.3 leaves room for the -8% rootMargin and
+    // for a rotation to landscape between measure and reveal.
+    const viewportHeight = window.innerHeight || 0;
+    const elementHeight = element.getBoundingClientRect().height;
+    const effectiveThreshold =
+      viewportHeight > 0 && elementHeight > 0
+        ? Math.min(threshold, (viewportHeight * 0.3) / elementHeight)
+        : threshold;
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -134,7 +149,7 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
           }
         }
       },
-      { threshold, rootMargin },
+      { threshold: effectiveThreshold, rootMargin },
     );
     observer.observe(element);
     return () => observer.disconnect();

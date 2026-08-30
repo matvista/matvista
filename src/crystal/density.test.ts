@@ -98,13 +98,20 @@ describe('linear density matches the closed forms', () => {
     expect(ldR('bcc', [1, 1, 0])).toBeLessThan(0.5);
   });
 
-  /** FCC slips on {111}⟨110⟩ — the densest direction lying in the densest plane. */
+  /**
+   * FCC slips on {111}⟨110⟩: the densest direction, lying in the densest
+   * plane. The member of ⟨110⟩ that lies in (111) is [1̄10] — a direction is
+   * in a plane when it is perpendicular to that plane's normal — and it
+   * carries the close-packed 1/(2R).
+   */
   it('puts the FCC slip direction in the FCC slip plane, both densest', () => {
-    expect(ldR('fcc', [1, 1, 0])).toBeGreaterThan(ldR('fcc', [1, 0, 0]));
+    const dot = (u: Triple, v: Triple) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    expect(dot([1, -1, 0], [1, 1, 1])).toBe(0);
+    expect(dot([1, 1, 0], [1, 1, 1])).not.toBe(0);
+
+    expect(ldR('fcc', [1, -1, 0])).toBeCloseTo(0.5, 12);
     expect(pdR('fcc', [1, 1, 1])).toBeGreaterThan(pdR('fcc', [1, 0, 0]));
-    // [110] lies in (111): the dot product vanishes.
-    expect(1 * 1 + 1 * 1 + 0 * 1).toBe(2);
-    expect(1 * 1 + -1 * 1 + 0 * 1).toBe(0);
+    expect(ldR('fcc', [1, -1, 0])).toBeGreaterThan(ldR('fcc', [1, 0, 0]));
   });
 });
 

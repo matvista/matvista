@@ -889,3 +889,158 @@ export function criticalCoolingRate(
   }
   return hi;
 }
+
+/* ============================================ M10 — the isothermal hold == */
+
+/**
+ * Time on a C-curve at a given temperature, seconds.
+ *
+ * `tttCurve` samples temperature monotonically from just below A₁ down to the
+ * bainite floor, so each temperature is crossed once. Interpolation is in
+ * log t, because t spans orders of magnitude between adjacent samples.
+ */
+function timeAtTemp(curve: CurvePoint[], T: number): number | null {
+  for (let i = 1; i < curve.length; i++) {
+    const a = curve[i - 1];
+    const b = curve[i];
+    if (T <= a.T && T >= b.T) {
+      const span = a.T - b.T;
+      const u = span === 0 ? 0 : (a.T - T) / span;
+      return Math.exp(Math.log(a.t) + u * (Math.log(b.t) - Math.log(a.t)));
+    }
+  }
+  return null;
+}
+
+/**
+ * Fraction transformed at a hold temperature, from the two curve crossings.
+ *
+ * An Avrami curve f = 1 − exp(−k tⁿ) fitted so that it passes through the
+ * start curve at `TRACE_FRACTION` and the finish curve at 1 − `TRACE_FRACTION`
+ * — the same definitions the plot's own legend gives those curves, rather
+ * than a second convention invented here. Before the start curve nothing has
+ * transformed: that is what incubation means.
+ */
+export function avramiFraction(tStart: number, tFinish: number, t: number): number {
+  if (!(tStart > 0) || !(tFinish > tStart) || !(t > 0)) return 0;
+  if (t <= tStart) return 0;
+  if (t >= tFinish) return 1;
+  const ys = Math.log(-Math.log(1 - TRACE_FRACTION));
+  const yf = Math.log(-Math.log(TRACE_FRACTION));
+  const n = (yf - ys) / (Math.log(tFinish) - Math.log(tStart));
+  const k = -Math.log(1 - TRACE_FRACTION) / tStart ** n;
+  return Math.min(1, Math.max(0, 1 - Math.exp(-k * t ** n)));
+}
+
+export interface IsothermalOutcome {
+  /** Curve crossings at the hold temperature, seconds; null off the diagram. */
+  tStart: number | null;
+  tFinish: number | null;
+  /** Diffusional fraction formed during the hold. */
+  transformed: number;
+  fractions: { product: Product; fraction: number }[];
+  hardness: number;
+  /** Bulk Mˢ, which is what the final quench passes through. */
+  ms: number;
+  /** Set where the isothermal construction does not apply. */
+  refusal: 'austenite is stable here' | 'below Mˢ' | null;
+  summary: string;
+}
+
+/**
+ * Quench to a temperature, hold, then quench to room temperature.
+ *
+ * This is the construction the diagram's own axes are drawn for, and the one
+ * the module did not offer: every curve on it is *isothermal*, and the only
+ * path available was continuous cooling laid over it — which the module
+ * already apologises for at the top of this file.
+ *
+ * The additivity sum a cooling path has to integrate collapses at constant
+ * temperature to a single lookup, so this is much simpler than `predict`: read
+ * the two crossings, place t between them, and send whatever austenite is left
+ * to martensite on the final quench.
+ *
+ * Austempering is the case that matters. Hold in the bainite range until the
+ * finish curve is passed and the steel transforms completely at temperature —
+ * hard, and with no martensite formed at all, so none of the quench cracking
+ * that comes from shearing a cold, brittle, thermally-stressed part.
+ */
+export function isothermalHold(
+  steel: Steel,
+  ttt: TttModel,
+  holdT: number,
+  seconds: number,
+): IsothermalOutcome {
+  const ms = ttt.ms;
+  const base = {
+    tStart: timeAtTemp(ttt.start, holdT),
+    tFinish: timeAtTemp(ttt.finish, holdT),
+    ms,
+  };
+
+  if (holdT >= ttt.a1) {
+    return {
+      ...base,
+      transformed: 0,
+      fractions: [{ product: 'martensite', fraction: 1 }],
+      hardness: steel.hardness.martensite,
+      refusal: 'austenite is stable here',
+      summary: `Above A₁ (${Math.round(ttt.a1)} °C) austenite is the equilibrium phase, so holding changes nothing however long you wait. The transformation only begins once the steel is undercooled, which is why every curve on this diagram lies below that line.`,
+    };
+  }
+
+  if (holdT <= ms) {
+    return {
+      ...base,
+      transformed: 0,
+      fractions: [{ product: 'martensite', fraction: 1 }],
+      hardness: steel.hardness.martensite,
+      refusal: 'below Mˢ',
+      summary: `The quench passes Mˢ (${Math.round(ms)} °C) on the way down, so martensite forms during the drop and there is no austenite left to transform isothermally. Martempering is the fix: hold just *above* Mˢ until the part is at one temperature throughout, then cool slowly through Mˢ so the shear happens everywhere at once. The crack risk comes from the thermal gradient, not from the cooling rate.`,
+    };
+  }
+
+  const { tStart, tFinish } = base;
+  if (tStart == null || tFinish == null) {
+    return {
+      ...base,
+      transformed: 0,
+      fractions: [{ product: 'martensite', fraction: 1 }],
+      refusal: null,
+      hardness: steel.hardness.martensite,
+      summary: 'This temperature is off the drawn diagram, so there is no curve to read a time from.',
+    };
+  }
+
+  const fraction = avramiFraction(tStart, tFinish, seconds);
+  const product = productAt(steel, holdT);
+  const parts = splitProeutectoid(steel, ttt, product, holdT, fraction);
+  const shown = describeParts(parts);
+  const retained = 1 - fraction;
+  // Below the display floor a band is not drawn, and a phase the bar does not
+  // draw must not appear in the list either — a zero-fraction entry would put
+  // a phantom product in the legend. This is the floor `predict` already uses
+  // for the martensite matrix, applied to both ends.
+  const fractions = [
+    ...parts.filter((p) => p.fraction >= TRACE_FRACTION),
+    ...(retained >= TRACE_FRACTION
+      ? [{ product: 'martensite' as Product, fraction: retained }]
+      : []),
+  ];
+
+  const summary =
+    fraction >= 1
+      ? `Held past the finish curve at ${Math.round(holdT)} °C, the steel transforms completely to ${shown.phrase} at temperature. Nothing is left to shear, so the final quench forms no martensite at all — this is austempering, and it is how you reach a hard structure without the quench-cracking risk.`
+      : fraction <= 0
+        ? `${Math.round(seconds)} s is still inside the incubation period at ${Math.round(holdT)} °C — the start curve is not reached until ${tStart.toFixed(1)} s. Nothing has transformed yet, so the whole section is still austenite and the final quench takes all of it to martensite.`
+        : `After ${Math.round(seconds)} s at ${Math.round(holdT)} °C the transformation is part-way: roughly ${shown.phrase}, with the untransformed austenite shearing to martensite on the final quench. Holding to ${tFinish.toFixed(0)} s would finish it at temperature instead.`;
+
+  return {
+    ...base,
+    transformed: fraction,
+    fractions,
+    hardness: hardnessOf(steel, product) * fraction + steel.hardness.martensite * (1 - fraction),
+    refusal: null,
+    summary,
+  };
+}

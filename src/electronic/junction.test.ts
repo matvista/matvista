@@ -21,6 +21,7 @@ import {
   thermalVoltage,
 } from './model';
 import { SEMICONDUCTORS } from './materials';
+import type { Carriers } from './model';
 
 const si = SEMICONDUCTORS.find((s) => s.id === 'si')!;
 const ge = SEMICONDUCTORS.find((s) => s.id === 'ge')!;
@@ -135,6 +136,61 @@ describe('the Hall effect', () => {
     expect(c.n).toBeCloseTo(c.p, 0);
     expect(mu_e).toBeGreaterThan(mu_h);
     expect(hallCoefficient(c, mu_e, mu_h)).toBeLessThan(0);
+  });
+
+  /**
+   * The magnitude near intrinsic, not only the sign. Every other magnitude
+   * assertion here is in the extrinsic limit, where the two-carrier form and
+   * 1/(nq) coincide — so replacing the denominator's σ² with (σ_p − σ_n)²
+   * left them all green while making R_H 4.5× too small at intrinsic and
+   * infinite wherever σ_p = σ_n, which is a reachable p-type state.
+   *
+   * At n = p the two-carrier form collapses to a closed form that shares no
+   * algebra with the implementation:
+   *
+   *     R_H = (μ_h − μ_e) / (q·n_i·(μ_h + μ_e))
+   */
+  it('has the right magnitude at intrinsic, where 1/(nq) does not apply', () => {
+    const c = carriers(ni, 0, 0);
+    const closed = (mu_h - mu_e) / (Q * ni * (mu_h + mu_e));
+    // Relative: R_H is order 10², so an absolute tolerance would be either
+    // vacuous or unmeetable.
+    expect(hallCoefficient(c, mu_e, mu_h) / closed).toBeCloseTo(1, 12);
+    // And it is nowhere near the single-carrier value, so this is a real check.
+    expect(Math.abs(hallCoefficient(c, mu_e, mu_h) / (1 / (Q * ni)))).toBeLessThan(0.5);
+  });
+
+  /** Finite everywhere the sliders reach, including where σ_p = σ_n. */
+  it('stays finite where the two conductivities are equal', () => {
+    // p·μ_h = n·μ_e with n·p = n_i²  ⇒  p = n_i·√(μ_e/μ_h).
+    const p = ni * Math.sqrt(mu_e / mu_h);
+    const balanced = { n: (ni * ni) / p, p };
+    expect(Number.isFinite(hallCoefficient(balanced, mu_e, mu_h))).toBe(true);
+    expect(Math.abs(hallCoefficient(balanced, mu_e, mu_h))).toBeGreaterThan(0);
+  });
+
+  /**
+   * The margin is a constant the panel's refusal turns on, so it is pinned and
+   * so is the behaviour either side of it. Tightening it 100× left every test
+   * green before.
+   */
+  it('refuses exactly at the margin it declares', () => {
+    expect(HALL_SINGLE_CARRIER_MARGIN).toBe(0.05);
+    // Walk doping until the share crosses the margin, then check both sides.
+    let below: Carriers | null = null;
+    let above: Carriers | null = null;
+    for (let e = 15; e <= 26; e += 0.01) {
+      const c = carriers(ni, 10 ** e, 0);
+      const share = minorityShare(c, mu_e, mu_h);
+      if (share > HALL_SINGLE_CARRIER_MARGIN) above = c;
+      else if (below == null) below = c;
+    }
+    expect(above).not.toBeNull();
+    expect(below).not.toBeNull();
+    expect(hallSingleCarrierValid(above!, mu_e, mu_h)).toBe(false);
+    expect(hallSingleCarrierValid(below!, mu_e, mu_h)).toBe(true);
+    expect(minorityShare(below!, mu_e, mu_h)).toBeLessThanOrEqual(HALL_SINGLE_CARRIER_MARGIN);
+    expect(minorityShare(above!, mu_e, mu_h)).toBeGreaterThan(HALL_SINGLE_CARRIER_MARGIN);
   });
 
   it('refuses the single-carrier reading near intrinsic, and allows it when doped', () => {

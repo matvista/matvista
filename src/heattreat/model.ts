@@ -915,11 +915,17 @@ function timeAtTemp(curve: CurvePoint[], T: number): number | null {
 /**
  * Fraction transformed at a hold temperature, from the two curve crossings.
  *
- * An Avrami curve f = 1 − exp(−k tⁿ) fitted so that it passes through the
- * start curve at `TRACE_FRACTION` and the finish curve at 1 − `TRACE_FRACTION`
- * — the same definitions the plot's own legend gives those curves, rather
- * than a second convention invented here. Before the start curve nothing has
- * transformed: that is what incubation means.
+ * An Avrami curve f = 1 − exp(−k tⁿ) is fitted through `TRACE_FRACTION` at the
+ * start curve and 1 − `TRACE_FRACTION` at the finish, rather than inventing a
+ * second convention for what those curves mean.
+ *
+ * Outside that interval it is clamped rather than extrapolated: nothing before
+ * the start curve, which is what incubation means, and complete at or after
+ * the finish curve. The clamp is a step of `TRACE_FRACTION` at the far end —
+ * the fitted value there is 0.995, not 1 — and it is deliberate, because the
+ * finish curve is where this module says the transformation is over. Without
+ * it, "held past the finish curve and no martensite forms" would be false by
+ * half a percent forever.
  */
 export function avramiFraction(tStart: number, tFinish: number, t: number): number {
   if (!(tStart > 0) || !(tFinish > tStart) || !(t > 0)) return 0;
@@ -996,7 +1002,7 @@ export function isothermalHold(
       fractions: [{ product: 'martensite', fraction: 1 }],
       hardness: steel.hardness.martensite,
       refusal: 'below Mˢ',
-      summary: `The quench passes Mˢ (${Math.round(ms)} °C) on the way down, so martensite forms during the drop and there is no austenite left to transform isothermally. Martempering is the fix: hold just *above* Mˢ until the part is at one temperature throughout, then cool slowly through Mˢ so the shear happens everywhere at once. The crack risk comes from the thermal gradient, not from the cooling rate.`,
+      summary: `The quench passes Mˢ (${Math.round(ms)} °C) on the way down, so martensite is already forming before the hold begins — by Koistinen–Marburger about ${Math.round((1 - Math.exp(-0.011 * (ms - holdT))) * 100)}% of it at this temperature, with the rest still austenite. That remainder does not transform isothermally either: below Mˢ the reaction is displacive and follows temperature, not time, so holding here achieves nothing and the final cooling takes the rest. Martempering is the fix — hold just *above* Mˢ until the part is at one temperature throughout, then cool slowly through Mˢ so the shear happens everywhere at once. The crack risk comes from the thermal gradient, not from the cooling rate.`,
     };
   }
 
@@ -1017,15 +1023,19 @@ export function isothermalHold(
   const parts = splitProeutectoid(steel, ttt, product, holdT, fraction);
   const shown = describeParts(parts);
   const retained = 1 - fraction;
-  // Below the display floor a band is not drawn, and a phase the bar does not
-  // draw must not appear in the list either — a zero-fraction entry would put
-  // a phantom product in the legend. This is the floor `predict` already uses
-  // for the martensite matrix, applied to both ends.
+  /**
+   * Drop products with *no* mass, not products with little.
+   *
+   * The first version filtered at `TRACE_FRACTION` to remove a zero-fraction
+   * phantom band, and that deleted real mass: at 5140, 560 °C, 34.7 s the
+   * pearlite part is 0.00198 and the remaining fractions sum to 0.998, so the
+   * bar had a gap, the legend did not total 100%, and the "transformed 49%"
+   * row referred to a product the legend no longer listed. A sub-trace band is
+   * merely thin; a missing one is a wrong total.
+   */
   const fractions = [
-    ...parts.filter((p) => p.fraction >= TRACE_FRACTION),
-    ...(retained >= TRACE_FRACTION
-      ? [{ product: 'martensite' as Product, fraction: retained }]
-      : []),
+    ...parts.filter((p) => p.fraction > 0),
+    ...(retained > 0 ? [{ product: 'martensite' as Product, fraction: retained }] : []),
   ];
 
   const summary =

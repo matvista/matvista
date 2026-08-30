@@ -97,6 +97,19 @@ describe('the reader can reach both constructions', () => {
     );
   });
 
+  /**
+   * The third refusal, which the first version of this panel made unreachable
+   * by clamping the slider below A₁. Nothing gated the bound either, so the
+   * branch existed only in the model.
+   */
+  it.each(STEELS.map((s) => s.id))('%s: above A₁ the panel says holding changes nothing', async (id) => {
+    const ttt = buildTtt(getSteel(id));
+    const T = Math.round(ttt.a1) + 30;
+    const box = await renderHold(`#/heattreat?steel=${id}&holdT=${T}&holdS=1000000`);
+    expect(box.textContent).toMatch(/Above A₁/);
+    expect(rowValue(box, /^Transformed/)).toBe('0%');
+  });
+
   it('draws the quench–hold–quench path and both curves', async () => {
     await renderHold('#/heattreat?steel=1080&holdT=400&holdS=100');
     const svg = document.querySelector('svg[aria-label^="Isothermal transformation path"]')!;

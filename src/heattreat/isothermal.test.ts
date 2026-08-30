@@ -43,13 +43,31 @@ describe('the Avrami interpolation matches the curves it is fitted to', () => {
 });
 
 describe('the isothermal hold', () => {
-  it.each(models.map((m) => m.steel.id))('%s: fractions always sum to one', (id) => {
+  /**
+   * Over the states the sliders can actually reach, not a chosen handful. A
+   * six-by-six grid missed the case that mattered: a sub-trace product being
+   * filtered out of the list took its mass with it, and the fractions summed
+   * to 0.998 at 5140 / 560 °C / 34.7 s.
+   */
+  it.each(models.map((m) => m.steel.id))('%s: fractions sum to one everywhere reachable', (id) => {
     const { steel, ttt } = models.find((m) => m.steel.id === id)!;
-    for (const T of [300, 400, 500, 600, 650, 700]) {
-      for (const t of [0.1, 1, 10, 100, 1000, 100000]) {
-        expect(total(isothermalHold(steel, ttt, T, t)), `${T} °C, ${t} s`).toBeCloseTo(1, 9);
+    let checked = 0;
+    for (let T = 20; T <= Math.round(ttt.a1 - 5); T += 5) {
+      for (let e = -1; e <= 6; e += 0.05) {
+        const o = isothermalHold(steel, ttt, T, 10 ** e);
+        expect(total(o), `${T} °C, ${(10 ** e).toFixed(2)} s`).toBeCloseTo(1, 9);
+        checked++;
       }
     }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  /** And the specific state the review found. */
+  it('sums to one at 5140, 560 °C, 34.7 s — the case the trace filter broke', () => {
+    const { steel, ttt } = models.find((m) => m.steel.id === '5140')!;
+    const o = isothermalHold(steel, ttt, 560, 34.7);
+    expect(total(o)).toBeCloseTo(1, 12);
+    expect(o.fractions.every((f) => f.fraction > 0)).toBe(true);
   });
 
   it.each(models.map((m) => m.steel.id))('%s: more time never means less product', (id) => {
@@ -106,6 +124,26 @@ describe('the isothermal hold', () => {
    * Hardness has to sit between the two things it is a mixture of, at every
    * hold, or the mixing rule is wrong somewhere.
    */
+  /**
+   * The mixing rule itself, not merely its bounds. Swapping which term carries
+   * `fraction` leaves every bound satisfied — a fully austempered 1080 would
+   * print martensite's 65 HRC beside a summary saying no martensite formed —
+   * so the two endpoints are pinned to the values they must take.
+   */
+  it.each(models.map((m) => m.steel.id))('%s: hardness is the product’s at full transformation', (id) => {
+    const { steel, ttt } = models.find((m) => m.steel.id === id)!;
+    const T = Math.round((ttt.ms + steel.nose.temp) / 2);
+    const full = isothermalHold(steel, ttt, T, 1e7);
+    expect(full.transformed).toBe(1);
+    // Bainite at this temperature, and nothing else.
+    expect(full.hardness).toBeCloseTo(steel.hardness.bainite, 9);
+    expect(full.hardness).toBeLessThan(steel.hardness.martensite);
+
+    const none = isothermalHold(steel, ttt, T, 1e-4);
+    expect(none.transformed).toBe(0);
+    expect(none.hardness).toBeCloseTo(steel.hardness.martensite, 9);
+  });
+
   it.each(models.map((m) => m.steel.id))('%s: hardness stays inside its own bounds', (id) => {
     const { steel, ttt } = models.find((m) => m.steel.id === id)!;
     const lo = Math.min(
@@ -171,6 +209,32 @@ describe('the isothermal hold', () => {
 
     const got = isothermalHold(steel, ttt, (a.T + b.T) / 2, 1).tStart!;
     expect(got / geometric).toBeCloseTo(1, 9);
+
+    /**
+     * The midpoint alone cannot see a reversed interpolation, because u = ½ is
+     * symmetric. The quarter point is not: reversing u there moves tStart by a
+     * factor of several.
+     */
+    const quarter = isothermalHold(steel, ttt, a.T - (a.T - b.T) / 4, 1).tStart!;
+    expect(quarter / Math.exp(0.75 * Math.log(a.t) + 0.25 * Math.log(b.t))).toBeCloseTo(1, 9);
+  });
+
+  /**
+   * The lowest segment of the curve is still part of the curve. Dropping it
+   * makes the bottom few degrees read "off the diagram" instead of being
+   * interpolated, and the 5 °C sweep above steps straight over a band that
+   * narrow.
+   */
+  it.each(models.map((m) => m.steel.id))('%s: the coldest curve segment is still read', (id) => {
+    const { steel, ttt } = models.find((m) => m.steel.id === id)!;
+    const last = ttt.start[ttt.start.length - 1];
+    const prev = ttt.start[ttt.start.length - 2];
+    const T = (last.T + prev.T) / 2;
+    // Only meaningful where that band is above Mˢ and so actually reachable.
+    if (T <= ttt.ms) return;
+    const o = isothermalHold(steel, ttt, T, 1);
+    expect(o.tStart, `${id} at ${T.toFixed(1)} °C`).not.toBeNull();
+    expect(o.tStart!).toBeCloseTo(Math.sqrt(prev.t * last.t), 6);
   });
 
   it.each(models.map((m) => m.steel.id))('%s: the finish curve is always later', (id) => {

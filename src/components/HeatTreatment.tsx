@@ -887,7 +887,13 @@ function IsothermalPanel({ steel, ttt }: { steel: Steel; ttt: TttModel }) {
    * cracking comes from the cooling rate rather than the thermal gradient.
    */
   const holdMin = Math.round(TEMP_MIN + 20);
-  const holdMax = Math.round(ttt.a1 - 5);
+  /**
+   * And above A₁, for the same reason. The model refuses there too — austenite
+   * is the equilibrium phase, so holding changes nothing however long you wait
+   * — and clamping the slider below A₁ made that branch unreachable, which is
+   * a lesson written and never shown.
+   */
+  const holdMax = Math.round(ttt.a1 + 60);
   const [holdT, setHoldT] = useRouteNumber('holdT', Math.round(ttt.ms + 60), holdMin, holdMax);
   const [holdTime, setHoldTime] = useRouteNumber('holdS', 100, HOLD_TIME_MIN, HOLD_TIME_MAX);
 

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteEnum, useRouteNumber, useRouteString } from '../useRoute';
-import { DOPABLE, SEMICONDUCTORS, getSemiconductor } from '../electronic/materials';
+import { DOPABLE, SEMICONDUCTORS } from '../electronic/materials';
 import {
   FREEZE_OUT_K, K_B, VISIBLE_MAX_NM, VISIBLE_MIN_NM, builtInPotential, carriers,
   conductivity, depletionSplit, depletionWidth, fermiOffset, intrinsicCarriers,
@@ -16,6 +16,7 @@ import {
   hallSingleCarrierValid,
   hallCarrierType,
   minorityShare,
+  biasedDepletionWidth,
 } from '../electronic/model';
 import type { Semiconductor } from '../electronic/materials';
 
@@ -746,28 +747,45 @@ function sup(n: number): string {
  * diffusion lengths this module cannot source, and every lesson here survives
  * normalisation. See `diodeCurrentRatio`.
  */
+/**
+ * The materials these two panels can actually model. `getSemiconductor` falls
+ * back only for an *unknown* id; `cds`, `gap` and `znte` are perfectly valid
+ * ids with `carriers: null`, and reading `ni300` off them threw. There is no
+ * error boundary in this app, so that was a white screen from a hand-typed
+ * hash — exactly what `useRouteNumber`'s own docstring promises cannot happen.
+ */
+const WITH_CARRIERS = SEMICONDUCTORS.filter((s) => s.carriers != null);
+const WITH_HALL = SEMICONDUCTORS.filter((s) => s.carriers != null && s.mu_h != null);
+const pick = (list: Semiconductor[], id: string) => list.find((s) => s.id === id) ?? list[0];
+
 function DiodePanel() {
   const [matId, setMatId] = useRouteString('m', 'si');
   const [bias, setBias] = useRouteNumber('V', 0.4, -1, 0.8);
   const [tempK, setTempK] = useRouteNumber('T', 300, 100, 800);
 
-  const mat = getSemiconductor(matId);
-  const other = SEMICONDUCTORS.find((s) => s.id !== mat.id && s.carriers != null)!;
+  const mat = pick(WITH_CARRIERS, matId);
+  const other = WITH_CARRIERS.find((s) => s.id !== mat.id)!;
   const W = 560;
   const H = 280;
   const PAD = { l: 62, r: 16, t: 16, b: 44 };
 
   const vMin = -1;
   const vMax = 0.8;
-  const decades = 12;
-  const sx = (V: number) => PAD.l + ((V - vMin) / (vMax - vMin)) * (W - PAD.l - PAD.r);
-  // log|I/I_S|, floored so the reverse branch has somewhere to sit.
-  const sy = (logI: number) =>
-    PAD.t + ((decades - logI) / (decades + 3)) * (H - PAD.t - PAD.b);
+  const floorLog = -3;
   const logOf = (V: number) => {
     const r = Math.abs(diodeCurrentRatio(V, tempK));
-    return r <= 1e-3 ? -3 : Math.log10(r);
+    return r <= 10 ** floorLog ? floorLog : Math.log10(r);
   };
+  /**
+   * The top of the axis follows the curve rather than being fixed. A fixed
+   * twelve decades put the operating point off the canvas over 5% of the
+   * slider grid — the whole top of the bias slider below 336 K — while the
+   * table beside it went on printing the value.
+   */
+  const topLog = Math.max(1, Math.ceil(logOf(vMax)));
+  const sx = (V: number) => PAD.l + ((V - vMin) / (vMax - vMin)) * (W - PAD.l - PAD.r);
+  const sy = (logI: number) =>
+    PAD.t + ((topLog - logI) / (topLog - floorLog)) * (H - PAD.t - PAD.b);
 
   const curve = Array.from({ length: 160 }, (_, i) => {
     const V = vMin + ((vMax - vMin) * i) / 159;
@@ -775,6 +793,18 @@ function DiodePanel() {
   }).join(' ');
 
   const mvDec = millivoltsPerDecade(tempK);
+  /**
+   * The depletion region under bias — forward narrows it, reverse widens it as
+   * √(V_bi − V). A symmetric 10²³ m⁻³ junction, so the figure is about the
+   * bias rather than about a doping the panel does not otherwise show.
+   */
+  const DOPE = 1e23;
+  const niHere = mat.carriers ? intrinsicCarriers(mat.carriers.ni300, mat.Eg, tempK) : null;
+  const vbi = niHere == null ? null : builtInPotential(DOPE, DOPE, niHere, tempK);
+  const epsR = mat.carriers?.epsR ?? null;
+  const biasW =
+    vbi == null || epsR == null ? null : biasedDepletionWidth(vbi, bias, DOPE, DOPE, epsR);
+  const zeroW = vbi == null || epsR == null ? 0 : biasedDepletionWidth(vbi, 0, DOPE, DOPE, epsR);
   const ratio = mat.carriers && other.carriers
     ? saturationCurrentRatio(mat.carriers.ni300, other.carriers.ni300)
     : null;
@@ -783,7 +813,7 @@ function DiodePanel() {
     <section className="dd-block">
       <div className="fa-controls">
         <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
-          {SEMICONDUCTORS.filter((s) => s.carriers != null).map((s) => (
+          {WITH_CARRIERS.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
@@ -795,7 +825,7 @@ function DiodePanel() {
 
       <svg className="dd-plot" viewBox={`0 0 ${W} ${H}`} role="img"
         aria-label="Diode current normalised to the saturation current, log scale, against bias">
-        {Array.from({ length: 5 }, (_, i) => i * 3).map((d) => (
+        {Array.from({ length: 5 }, (_, i) => Math.round(floorLog + ((topLog - floorLog) * i) / 4)).map((d) => (
           <g key={d}>
             <line x1={PAD.l} x2={W - PAD.r} y1={sy(d)} y2={sy(d)} className="dd-grid" />
             <text x={PAD.l - 8} y={sy(d) + 4} className="dd-tick" textAnchor="end">
@@ -829,6 +859,15 @@ function DiodePanel() {
               <td>{fmtExp(ratio)}×</td>
             </tr>
           )}
+          <tr>
+            <th scope="row">Depletion width at this bias</th>
+            <td>
+              {biasW == null ? '—' : biasW === 0 ? 'barrier gone' : fmtNm(biasW)}
+              {biasW != null && biasW > 0 && zeroW > 0 && (
+                <> ({(biasW / zeroW).toFixed(2)}× its zero-bias width)</>
+              )}
+            </td>
+          </tr>
         </tbody>
       </table>
 
@@ -867,7 +906,7 @@ function HallPanel() {
   const [field, setField] = useRouteNumber('B', 0.5, 0.05, 2);
   const [thickUm, setThickUm] = useRouteNumber('d', 500, 10, 2000);
 
-  const mat = getSemiconductor(matId);
+  const mat = pick(WITH_HALL, matId);
   const ni = intrinsicCarriers(mat.carriers!.ni300, mat.Eg, tempK);
   const dope = 10 ** logDope * 1e6; // cm⁻³ in the URL, m⁻³ in the model
   const c = carriers(ni, type === 'n' ? dope : 0, type === 'p' ? dope : 0);
@@ -884,7 +923,7 @@ function HallPanel() {
     <section className="dd-block">
       <div className="fa-controls">
         <select value={matId} onChange={(e) => setMatId(e.target.value)} aria-label="Material">
-          {SEMICONDUCTORS.filter((s) => s.carriers != null && s.mu_h != null).map((s) => (
+          {WITH_HALL.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
@@ -947,9 +986,10 @@ function HallPanel() {
           {(minorityShare(c, mat.mu_e, muH) * 100).toFixed(0)}% of the current, so the
           single-carrier reading n = 1/(R<sub>H</sub>q) does not mean anything here: the two
           populations deflect the same way and their Hall voltages partly cancel, and the
-          number that comes back is not any real population&rsquo;s. Note that R
-          <sub>H</sub> stays negative as this sample approaches intrinsic even when n = p —
-          the sign follows mobility, not count.
+          number that comes back is not any real population&rsquo;s. Push a p-type sample
+          further this way and R<sub>H</sub> will eventually change sign while it is still
+          p-type by doping, because at n = p the sign follows <em>mobility</em> rather than
+          count and electrons are the more mobile carrier.
         </p>
       )}
     </section>

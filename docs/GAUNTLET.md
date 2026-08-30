@@ -719,7 +719,10 @@ in place:
   hexagonal sample added there would be silently wrong**. Guard before extending.
 - `crystal/metals.ts` carries measured `coa` per HCP metal while `crystal/structures.ts`
   hardcodes the ideal 1.633 in `volumeOverA3`. Confirm which one the density readout uses
-  before trusting HCP densities (Zn and Cd deviate ~15%).
+  before trusting HCP densities (Zn and Cd deviate ~15%). Related, and now asserted in
+  `structures.test.ts`: `a = 2R` holds for HCP only at or above the ideal c/a. Below it the
+  cell is compressed along c and the out-of-plane neighbours become the contact pair —
+  titanium at c/a = 1.587 has a = 0.295 nm against 2R = 0.289, a 2% gap.
 - **`useRoute`'s debounced write depends on nothing else touching `history`.** The guard
   added in `4c65d70` drops a queued write whenever `location.hash` differs from the last
   hash the store wrote, on the assumption that the difference will be explained by a
@@ -739,3 +742,17 @@ in place:
   97.8 for 183 °C. The set is measure-zero and the endpoint is the terminus of the
   reaction line, so it is defensible rather than wrong — but it is a deliberate reading,
   not an accident, and anyone tightening the invariant test should know it is there.
+- **`xrd-miller-link.behaviour.test.tsx` mounts the whole app about sixty times**, and it
+  is not padding: the chip href carries `source`, so the Miller page's 2θ differs per
+  anode and neither of the two mounts per sample is redundant. Worst single test measured
+  750 / 957 / 797 ms over three runs against the 5 s budget — call it 1 s worst-case, a
+  fifth of it. Left alone deliberately. The mounts can only be cut by dropping a sample,
+  an anode or a chip, and each of those is coverage of the defect the file exists to
+  catch; and the alternative — navigating in-app instead of remounting — would put the
+  inner loop on top of `useRoute`'s 200 ms debounce, which is where this suite's one
+  reproducible flake lived. Not worth 3 s of a 13 s suite.
+- **Following a chip by *clicking* it is not tested.** The chips are in-app anchors, so a
+  real click fires a `hashchange` and never remounts; the test renders each href cold,
+  which is the paste path. Both should hold and today only one is asserted. Noticed while
+  measuring the mount count above, not while chasing a failure — there is no evidence the
+  click path is broken.

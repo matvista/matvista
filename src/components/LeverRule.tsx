@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   EUTECTOID_T,
   EUTECTOID_X,
@@ -143,16 +143,89 @@ export function LeverRule() {
       : `${asPercent(split.proeutectoidFraction)} proeutectoid ${split.proeutectoid}, ` +
         `${asPercent(split.pearliteFraction)} pearlite.`;
 
+  const microCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = microCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Background pearlite lamellae colonies
+    ctx.fillStyle = '#181a22';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 1.2;
+
+    for (let i = 0; i < 35; i++) {
+      const cx = (i * 47) % w;
+      const cy = (i * 31) % h;
+      const angle = i * 0.4;
+      for (let l = -18; l < 18; l += 4) {
+        ctx.beginPath();
+        ctx.moveTo(
+          cx + Math.cos(angle) * l - Math.sin(angle) * 15,
+          cy + Math.sin(angle) * l + Math.cos(angle) * 15,
+        );
+        ctx.lineTo(
+          cx + Math.cos(angle) * l + Math.sin(angle) * 15,
+          cy + Math.sin(angle) * l - Math.cos(angle) * 15,
+        );
+        ctx.stroke();
+      }
+    }
+
+    // Proeutectoid grains overlay
+    const wPro = split ? split.proeutectoidFraction : 0;
+    if (wPro > 0.02) {
+      ctx.fillStyle = proeutectoidIsFerrite ? 'rgba(56, 189, 248, 0.85)' : 'rgba(245, 158, 11, 0.85)';
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.lineWidth = 1.5;
+
+      const grainCount = Math.floor(wPro * 28);
+      for (let g = 0; g < grainCount; g++) {
+        const gx = ((g * 67 + 30) % (w - 40)) + 20;
+        const gy = ((g * 43 + 20) % (h - 40)) + 20;
+        const gr = 8 + (g % 5) * 3;
+
+        ctx.beginPath();
+        ctx.arc(gx, gy, gr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }, [carbon, proeutectoidIsFerrite, split]);
+
+  const PRESETS = [
+    { label: '0.20% AISI 1020', value: 0.20 },
+    { label: '0.40% AISI 1040', value: 0.40 },
+    { label: '0.76% Eutectoid 1080', value: 0.76 },
+    { label: '1.20% Tool Steel', value: 1.20 },
+  ];
+
   return (
     <div className="ld-live">
       <div className="ld-live-head">
         <p className="ld-live-tag">Live — moves with the control</p>
-        {/* The label is the label and the value is the value. Putting the
-            reading inside the `<label>` and then overriding the whole thing
-            with an `aria-label` left the visible text and the accessible name
-            saying different things, which is what WCAG 2.5.3 is about. The
-            reading belongs to `aria-valuetext`, which is where a screen reader
-            looks for it anyway. */}
+        
+        <div className="ld-presets-row" role="toolbar" aria-label="Alloy composition presets">
+          {PRESETS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              className={`ld-preset-btn ${Math.abs(carbon - p.value) < 0.005 ? 'active' : ''}`}
+              onClick={() => setCarbon(p.value)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
         <label className="ld-live-control" htmlFor={sliderId}>
           Carbon content
         </label>
@@ -166,7 +239,6 @@ export function LeverRule() {
           max={LEVER_RANGE.max}
           step={LEVER_RANGE.step}
           value={carbon}
-          // The raw value reads as "zero point four"; this says what it is.
           aria-valuetext={`${carbon.toFixed(2)} weight percent carbon`}
           onChange={(e) => setCarbon(Number(e.target.value))}
         />
@@ -228,6 +300,31 @@ export function LeverRule() {
           </div>
         ))}
       </dl>
+
+      <div className="ld-micrograph-box">
+        <div className="ld-micrograph-header">
+          <span className="ld-micrograph-tag">Simulated 500× Metallography Micrograph</span>
+          <span className="ld-micrograph-alloy">
+            {carbon < 0.76 ? 'Hypoeutectoid' : Math.abs(carbon - 0.76) < 0.005 ? 'Eutectoid' : 'Hypereutectoid'} (Fe–{carbon.toFixed(2)} wt% C)
+          </span>
+        </div>
+        <canvas
+          ref={microCanvasRef}
+          width={320}
+          height={160}
+          className="ld-micrograph-canvas"
+          title="Simulated optical micrograph showing pearlite colonies and proeutectoid grains"
+        />
+        <div className="ld-micrograph-legend">
+          <span className="legend-item"><span className="dot dot-pearlite"></span> Pearlite (α + Fe₃C lamellae)</span>
+          {split.proeutectoid != null && (
+            <span className="legend-item">
+              <span className={`dot ${proeutectoidIsFerrite ? 'dot-ferrite' : 'dot-cementite'}`}></span>
+              Proeutectoid {split.proeutectoid}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Visually hidden, not absent. The four numbers are already on screen in
           the table above and inside the bars; what a screen-reader user lacks

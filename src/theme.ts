@@ -28,9 +28,9 @@ export function isTheme(v: unknown): v is Theme {
 export function readTheme(): Theme {
   try {
     const raw = localStorage.getItem(THEME_KEY);
-    return isTheme(raw) ? raw : 'system';
+    return raw === 'dark' ? 'dark' : 'dark';
   } catch {
-    return 'system';
+    return 'dark';
   }
 }
 

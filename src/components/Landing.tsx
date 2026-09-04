@@ -3,8 +3,9 @@ import { NAV_GROUPS, MODULE_COUNT, capitalisedWord, numberWord } from '../nav';
 import { plateHeight, plateWidth } from '../landing/indexPlateBox';
 import { useReveal } from '../motion';
 import { LeverRule } from './LeverRule';
-import { LatticePlate } from '../assets/figures/LatticePlate';
 import { PhaseFigure } from '../assets/figures/PhaseFigure';
+import { SpecimenStage } from './SpecimenStage';
+import { LaboratoryWorkbench } from './LaboratoryWorkbench';
 import '../landing.css';
 
 /**
@@ -329,16 +330,7 @@ export function Landing() {
           </p>
         </div>
 
-        <figure className="ld-plate ld-hero-art">
-          <div className="ld-plate-art">
-            <LatticePlate />
-          </div>
-          <figcaption>
-            <span className="ld-fig-n">Fig. 1</span>
-            The face-centred cubic lattice, two cells on a side, with one unit cell outlined.
-            The arrangement behind aluminium, copper, nickel and austenite.
-          </figcaption>
-        </figure>
+        <SpecimenStage />
       </section>
 
       <section className="ld-facts">
@@ -387,6 +379,8 @@ export function Landing() {
 
         <LeverRule />
       </Reveal>
+
+      <LaboratoryWorkbench />
 
       <Reveal className="ld-chapter" id="modules">
         <p className="ld-kicker">The modules</p>
@@ -593,6 +587,58 @@ export function Landing() {
             </li>
           ))}
         </ul>
+      </Reveal>
+
+      <Reveal className="ld-chapter">
+        <p className="ld-kicker">Curriculum</p>
+        <h2 className="ld-h2">Classroom Worksheets & Problem Sets</h2>
+        <p className="ld-sub">
+          Pre-configured problem sets ready to assign directly to undergraduate metallurgy and materials science classes.
+        </p>
+        <div className="ld-worksheets-grid">
+          <div className="ld-worksheet-card">
+            <h3>01. Eutectoid Steel Lever Rule</h3>
+            <p>Determine equilibrium phase fractions for hypoeutectoid vs hypereutectoid carbon steels at 650 °C.</p>
+            <a className="ld-link" href="#/phase?T=650&sys=fe-c&x=0.4">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div className="ld-worksheet-card">
+            <h3>02. FCC Slip Systems & Schmid's Law</h3>
+            <p>Identify active slip planes and calculate resolved shear stress on (111)[101] under uniaxial tension.</p>
+            <a className="ld-link" href="#/miller?plane=111">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div className="ld-worksheet-card">
+            <h3>03. Pressure Vessel Fracture Mechanics</h3>
+            <p>Evaluate leak-before-break conditions and critical crack length in a thin-walled cylindrical vessel.</p>
+            <a className="ld-link" href="#/failure?geom=vessel&p=12">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div className="ld-worksheet-card">
+            <h3>04. TTT Cooling Curve & Quenching</h3>
+            <p>Integrate Scheil additivity along continuous cooling paths for 4340 alloy steel.</p>
+            <a className="ld-link" href="#/heattreat?rate=1200&steel=4340">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div className="ld-worksheet-card">
+            <h3>05. Periodic Property Trends</h3>
+            <p>Correlate electronegativity and atomic radius trends against observed elemental melting points.</p>
+            <a className="ld-link" href="#/trends?el=W&prop=melt">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+          <div className="ld-worksheet-card">
+            <h3>06. X-Ray Powder Diffraction</h3>
+            <p>Verify Bragg angles and systematic extinction rules for copper and iron powder samples.</p>
+            <a className="ld-link" href="#/xrd?sample=cu&source=cu">
+              Open Problem Set <span className="ld-arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
       </Reveal>
 
       <Reveal className="ld-chapter">

@@ -57,10 +57,9 @@
   --ld-display: var(--font-display);
   --ld-mono: var(--font-mono);
 
-  /* Plates are a shade off the page, the way a pasted-in figure is a shade off
-     the paper. Light goes brighter than the page, dark goes lighter. */
-  --ld-plate: #ffffff;
-  --ld-plate-line: #e4e3dc;
+  /* Plates are a shade off the page. Dark obsidian laboratory styling. */
+  --ld-plate: #15161c;
+  --ld-plate-line: #2d2e36;
 
   /* Artwork colour for the small module marks, inherited by their inline SVG. */
   --ld-art: var(--ink-2);
@@ -70,30 +69,16 @@
   --ld-rule-chapter: var(--chrome-edge);
 
   /*
-   * Figure palette — steel, oxide, verdigris, brass. Chosen off the materials
-   * themselves rather than from a chart-library default, and desaturated to
-   * sit on paper.
-   *
-   * These are NOT strokes only. The generated plates set annotations, series
-   * names and peak indices in them — the `(hkl)` labels, "Eutectoid — 0.76 wt%
-   * C, 727 °C", "endurance limit 190 MPa" — so they are held to the 4.5:1 text
-   * floor against `--ld-plate`, not the 3:1 WCAG 1.4.11 asks of a line. An
-   * earlier draft assumed strokes only and left `--fig-a` at 4.42:1 in light,
-   * which put fifteen 11px labels just under.
-   *
-   * `--fig-accent` is deliberately outside the series set. It marks the one
-   * thing a figure points at — a tie line, an endurance limit, a guide line —
-   * and while it was the same blue as `--fig-a` it drew the Ashby frontier in
-   * the colour of the metals that frontier is meant to bound.
+   * Figure palette — dark laboratory obsidian theme.
    */
-  --fig-ink: #2f2e2b;
-  --fig-label: #52514e;
-  --fig-grid: #e1e0d9;
-  --fig-accent: #b0184a; /* 6.83:1 on the plate */
-  --fig-a: #256bbd; /* 5.36:1 — was #2a78d6 at 4.42:1 */
-  --fig-b: #a8511f;
-  --fig-c: #0f766e;
-  --fig-d: #8a6d1f;
+  --fig-ink: #e6e5dc;
+  --fig-label: #c3c2b7;
+  --fig-grid: #2f2f2c;
+  --fig-accent: #f2668f;
+  --fig-a: #4f95ec;
+  --fig-b: #e0834f;
+  --fig-c: #3fae9f;
+  --fig-d: #c2a044;
 
   /*
    * The hero plate. Steel and copper, because those are the two metals the FCC
@@ -1263,3 +1248,555 @@ dl.ld-readout .ld-readout-plain {
     opacity: 1;
   }
 }
+
+/* --------------------------------------------------- specimen stage ------ */
+.specimen-stage-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.specimen-stage-card {
+  background: var(--ld-plate);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.specimen-stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--ld-plate-line);
+  background: rgba(255, 255, 255, 0.02);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.specimen-stage-tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+.specimen-tab-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--ink-2);
+  padding: 0.25rem 0.55rem;
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.specimen-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+.specimen-tab-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+.specimen-stage-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.specimen-select {
+  background: #14151a;
+  border: 1px solid var(--ld-plate-line);
+  color: var(--ink-2);
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.specimen-rotate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ld-plate-line);
+  color: var(--ink-2);
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.rotate-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.rotate-dot.on {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+.rotate-dot.off {
+  background: #64748b;
+}
+.specimen-stage-canvas-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 600 / 380;
+  background: radial-gradient(circle at center, rgba(56, 189, 248, 0.04) 0%, transparent 70%);
+}
+.specimen-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+.specimen-canvas:active {
+  cursor: grabbing;
+}
+.specimen-stage-overlay {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.specimen-overlay-tag {
+  font-family: var(--ld-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #e0f2fe;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
+.specimen-overlay-readout {
+  display: flex;
+  gap: 0.75rem;
+  font-family: var(--ld-mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+  background: rgba(15, 23, 42, 0.75);
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
+.specimen-caption {
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------- lever rule presets & micrograph */
+.ld-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+}
+.ld-preset-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ld-plate-line);
+  color: var(--ink-2);
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ld-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+.ld-preset-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+  font-weight: 600;
+}
+.ld-micrograph-box {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--ld-plate);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.ld-micrograph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--ld-mono);
+  font-size: 0.74rem;
+}
+.ld-micrograph-tag {
+  color: var(--ink);
+  font-weight: 600;
+}
+.ld-micrograph-alloy {
+  color: #38bdf8;
+}
+.ld-micrograph-canvas {
+  width: 100%;
+  max-width: 480px;
+  height: 140px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #10121a;
+}
+.ld-micrograph-legend {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.dot-pearlite { background: #64748b; }
+.dot-ferrite { background: #38bdf8; }
+.dot-cementite { background: #f59e0b; }
+
+/* --------------------------------------------------- laboratory workbench -- */
+.ld-workbench-sec {
+  padding: 4.2rem 0 0;
+  border-top: 2px solid var(--ld-rule-chapter);
+}
+.ld-workbench-box {
+  background: var(--ld-plate);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 1.5rem;
+}
+.ld-workbench-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ld-plate-line);
+  background: rgba(255, 255, 255, 0.02);
+  overflow-x: auto;
+}
+.workbench-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.2rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-2);
+  font-family: var(--ld-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.workbench-tab-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.03);
+}
+.workbench-tab-btn.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.05);
+}
+.workbench-panel {
+  padding: 1.5rem;
+}
+.workbench-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .workbench-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.workbench-controls-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.wb-title {
+  margin: 0;
+  font-family: var(--ld-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.wb-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.wb-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.wb-label {
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.wb-preset-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ld-plate-line);
+  color: var(--ink-2);
+  font-family: var(--ld-mono);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.wb-preset-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+.wb-preset-chip.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+  font-weight: 600;
+}
+.wb-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 6px;
+}
+.wb-slider-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-family: var(--ld-mono);
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+.wb-slider-row input[type='range'] {
+  flex: 1;
+  max-width: 180px;
+}
+.wb-data-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.6rem;
+}
+.wb-card {
+  padding: 0.6rem 0.8rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.wb-card-label {
+  font-family: var(--ld-mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.wb-card-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.text-ok { color: #10b981 !important; }
+.text-bad { color: #f43f5e !important; }
+.wb-link-row {
+  margin-top: 0.5rem;
+}
+.workbench-canvas-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wb-canvas {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--ld-plate-line);
+  background: #111218;
+}
+.wb-svg-chart {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--ld-plate-line);
+}
+.wb-caption {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+.wb-semi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.wb-semi-card {
+  padding: 0.6rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ld-plate-line);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.wb-semi-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.wb-semi-card.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.wb-semi-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.wb-semi-stat {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.wb-semi-schematic {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #111218;
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 6px;
+  padding: 1.2rem;
+  align-items: center;
+}
+.band {
+  width: 100%;
+  padding: 0.6rem;
+  text-align: center;
+  font-family: var(--ld-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+}
+.band-cb { background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; }
+.band-vb { background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(148, 163, 184, 0.3); color: #94a3b8; }
+.band-gap-space {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.8rem 1rem;
+}
+.band-arrow {
+  font-family: var(--ld-mono);
+  font-size: 0.74rem;
+  color: #f59e0b;
+}
+.emission-glow {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+.wb-spectrum-wrap {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+.wb-spectrum-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--ld-mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.wb-spectrum-bar {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #9333ea, #3b82f6, #06b6d4, #22c55e, #eab308, #f97316, #ef4444);
+}
+.wb-spectrum-marker {
+  position: absolute;
+  top: -4px;
+  width: 6px;
+  height: 20px;
+  border: 2px solid white;
+  border-radius: 2px;
+  background: white;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+  transform: translateX(-50%);
+  transition: left 0.3s ease;
+}
+
+/* --------------------------------------------------- worksheets grid ------ */
+.ld-worksheets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.2rem;
+  margin-top: 1.5rem;
+}
+.ld-worksheet-card {
+  padding: 1.2rem;
+  background: var(--ld-plate);
+  border: 1px solid var(--ld-plate-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  transition: border-color 0.15s ease;
+}
+.ld-worksheet-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.ld-worksheet-card h3 {
+  margin: 0;
+  font-family: var(--ld-mono);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ld-worksheet-card p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+

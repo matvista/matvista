@@ -147,6 +147,7 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
+  overflow-x: hidden;
 }
 
 .app {

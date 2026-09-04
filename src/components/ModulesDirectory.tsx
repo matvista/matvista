@@ -428,30 +428,33 @@ export function ModulesDirectory() {
   return (
     <div className="ld-directory-sec">
       <div className="ld-directory-head">
-        <p className="ld-kicker">Interactive Curriculum</p>
-        <h2 className="ld-h2">Fifteen Modules. Complete Materials Science Foundation.</h2>
-        <p className="ld-sub">
-          The core of undergraduate materials science and engineering. Click any module to launch an interactive simulation preview or open directly in the app.
-        </p>
+        <div className="ld-directory-filters-wrapper">
+          <div className="ld-directory-title-box">
+            <h3 className="ld-directory-h3">Interactive Module Directory</h3>
+            <p className="ld-directory-desc">
+              Filter by curriculum pillar. Click any card to launch its live simulation sandbox or open in the app.
+            </p>
+          </div>
 
-        {/* Pillar Filter Tabs */}
-        <div className="ld-directory-filters" role="toolbar" aria-label="Filter modules by curriculum pillar">
-          {[
-            { id: 'all', label: 'All (15)' },
-            { id: 'structure', label: 'Structure (4)' },
-            { id: 'microstructure', label: 'Microstructure (3)' },
-            { id: 'properties', label: 'Properties (5)' },
-            { id: 'analysis', label: 'Analysis (3)' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`filter-btn ${pillarFilter === tab.id ? 'active' : ''}`}
-              onClick={() => setPillarFilter(tab.id as any)}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {/* Pillar Filter Tabs */}
+          <div className="ld-directory-filters" role="toolbar" aria-label="Filter modules by curriculum pillar">
+            {[
+              { id: 'all', label: 'All (15)' },
+              { id: 'structure', label: 'Structure (4)' },
+              { id: 'microstructure', label: 'Microstructure (3)' },
+              { id: 'properties', label: 'Properties (5)' },
+              { id: 'analysis', label: 'Analysis (3)' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`filter-btn ${pillarFilter === tab.id ? 'active' : ''}`}
+                onClick={() => setPillarFilter(tab.id as any)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

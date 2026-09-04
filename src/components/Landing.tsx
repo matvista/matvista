@@ -6,6 +6,7 @@ import { LeverRule } from './LeverRule';
 import { PhaseFigure } from '../assets/figures/PhaseFigure';
 import { SpecimenStage } from './SpecimenStage';
 import { LaboratoryWorkbench } from './LaboratoryWorkbench';
+import { ModulesDirectory } from './ModulesDirectory';
 import '../landing.css';
 
 /**
@@ -204,6 +205,8 @@ const GROUP_NOTE: Record<string, string> = {
   properties: 'How it behaves when you load it, heat it, or wire it into a circuit.',
   analysis: 'How you measure what you have, and choose what you need.',
 };
+
+export { CARDS, CARD_OF, GROUP_NOTE };
 
 /**
  * Headline figures. Each is asserted against the data it describes in
@@ -414,53 +417,7 @@ export function Landing() {
           </figcaption>
         </figure>
 
-        <div className="ld-index-head">
-          <h3 className="ld-h3">Grouped the way a course is.</h3>
-          <p>
-            Four families, three modules each. Every one stands alone as something you can
-            teach with, study from, or reach for as a reference.
-          </p>
-        </div>
-
-        {NAV_GROUPS.map((group, i) => (
-          <div key={group.id} className="ld-group">
-            <div className="ld-group-head">
-              <h3>
-                <span className="ld-group-n">{String(i + 1).padStart(2, '0')}</span>
-                {group.label}
-              </h3>
-              <p>{GROUP_NOTE[group.id]}</p>
-            </div>
-            <ul className="ld-index">
-              {group.items.map((item) => {
-                const card = CARD_OF[item.id];
-                // `docs.test.ts` asserts every nav id has a card, so this is
-                // unreachable — but the landing page is the one eagerly-loaded
-                // view, and a missing entry here would blank the whole site
-                // rather than one module.
-                if (!card) return null;
-                return (
-                  <li key={item.id}>
-                    {/* No `aria-label`. The natural name — title then detail
-                        — runs long, but `detail` is rendered nowhere else, so
-                        overriding the name to the bare title is not trimming a
-                        duplicate, it is deleting the description for anyone
-                        who cannot see it. */}
-                    <a className="ld-row" href={card.href}>
-                      <span>
-                        <span className="ld-row-title">{card.title}</span>
-                        <span className="ld-row-blurb">{card.detail}</span>
-                      </span>
-                      <span className="ld-row-go" aria-hidden="true">
-                        →
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+        <ModulesDirectory />
       </Reveal>
 
       <Reveal className="ld-chapter ld-narrow">
